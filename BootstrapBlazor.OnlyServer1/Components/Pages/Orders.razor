@@ -1,0 +1,190 @@
+@page "/orders"
+@attribute [TabItemOption(Text = "订单列表")]
+@inject SqlSugar.ISqlSugarClient? Db
+@inject Microsoft.Extensions.Logging.ILogger<Orders> Logger
+
+<PageTitle>订单列表</PageTitle>
+
+<div class="page-orders">
+    <h1>订单列表</h1>
+
+    <Table TItem="Models.Orders" 
+           IsPagination="true"
+           PageItemsSource="@PageItemsSource" 
+           RenderMode="TableRenderMode.Table" 
+           IsFixedHeader="true" 
+           IsStriped="true" 
+           IsBordered="true" 
+           OnQueryAsync="OnQueryAsync" 
+           ShowSearch="true" 
+           ShowToolbar="true"
+           ShowExtendButtons="true" 
+           OnAddAsync="OnAddAsync" 
+           OnSaveAsync="OnSaveAsync" 
+           OnDeleteAsync="OnDeleteAsync" 
+           EditMode="EditMode.Popup"
+           ShowSkeleton="true"
+           IsMultipleSelect="true"
+           Height="700">
+        <TableColumns>
+            <TableColumn @bind-Field="@context.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.OrderNumber" Width="120" Align="Alignment.Center" Sortable="true" />
+            <TableColumn @bind-Field="@context.Power" Width="100" Align="Alignment.Center" Sortable="true" />
+            <TableColumn @bind-Field="@context.RatedVoltage" Width="120" Align="Alignment.Center" Sortable="true" />
+            <TableColumn @bind-Field="@context.IsReactor" Width="100" Align="Alignment.Center" Sortable="true">
+                <Template Context="value">
+                    @if (value.Value)
+                    {
+                        <span class="text-success">是</span>
+                    }
+                    else
+                    {
+                        <span class="text-secondary">否</span>
+                    }
+                </Template>
+            </TableColumn>
+            <TableColumn @bind-Field="@context.CreatedBy" Width="120" Sortable="true" />
+            <TableColumn @bind-Field="@context.CreatedTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
+                <Template Context="value">
+                    @value.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                </Template>
+            </TableColumn>
+        </TableColumns>
+    </Table>
+</div>
+
+@code {
+    private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
+
+    private Task<QueryData<Models.Orders>> OnQueryAsync(QueryPageOptions options)
+    {
+        if (Db == null)
+        {
+            Logger.LogWarning("Db is null, returning empty result");
+            return Task.FromResult(new QueryData<Models.Orders>());
+        }
+        
+        try
+        {
+            var query = Db.Queryable<Models.Orders>();
+            
+            // 只查询未删除的数据
+            query = query.Where(o => !o.IsDeleted);
+
+            // 处理搜索
+            if (!string.IsNullOrEmpty(options.SearchText))
+            {
+                query = query.Where(o => o.OrderNumber.ToString().Contains(options.SearchText) 
+                                     || o.CreatedBy.Contains(options.SearchText));
+            }
+
+            // 处理排序
+            if (!string.IsNullOrEmpty(options.SortName))
+            {
+                query = options.SortOrder == SortOrder.Asc 
+                    ? query.OrderBy($"{options.SortName} asc") 
+                    : query.OrderBy($"{options.SortName} desc");
+            }
+            else
+            {
+                query = query.OrderByDescending(o => o.CreatedTime);
+            }
+
+            var total = query.Count();
+            var items = query.Skip((options.PageIndex - 1) * options.PageItems).Take(options.PageItems).ToList();
+
+            return Task.FromResult(new QueryData<Models.Orders>()
+            {
+                Items = items,
+                TotalCount = total,
+                IsFiltered = options.Filters.Any(),
+                IsSorted = !string.IsNullOrEmpty(options.SortName),
+                IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.SearchModel != null
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error querying orders");
+            return Task.FromResult(new QueryData<Models.Orders>());
+        }
+    }
+
+    private Task<Models.Orders> OnAddAsync()
+    {
+        return Task.FromResult(new Models.Orders()
+        {
+            CreatedTime = DateTime.Now,
+            UpdatedTime = DateTime.Now,
+            IsDeleted = false,
+            IsReactor = false,
+            CreatedBy = "",
+            UpdatedBy = ""
+        });
+    }
+
+    private async Task<bool> OnSaveAsync(Models.Orders order, ItemChangedType changedType)
+    {
+        if (Db == null)
+        {
+            Logger.LogWarning("Db is null, cannot save");
+            return false;
+        }
+        
+        try
+        {
+            // 验证订单号不能为空
+            if (order.OrderNumber <= 0)
+            {
+                Logger.LogWarning("OrderNumber cannot be empty or zero");
+                return false;
+            }
+            
+            if (changedType == ItemChangedType.Add)
+            {
+                Logger.LogInformation("Adding new order: {OrderNumber}", order.OrderNumber);
+                order.CreatedTime = DateTime.Now;
+                order.UpdatedTime = DateTime.Now;
+                order.IsDeleted = false;
+                order.UpdatedBy = order.CreatedBy;
+                await Db.Insertable(order).ExecuteCommandAsync();
+            }
+            else
+            {
+                Logger.LogInformation("Updating order: {OrderNumber}", order.OrderNumber);
+                order.UpdatedTime = DateTime.Now;
+                await Db.Updateable(order).ExecuteCommandAsync();
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving order");
+            return false;
+        }
+    }
+
+    private async Task<bool> OnDeleteAsync(IEnumerable<Models.Orders> orders)
+    {
+        if (Db == null)
+        {
+            Logger.LogWarning("Db is null, cannot delete");
+            return false;
+        }
+        
+        try
+        {
+            foreach (var order in orders)
+            {
+                Logger.LogInformation("Deleting order: {OrderNumber}", order.OrderNumber);
+                order.IsDeleted = true;
+                await Db.Updateable(order).UpdateColumns(o => new { o.IsDeleted }).ExecuteCommandAsync();
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting orders");
+            return false;
+        }
+    }
+}

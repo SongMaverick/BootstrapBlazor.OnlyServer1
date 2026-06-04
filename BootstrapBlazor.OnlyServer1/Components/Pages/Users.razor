@@ -1,0 +1,187 @@
+@page "/users"
+@attribute [TabItemOption(Text = "人员列表")]
+@inject SqlSugar.ISqlSugarClient? Db
+@inject Microsoft.Extensions.Logging.ILogger<Users> Logger
+@inject BootstrapBlazor.Components.ToastService ToastService
+
+<PageTitle>人员列表</PageTitle>
+
+<div class="page-user">
+    <h1>人员列表</h1>
+
+    <Table TItem="Models.Users" 
+           IsPagination="true"
+           PageItemsSource="@PageItemsSource" 
+           RenderMode="TableRenderMode.Table" 
+           IsFixedHeader="true" 
+           IsStriped="true" 
+           IsBordered="true" 
+           OnQueryAsync="OnQueryAsync" 
+           ShowSearch="true" 
+           ShowToolbar="true"
+           ShowExtendButtons="true" 
+           OnAddAsync="OnAddAsync" 
+           OnSaveAsync="OnSaveAsync" 
+           OnDeleteAsync="OnDeleteAsync" 
+           EditMode="EditMode.Popup"
+           ShowSkeleton="true"
+           IsMultipleSelect="true"
+           Height="700">
+        <TableColumns>
+            <TableColumn @bind-Field="@context.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.Name" Width="150" Sortable="true" />
+            <TableColumn @bind-Field="@context.Password" Width="150" />
+            <TableColumn @bind-Field="@context.WorkerNumber" Width="120" Align="Alignment.Center" Sortable="true" />
+            <TableColumn @bind-Field="@context.GID" Width="150" Sortable="true" />
+            <TableColumn @bind-Field="@context.CreateTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
+                <Template Context="value">
+                    @value.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                </Template>
+            </TableColumn>
+        </TableColumns>
+    </Table>
+</div>
+
+@code {
+    private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
+
+    private Task<QueryData<Models.Users>> OnQueryAsync(QueryPageOptions options)
+    {
+        if (Db == null)
+        {
+            Logger.LogWarning("Db is null, returning empty result");
+            return Task.FromResult(new QueryData<Models.Users>());
+        }
+        
+        try
+        {
+            var query = Db.Queryable<Models.Users>();
+            
+            // 只查询未删除的数据
+            query = query.Where(u => !u.IsDelete);
+
+            // 处理搜索
+            if (!string.IsNullOrEmpty(options.SearchText))
+            {
+                query = query.Where(u => u.Name.Contains(options.SearchText) || u.GID.Contains(options.SearchText));
+            }
+
+            // 处理排序
+            if (!string.IsNullOrEmpty(options.SortName))
+            {
+                query = options.SortOrder == SortOrder.Asc 
+                    ? query.OrderBy($"{options.SortName} asc") 
+                    : query.OrderBy($"{options.SortName} desc");
+            }
+            else
+            {
+                query = query.OrderBy(u => u.Id);
+            }
+
+            var total = query.Count();
+            var items = query.Skip((options.PageIndex - 1) * options.PageItems).Take(options.PageItems).ToList();
+
+            return Task.FromResult(new QueryData<Models.Users>()
+            {
+                Items = items,
+                TotalCount = total,
+                IsFiltered = options.Filters.Any(),
+                IsSorted = !string.IsNullOrEmpty(options.SortName),
+                IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.SearchModel != null
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error querying users");
+            return Task.FromResult(new QueryData<Models.Users>());
+        }
+    }
+
+    private Task<Models.Users> OnAddAsync()
+    {
+        return Task.FromResult(new Models.Users()
+        {
+            CreateTime = DateTime.Now,
+            IsDelete = false
+        });
+    }
+
+    private async Task<bool> OnSaveAsync(Models.Users user, ItemChangedType changedType)
+    {
+        if (Db == null)
+        {
+            Logger.LogWarning("Db is null, cannot save");
+            return false;
+        }
+        
+        try
+        {
+            // 验证 GID 不能为空
+            if (string.IsNullOrEmpty(user.GID))
+            {
+                Logger.LogWarning("GID cannot be empty");
+                await ShowErrorMessage("GID不能为空");
+                return false;
+            }
+            
+            // 将 GID 转换为大写
+            user.GID = user.GID.ToUpper();
+            
+            // 对密码进行MD5加密（无论是新增还是编辑）
+            user.Password = Helpers.MD5Helper.Encrypt(user.Password);
+            
+            if (changedType == ItemChangedType.Add)
+            {
+                Logger.LogInformation("Adding new user: {Name}", user.Name);
+                user.CreateTime = DateTime.Now;
+                user.IsDelete = false;
+                await Db.Insertable(user).ExecuteCommandAsync();
+            }
+            else
+            {
+                Logger.LogInformation("Updating user: {Name}", user.Name);
+                await Db.Updateable(user).ExecuteCommandAsync();
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving user");
+            return false;
+        }
+    }
+
+    private async Task<bool> OnDeleteAsync(IEnumerable<Models.Users> users)
+    {
+        if (Db == null)
+        {
+            Logger.LogWarning("Db is null, cannot delete");
+            return false;
+        }
+        
+        try
+        {
+            foreach (var user in users)
+            {
+                Logger.LogInformation("Deleting user: {Name}", user.Name);
+                user.IsDelete = true;
+                await Db.Updateable(user).UpdateColumns(u => new { u.IsDelete }).ExecuteCommandAsync();
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting users");
+            return false;
+        }
+    }
+    
+    private async Task ShowErrorMessage(string message)
+    {
+        await ToastService.Show(new BootstrapBlazor.Components.ToastOption()
+        {
+            Category = BootstrapBlazor.Components.ToastCategory.Error,
+            Content = message
+        });
+    }
+}
