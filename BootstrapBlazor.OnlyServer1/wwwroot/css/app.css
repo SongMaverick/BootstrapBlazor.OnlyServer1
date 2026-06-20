@@ -139,3 +139,21 @@
     --bb-menu-item-hover-bg: #702cf8;
     --bb-menu-item-hover-color: #fff;
 }
+
+/* 订单列表扩展按钮列(已迁移到顶部 toolbar,此处保留为空类占位) */
+.extend-buttons-col {
+    /* 操
+作列现在只保留编辑/删除,不再需要加宽 */
+}
+
+/* 变压器 Badge:深青绿 teal —— 低饱和度,跟蓝绿紫都不同色相 */
+.badge-transformer {
+    background-color: #0d9488 !important;
+    color: #ffffff !important;
+}
+
+/* 电抗器 Badge:深蓝灰 slate —— 高级灰,跟紫蓝主调和谐但有区分度 */
+.badge-reactor {
+    background-color: #475569 !important;
+    color: #ffffff !important;
+}

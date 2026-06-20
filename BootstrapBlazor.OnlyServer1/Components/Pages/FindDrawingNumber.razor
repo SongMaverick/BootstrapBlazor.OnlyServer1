@@ -1,0 +1,202 @@
+@page "/find-drawing-number"
+@attribute [TabItemOption(Text = "查询图号")]
+@using BootstrapBlazor.OnlyServer1.Services
+@using BootstrapBlazor.OnlyServer1.Models
+@inject DrawingNumberService? DrawingNumberService
+@inject Microsoft.Extensions.Logging.ILogger<FindDrawingNumber> Logger
+@inject BootstrapBlazor.OnlyServer1.Services.AuthService? AuthService
+
+<PageTitle>查询图号</PageTitle>
+
+<div class="container mt-4">
+    <h3>查询图号</h3>
+    <p class="text-muted">输入"前三位"和"后五位"图号,查询该图号的详细信息。</p>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">前三位</label>
+                    <select class="form-select" @bind="_model.DrawingNumberType">
+                        <option value="">请选择</option>
+                        <option value="C01">C01</option>
+                        <option value="C02">C02</option>
+                        <option value="C03">C03</option>
+                        <option value="C04">C04</option>
+                        <option value="C05">C05</option>
+                        <option value="C06">C06</option>
+                        <option value="C07">C07</option>
+                        <option value="C08">C08</option>
+                        <option value="C09">C09</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">中段 2 位</label>
+                    <input type="text" class="form-control" maxlength="2" pattern="[0-9]{2}" @bind="_model.MiddleDigits" placeholder="00" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">末段 3 位</label>
+                    <input type="text" class="form-control" maxlength="3" pattern="[0-9]{3}" @bind="_model.LastDigits" placeholder="001" />
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-primary" @onclick="HandleQuery" disabled="@_isLoading">
+                        @if (_isLoading) {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span class="ms-2">查询中...</span>
+                        } else {
+                            <span>查询</span>
+                        }
+                    </button>
+                    <button type="button" class="btn btn-secondary ms-2" @onclick="HandleReset">重置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 查询结果弹窗 -->
+@if (_resultModalVisible) {
+    <div class="modal d-block" tabindex="-1" role="dialog" style="display: block;">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">图号信息</h5>
+                    <button type="button" class="btn-close" @onclick="CloseResultModal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_result == null) {
+                        <div class="alert alert-warning mb-0">
+                            查无此号,请核实前三位和后五位是否正确。
+                        </div>
+                    } else {
+                        <dl class="row mb-0">
+                            <dt class="col-sm-3">图号</dt>
+                            <dd class="col-sm-9">@_result.DrawingTypeNumber</dd>
+
+                            <dt class="col-sm-3">订单号</dt>
+                            <dd class="col-sm-9">@_result.OrderNumber</dd>
+
+                            <dt class="col-sm-3">图名</dt>
+                            <dd class="col-sm-9">@_result.DrawName</dd>
+
+                            <dt class="col-sm-3">创建者</dt>
+                            <dd class="col-sm-9">@_result.CreatedBy</dd>
+
+                            <dt class="col-sm-3">创建时间</dt>
+                            <dd class="col-sm-9">@_result.CreatedTime.ToString("yyyy-MM-dd HH:mm:ss")</dd>
+
+                            <dt class="col-sm-3">修改者</dt>
+                            <dd class="col-sm-9">@_result.UpdatedBy</dd>
+
+                            <dt class="col-sm-3">修改时间</dt>
+                            <dd class="col-sm-9">@_result.UpdatedTime.ToString("yyyy-MM-dd HH:mm:ss")</dd>
+
+                            <dt class="col-sm-3">状态</dt>
+                            <dd class="col-sm-9">
+                                @if (_result.IsDelete) {
+                                    <span class="badge bg-danger">已被删除,不可用</span>
+                                } else {
+                                    <span class="badge bg-success">可以使用</span>
+                                }
+                            </dd>
+                        </dl>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseResultModal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private QueryModel _model = new();
+    private bool _isLoading = false;
+    private bool _resultModalVisible = false;
+    private DrawingNumberViewModel? _result = null;
+
+    public class QueryModel {
+        public string DrawingNumberType { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 中段 2 位(对应 DrawingTypeNumber 的 "XX" 部分,例如 "34")
+        /// </summary>
+        public string MiddleDigits { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 末段 3 位(对应 DrawingTypeNumber 的 "XXX" 部分,例如 "050")
+        /// </summary>
+        public string LastDigits { get; set; } = string.Empty;
+    }
+
+    private async Task HandleQuery() {
+        _isLoading = true;
+        _result = null;
+
+        try {
+            if (DrawingNumberService == null) {
+                Logger.LogWarning("DrawingNumberService is null");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(_model.DrawingNumberType)) {
+                Logger.LogWarning("Query: drawing type not selected");
+                _result = null;
+                _resultModalVisible = true;
+                return;
+            }
+
+            // 校验中段 / 末段:必须为纯数字且位数正确
+            if (!System.Text.RegularExpressions.Regex.IsMatch(_model.MiddleDigits ?? "", "^[0-9]{2}$")) {
+                _result = null;
+                _resultModalVisible = true;
+                return;
+            }
+            if (!System.Text.RegularExpressions.Regex.IsMatch(_model.LastDigits ?? "", "^[0-9]{3}$")) {
+                _result = null;
+                _resultModalVisible = true;
+                return;
+            }
+
+            // 拼装成 5 位数字字符串(中2 + 末3)
+            string fullNumberStr = _model.MiddleDigits + _model.LastDigits;
+            int fullNumber = int.Parse(fullNumberStr);
+
+            // 记录查询日志
+            if (AuthService?.CurrentUser != null) {
+                Logger.LogInformation("{User} 查询图号: {Type} {Middle} {Last} (full={Full})",
+                    AuthService.CurrentUser.Name,
+                    _model.DrawingNumberType,
+                    _model.MiddleDigits,
+                    _model.LastDigits,
+                    fullNumber);
+            }
+
+            _result = await DrawingNumberService.FindDrawingNumberByTypeAndNumberAsync(
+                _model.DrawingNumberType,
+                fullNumber);
+
+            _resultModalVisible = true;
+        }
+        catch (Exception ex) {
+            Logger.LogError(ex, "HandleQuery failed");
+            _result = null;
+            _resultModalVisible = true;
+        }
+        finally {
+            _isLoading = false;
+        }
+    }
+
+    private void HandleReset() {
+        _model = new QueryModel();
+        _result = null;
+        _resultModalVisible = false;
+    }
+
+    private void CloseResultModal() {
+        _resultModalVisible = false;
+    }
+}

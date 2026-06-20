@@ -11,8 +11,16 @@ namespace BootstrapBlazor.OnlyServer1.Services
         private readonly ILogger<AuthService> _logger;
         
         public Models.Users? CurrentUser { get; private set; }
-        
+
         public bool IsLoggedIn => CurrentUser != null;
+
+        /// <summary>
+        /// 登录状态变化事件 - 登录/登出/自动登录 成功后触发,
+        /// 用于让订阅组件(如 MainLayout)立刻 StateHasChanged 刷新用户信息显示
+        /// </summary>
+        public event Action? OnChange;
+
+        private void NotifyStateChanged() => OnChange?.Invoke();
 
         public AuthService(ISqlSugarClient db, ILogger<AuthService> logger)
         {
@@ -41,9 +49,10 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 {
                     _logger.LogInformation("登录成功: {Username}", username);
                     CurrentUser = user;
+                    NotifyStateChanged();
                     return true;
                 }
-                
+
                 _logger.LogWarning("登录失败，未找到用户或密码错误");
                 return false;
             }
@@ -81,9 +90,10 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 {
                     _logger.LogInformation("自动登录成功，用户: {Name}", user.Name);
                     CurrentUser = user;
+                    NotifyStateChanged();
                     return true;
                 }
-                
+
                 _logger.LogWarning("自动登录失败，未找到未删除的匹配用户");
                 return false;
             }
@@ -113,6 +123,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         {
             _logger.LogInformation("用户登出");
             CurrentUser = null;
+            NotifyStateChanged();
         }
     }
 }

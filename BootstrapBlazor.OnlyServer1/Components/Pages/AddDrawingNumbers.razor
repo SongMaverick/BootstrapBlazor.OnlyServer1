@@ -1,0 +1,381 @@
+@page "/add-drawing-numbers/{orderId:int}"
+@attribute [TabItemOption(Text = "添加图号")]
+@using BootstrapBlazor.OnlyServer1.Services
+@inject DrawingNumberService? DrawingNumberService
+@inject NavigationManager NavigationManager
+@inject Microsoft.Extensions.Logging.ILogger<AddDrawingNumbers> Logger
+@inject SqlSugar.ISqlSugarClient? Db
+
+<PageTitle>添加图号</PageTitle>
+
+<div class="page-add-drawing-numbers">
+    @if (_order == null) {
+        <p class="alert alert-info">加载中...</p>
+    }
+    else {
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3>添加图号</h3>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <button class="btn btn-primary" @onclick="HandleAddDrawingNumbers" disabled="@isAdding">
+                        @if (isAdding) {
+                            <span class="spinner-border spinner-border-sm"></span>
+                            <span class="ms-2">添加中...</span>
+                        }
+                        else {
+                            <span>添加图号</span>
+                        }
+                    </button>
+                    <button class="btn btn-success ms-2" @onclick="HandleChangeSequence" disabled="@isAdding">
+                        更改顺序添加图号
+                    </button>
+                    <button class="btn btn-info ms-2" @onclick="GoBack">
+                        返回图号列表
+                    </button>
+                </div>
+
+                @if (showSuccess) {
+                    <div class="alert alert-success" role="alert">
+                        图号添加成功！
+                    </div>
+                }
+
+                @if (showError) {
+                    <div class="alert alert-danger" role="alert">
+                        添加图号时发生错误，请重试。
+                    </div>
+                }
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header bg-warning text-dark">
+                                <h5 class="mb-0">外部 (ESL-01)</h5>
+                            </div>
+                            <div class="card-body">
+                                @if (unaddedEsl01DrawingNameList.Count == 0) {
+                                    <p class="text-muted">没有可添加的外部图号</p>
+                                }
+                                else {
+                                    @foreach (var item in unaddedEsl01DrawingNameList) {
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
+                                            <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
+                                                @item.drawingName.ComponentName
+                                                @if (item.IsAdded) {
+                                                    <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
+                                                }
+                                            </label>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">内部 (ESL-02)</h5>
+                            </div>
+                            <div class="card-body">
+                                @if (unaddedEsl02DrawingNameList.Count == 0) {
+                                    <p class="text-muted">没有可添加的内部图号</p>
+                                }
+                                else {
+                                    @foreach (var item in unaddedEsl02DrawingNameList) {
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
+                                            <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
+                                                @item.drawingName.ComponentName
+                                                @if (item.IsAdded) {
+                                                    <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
+                                                }
+                                            </label>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0">串联电抗器 (ESL-03)</h5>
+                            </div>
+                            <div class="card-body">
+                                @if (unaddedEsl03DrawingNameList.Count == 0) {
+                                    <p class="text-muted">没有可添加的串联电抗器图号</p>
+                                }
+                                else {
+                                    @foreach (var item in unaddedEsl03DrawingNameList) {
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
+                                            <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
+                                                @item.drawingName.ComponentName
+                                                @if (item.IsAdded) {
+                                                    <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
+                                                }
+                                            </label>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card mb-3">
+                            <div class="card-header bg-secondary text-white">
+                                <h5 class="mb-0">铁芯 (ESL-Core)</h5>
+                            </div>
+                            <div class="card-body">
+                                @if (unaddedEslCoreDrawingNameList.Count == 0) {
+                                    <p class="text-muted">没有可添加的铁芯图号</p>
+                                }
+                                else {
+                                    @foreach (var item in unaddedEslCoreDrawingNameList) {
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
+                                            <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
+                                                @item.drawingName.ComponentName
+                                                @if (item.IsAdded) {
+                                                    <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
+                                                }
+                                            </label>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- 更改顺序对话框 -->
+    @if (dialogVisible) {
+        <div class="modal d-block" tabindex="-1" role="dialog" style="display: block;">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">更改图号顺序</h5>
+                        <button type="button" class="btn-close" @onclick="HandleDialogCancel" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted mb-2">每行一个图号，您可以调整顺序：</p>
+                        <textarea class="form-control" rows="15" @bind="editorContent" placeholder="图号名称（每行一个，可调整顺序）"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="HandleDialogCancel">取消</button>
+                        <button type="button" class="btn btn-success" @onclick="HandleDialogConfirm" disabled="@isAdding">
+                            @if (isAdding) {
+                                <span class="spinner-border spinner-border-sm"></span>
+                                <span class="ms-2">添加中...</span>
+                            }
+                            else {
+                                <span>更改顺序添加图号</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int OrderId { get; set; }
+
+    private BootstrapBlazor.OnlyServer1.Models.Orders? _order;
+    private bool isAdding = false;
+    private bool showSuccess = false;
+    private bool showError = false;
+    private bool dialogVisible = false;
+    private string editorContent = string.Empty;
+
+    private List<CheckboxItem> unaddedEsl01DrawingNameList = new List<CheckboxItem>();
+    private List<CheckboxItem> unaddedEsl02DrawingNameList = new List<CheckboxItem>();
+    private List<CheckboxItem> unaddedEsl03DrawingNameList = new List<CheckboxItem>();
+    private List<CheckboxItem> unaddedEslCoreDrawingNameList = new List<CheckboxItem>();
+
+    public class CheckboxItem {
+        public int Id { get; set; }
+        public BootstrapBlazor.OnlyServer1.Models.DrawingNames drawingName { get; set; } = new();
+        public bool IsChecked { get; set; }
+        public bool IsAdded { get; set; }   // 已添加的图名,checkbox 禁用且勾选
+    }
+
+    protected override async Task OnInitializedAsync() {
+        showSuccess = false;
+        showError = false;
+
+        if (Db == null || DrawingNumberService == null) {
+            Logger.LogWarning("Db or DrawingNumberService is null");
+            return;
+        }
+
+        try {
+            _order = await Db.Queryable<BootstrapBlazor.OnlyServer1.Models.Orders>().InSingleAsync(OrderId);
+            if (_order == null) {
+                Logger.LogWarning("Order not found: {OrderId}", OrderId);
+                return;
+            }
+
+            var allDrawingNames = await DrawingNumberService.GetAllDrawingNamesAsync();
+            var addedDrawingNames = await DrawingNumberService.GetAddedDrawingNumbersByOrderIdAsync(OrderId);
+            var addedDrawNamesSet = new HashSet<string>(addedDrawingNames.Select(dn => dn.DrawName));
+
+            foreach (var dn in allDrawingNames) {
+                var isAdded = addedDrawNamesSet.Contains(dn.ComponentName);
+                var checkboxItem = new CheckboxItem {
+                    Id = dn.Id,
+                    drawingName = dn,
+                    IsChecked = isAdded,   // 已添加的默认勾选
+                    IsAdded = isAdded      // 已添加的禁用 checkbox
+                };
+
+                switch (dn.Part) {
+                    case "ESL-01":
+                        unaddedEsl01DrawingNameList.Add(checkboxItem);
+                        break;
+                    case "ESL-02":
+                        unaddedEsl02DrawingNameList.Add(checkboxItem);
+                        break;
+                    case "ESL-03":
+                        unaddedEsl03DrawingNameList.Add(checkboxItem);
+                        break;
+                    case "ESL-Core":
+                        unaddedEslCoreDrawingNameList.Add(checkboxItem);
+                        break;
+                }
+            }
+        }
+        catch (Exception ex) {
+            Logger.LogError(ex, "Error initializing page");
+            showError = true;
+        }
+    }
+
+    private List<string> GetCheckedItems() {
+        var allItems = unaddedEsl01DrawingNameList
+            .Concat(unaddedEsl02DrawingNameList)
+            .Concat(unaddedEsl03DrawingNameList)
+            .Concat(unaddedEslCoreDrawingNameList)
+            .ToList();
+
+        return allItems.Where(item => item.IsChecked && !item.IsAdded).Select(item => item.drawingName.ComponentName).ToList();
+    }
+
+    private Task HandleChangeSequence() {
+        var checkedItems = GetCheckedItems();
+        editorContent = string.Join(Environment.NewLine, checkedItems);
+        dialogVisible = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleDialogConfirm() {
+        isAdding = true;
+        showSuccess = false;
+        showError = false;
+
+        try {
+            if (DrawingNumberService == null) {
+                Logger.LogWarning("DrawingNumberService is null");
+                showError = true;
+                return;
+            }
+
+            var checkedDrawingNumbersList = editorContent
+                .Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim())
+                .Where(l => !string.IsNullOrEmpty(l))
+                .ToArray();
+
+            if (checkedDrawingNumbersList.Length == 0) {
+                return;
+            }
+
+            Logger.LogInformation("Adding {Count} drawing numbers (with custom order) to order {OrderId}", checkedDrawingNumbersList.Length, OrderId);
+
+            var result = await DrawingNumberService.AddDrawingNumbersAsync(OrderId, checkedDrawingNumbersList);
+
+            if (result > 0) {
+                Logger.LogInformation("Successfully added {Count} drawing numbers", result);
+                dialogVisible = false;
+                showSuccess = true;
+                await Task.Delay(1000);
+                NavigationManager.NavigateTo($"/order-drawing-numbers/{OrderId}", false);
+            }
+            else {
+                Logger.LogWarning("No drawing numbers were added");
+                showError = true;
+            }
+        }
+        catch (Exception ex) {
+            Logger.LogError(ex, "Error adding drawing numbers");
+            showError = true;
+        }
+        finally {
+            isAdding = false;
+        }
+    }
+
+    private Task HandleDialogCancel() {
+        dialogVisible = false;
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleAddDrawingNumbers() {
+        isAdding = true;
+        showSuccess = false;
+        showError = false;
+
+        try {
+            if (DrawingNumberService == null) {
+                Logger.LogWarning("DrawingNumberService is null");
+                showError = true;
+                return;
+            }
+
+            var checkedItems = GetCheckedItems();
+            if (checkedItems.Count == 0) {
+                return;
+            }
+
+            Logger.LogInformation("Adding {Count} drawing numbers to order {OrderId}", checkedItems.Count, OrderId);
+
+            var result = await DrawingNumberService.AddDrawingNumbersAsync(OrderId, checkedItems.ToArray());
+
+            if (result > 0) {
+                Logger.LogInformation("Successfully added {Count} drawing numbers", result);
+                showSuccess = true;
+                await Task.Delay(1000);
+                NavigationManager.NavigateTo($"/order-drawing-numbers/{OrderId}", false);
+            }
+            else {
+                Logger.LogWarning("No drawing numbers were added");
+                showError = true;
+            }
+        }
+        catch (Exception ex) {
+            Logger.LogError(ex, "Error adding drawing numbers");
+            showError = true;
+        }
+        finally {
+            isAdding = false;
+        }
+    }
+
+    private void GoBack() {
+        NavigationManager.NavigateTo($"/order-drawing-numbers/{OrderId}", false);
+    }
+}

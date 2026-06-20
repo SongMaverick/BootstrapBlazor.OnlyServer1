@@ -1,0 +1,329 @@
+@page "/order-drawing-numbers/{orderId:int}"
+@attribute [TabItemOption(Text = "订单图号列表")]
+@using BootstrapBlazor.OnlyServer1.Services
+@using BootstrapBlazor.OnlyServer1.Models
+@inject DrawingNumberService? DrawingNumberService
+@inject NavigationManager NavigationManager
+@inject Microsoft.Extensions.Logging.ILogger<OrderDrawingNumbers> Logger
+@inject SqlSugar.ISqlSugarClient? Db
+@inject BootstrapBlazor.OnlyServer1.Services.AuthService? AuthService
+@inject ToastService? ToastService
+
+<PageTitle>订单图号列表</PageTitle>
+
+<div class="page-order-drawing-numbers">
+    @if (_order == null)
+    {
+        <p class="alert alert-info">加载中...</p>
+    }
+    else
+    {
+        <div class="mb-3">
+            <h1>订单图号列表</h1>
+            <button class="btn btn-primary" @onclick="NavigateToAdd">添加图号</button>
+        </div>
+
+        @if (_drawingNumbers.Count == 0)
+        {
+            <div class="alert alert-warning">
+                <p>该订单暂无图号，点击上方按钮添加图号</p>
+            </div>
+        }
+        else
+        {
+            <table class="table table-striped table-bordered">
+                <thead class="table-dark">
+                    <tr>
+                        <th>图号</th>
+                        <th>图号名称</th>
+                        <th>创建者</th>
+                        <th>创建时间</th>
+                        <th>修改者</th>
+                        <th>修改时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _drawingNumbers)
+                    {
+                        <tr>
+                            <td>@item.DrawingTypeNumber</td>
+                            <td>@item.DrawName</td>
+                            <td>@item.CreatedBy</td>
+                            <td>@item.CreatedTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@item.UpdatedBy</td>
+                            <td>@item.UpdatedTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary" @onclick="() => OpenEditModal(item)">修改</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+</div>
+
+<!-- 修改图号弹窗 -->
+@if (_editModalVisible && _editingViewModel != null)
+{
+    <div class="modal d-block" tabindex="-1" role="dialog" style="display: block;">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">修改图号</h5>
+                    <button type="button" class="btn-close" @onclick="CloseEditModal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_editLoading)
+                    {
+                        <p class="text-muted">加载中...</p>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">编号</label>
+                            <input class="form-control" type="text" value="@_editingViewModel.Id" disabled />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">图号</label>
+                            <input class="form-control" type="text" value="@_editingViewModel.DrawingTypeNumber" disabled />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">图纸名称</label>
+                            <input class="form-control" type="text" @bind="_editModel.DrawName" />
+                            @if (_editErrorMessage != null)
+                            {
+                                <div class="text-danger mt-1">@_editErrorMessage</div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseEditModal" disabled="@(_editSaving ? "disabled" : null)">取消</button>
+                    <button type="button" class="btn btn-primary" @onclick="HandleEditConfirm" disabled="@((_editSaving || _editLoading) ? "disabled" : null)">
+                        @if (_editSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                            <span class="ms-2">保存中...</span>
+                        }
+                        else
+                        {
+                            <span>保存</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@implements IDisposable
+
+@code {
+    [Parameter]
+    public int OrderId { get; set; }
+
+    private BootstrapBlazor.OnlyServer1.Models.Orders? _order;
+    private List<DrawingNumberViewModel> _drawingNumbers = new List<DrawingNumberViewModel>();
+
+    // 修改弹窗状态
+    private bool _editModalVisible = false;
+    private bool _editLoading = false;
+    private bool _editSaving = false;
+    private string? _editErrorMessage = null;
+    private DrawingNumberViewModel? _editingViewModel = null;
+    private C0XBase? _editingC0x = null;
+    private EditModel _editModel = new();
+
+    public class EditModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "图纸名称不能为空")]
+        public string DrawName { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Logger.LogInformation("OrderDrawingNumbers: OnInitializedAsync, OrderId = {OrderId}", OrderId);
+        await LoadData();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            NavigationManager.LocationChanged += OnLocationChanged;
+        }
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        try
+        {
+            if (e.Location.Contains($"/order-drawing-numbers/{OrderId}"))
+            {
+                Logger.LogInformation("OrderDrawingNumbers: LocationChanged, reloading for OrderId = {OrderId}", OrderId);
+                _order = null;
+                _drawingNumbers = new List<DrawingNumberViewModel>();
+                await LoadData();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "OrderDrawingNumbers: Error in OnLocationChanged");
+        }
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+
+    private async Task LoadData()
+    {
+        Logger.LogInformation("OrderDrawingNumbers: LoadData starting for OrderId = {OrderId}", OrderId);
+
+        if (Db == null || DrawingNumberService == null)
+        {
+            Logger.LogWarning("OrderDrawingNumbers: Db or DrawingNumberService is null");
+            return;
+        }
+
+        try
+        {
+            _order = await Db.Queryable<BootstrapBlazor.OnlyServer1.Models.Orders>().InSingleAsync(OrderId);
+            if (_order == null)
+            {
+                Logger.LogWarning("Order not found: {OrderId}", OrderId);
+                return;
+            }
+
+            Logger.LogInformation("OrderDrawingNumbers: Loaded order successfully");
+            _drawingNumbers = await DrawingNumberService.GetAddedDrawingNumberViewModelsByOrderIdAsync(OrderId);
+            Logger.LogInformation("OrderDrawingNumbers: Loaded {Count} drawing numbers", _drawingNumbers.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "OrderDrawingNumbers: Error in LoadData");
+        }
+    }
+
+    private void NavigateToAdd()
+    {
+        NavigationManager.NavigateTo($"/add-drawing-numbers/{OrderId}", false);
+    }
+
+    private async Task OpenEditModal(DrawingNumberViewModel item)
+    {
+        if (DrawingNumberService == null)
+        {
+            if (ToastService != null) await ToastService.Error("服务不可用");
+            return;
+        }
+
+        _editErrorMessage = null;
+        _editingViewModel = item;
+        _editModel.DrawName = item.DrawName;
+        _editModalVisible = true;
+        _editLoading = true;
+
+        try
+        {
+            _editingC0x = await DrawingNumberService.FindDrawingNumberByIdAsync(item.Id, item.DrawingType);
+            if (_editingC0x == null)
+            {
+                if (ToastService != null) await ToastService.Error("图号不存在");
+                CloseEditModal();
+                return;
+            }
+            // 同步最新的图号名称到输入框(防止并发修改)
+            _editModel.DrawName = _editingC0x.DrawName;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "OpenEditModal: failed to load drawing number {Id}", item.Id);
+            if (ToastService != null) await ToastService.Error("加载图号失败");
+            CloseEditModal();
+        }
+        finally
+        {
+            _editLoading = false;
+        }
+    }
+
+    private void CloseEditModal()
+    {
+        _editModalVisible = false;
+        _editingViewModel = null;
+        _editingC0x = null;
+        _editModel = new EditModel();
+        _editErrorMessage = null;
+        _editLoading = false;
+        _editSaving = false;
+    }
+
+    private async Task HandleEditConfirm()
+    {
+        if (DrawingNumberService == null || AuthService == null || _editingC0x == null || _editingViewModel == null)
+        {
+            if (ToastService != null) await ToastService.Error("服务不可用");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_editModel.DrawName))
+        {
+            _editErrorMessage = "图纸名称不能为空";
+            return;
+        }
+
+        _editSaving = true;
+        _editErrorMessage = null;
+
+        try
+        {
+            var currentUser = AuthService.CurrentUser;
+            if (currentUser == null)
+            {
+                if (ToastService != null) await ToastService.Error("未登录");
+                _editSaving = false;
+                return;
+            }
+
+            string oldDrawingName = _editingC0x.DrawName;
+            _editingC0x.DrawName = _editModel.DrawName.Trim();
+            _editingC0x.UpdatedBy = currentUser.Name;
+            _editingC0x.UpdatedTime = DateTime.Now;
+
+            Logger.LogInformation("User {UserName} updating drawing number {DrawingTypeNumber}, from '{OldName}' to '{NewName}'",
+                currentUser.Name, _editingViewModel.DrawingTypeNumber, oldDrawingName, _editingC0x.DrawName);
+
+            int result = await DrawingNumberService.UpdateCX0DrawingNumberByIdAsync(_editingC0x, _editingViewModel.DrawingType);
+
+            if (result > 0)
+            {
+                Logger.LogInformation("Update successful for drawing number {Id}", _editingC0x.Id);
+                if (ToastService != null) await ToastService.Success("修改成功");
+                CloseEditModal();
+                // 不跳转页面,只刷新当前列表
+                await LoadData();
+            }
+            else
+            {
+                if (ToastService != null) await ToastService.Error("修改图号失败");
+                _editErrorMessage = "修改图号失败,请重试";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating drawing number");
+            if (ToastService != null) await ToastService.Error("修改图号时发生错误");
+            _editErrorMessage = "修改图号时发生错误";
+        }
+        finally
+        {
+            _editSaving = false;
+        }
+    }
+}

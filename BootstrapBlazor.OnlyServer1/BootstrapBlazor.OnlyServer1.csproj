@@ -19,7 +19,19 @@
   <ItemGroup>
     <PackageReference Include="BootstrapBlazor" Version="8.*" />
     <PackageReference Include="BootstrapBlazor.FontAwesome" Version="8.*" />
+    <PackageReference Include="NLog" Version="6.1.3" />
+    <PackageReference Include="NLog.Web.AspNetCore" Version="6.1.3" />
+    <PackageReference Include="NLog.Database" Version="6.0.3" />
     <PackageReference Include="SqlSugarCore" Version="5.1.4.214" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="DrawingName.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="NLog.config">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,173 @@
+@page "/update-drawing-number/{id:int}/{drawingType}"
+@attribute [TabItemOption(Text = "修改图号")]
+@using BootstrapBlazor.OnlyServer1.Services
+@using BootstrapBlazor.OnlyServer1.Models
+@inject DrawingNumberService? DrawingNumberService
+@inject NavigationManager NavigationManager
+@inject Microsoft.Extensions.Logging.ILogger<UpdateDrawingNumber> Logger
+@inject AuthService? AuthService
+@inject ToastService? ToastService
+
+<PageTitle>修改图号</PageTitle>
+
+<div class="page-update-drawing-number">
+    @if (_loading)
+    {
+        <p class="alert alert-info">加载中...</p>
+    }
+    else if (_c0x == null)
+    {
+        <p class="alert alert-danger">图号不存在</p>
+    }
+    else
+    {
+        <div class="mb-3">
+            <h1>修改图号</h1>
+            <button class="btn btn-secondary" @onclick="NavigateBack">返回</button>
+        </div>
+
+        <EditForm Model="_editModel" OnValidSubmit="HandleUpdateDrawingNumber">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label class="form-label">编号</label>
+                <input class="form-control" type="text" value="@_viewModel.Id" disabled />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">图号</label>
+                <input class="form-control" type="text" value="@_viewModel.DrawingTypeNumber" disabled />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">图纸名称</label>
+                <InputText class="form-control" @bind-Value="_editModel.DrawName" required />
+                <ValidationMessage For="() => _editModel.DrawName" class="text-danger" />
+            </div>
+
+            <button type="submit" class="btn btn-primary" disabled="@_saving">
+                @if (_saving)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                    <span class="ms-2">保存中...</span>
+                }
+                else
+                {
+                    <span>保存</span>
+                }
+            </button>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    [Parameter]
+    public string DrawingType { get; set; } = string.Empty;
+
+    private C0XBase? _c0x;
+    private DrawingNumberViewModel _viewModel = new();
+    private EditModel _editModel = new();
+    private bool _loading = true;
+    private bool _saving = false;
+
+    public class EditModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "图纸名称不能为空")]
+        public string DrawName { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DrawingNumberService == null)
+        {
+            return;
+        }
+
+        _c0x = await DrawingNumberService.FindDrawingNumberByIdAsync(Id, DrawingType);
+        if (_c0x == null)
+        {
+            Logger.LogWarning("Drawing number not found: {Id}, {DrawingType}", Id, DrawingType);
+            _loading = false;
+            return;
+        }
+
+        _viewModel = await DrawingNumberService.DrawingNumber2DrawingNumberViewModelAsync(_c0x);
+        _editModel.DrawName = _viewModel.DrawName;
+        _loading = false;
+    }
+
+    private async Task HandleUpdateDrawingNumber()
+    {
+        if (DrawingNumberService == null || AuthService == null || _c0x == null)
+        {
+            Logger.LogError("HandleUpdateDrawingNumber: _c0x is null at start");
+            return;
+        }
+
+        Logger.LogInformation("HandleUpdateDrawingNumber: _c0x.OrderId = {OrderId}", _c0x.OrderId);
+        int targetOrderId = _c0x.OrderId; // 先保存OrderId到变量
+        Logger.LogInformation("HandleUpdateDrawingNumber: targetOrderId = {TargetOrderId}", targetOrderId);
+
+        _saving = true;
+        var currentUser = AuthService.CurrentUser;
+        if (currentUser == null)
+        {
+            if (ToastService != null) await ToastService.Error("未登录");
+            _saving = false;
+            return;
+        }
+
+        try
+        {
+            string oldDrawingName = _c0x.DrawName;
+            _c0x.DrawName = _editModel.DrawName;
+            _c0x.UpdatedBy = currentUser.Name;
+            _c0x.UpdatedTime = DateTime.Now;
+
+            Logger.LogInformation("User {UserName} updating drawing number {DrawingTypeNumber}, from '{OldName}' to '{NewName}'", 
+                currentUser.Name, _viewModel.DrawingTypeNumber, oldDrawingName, _editModel.DrawName);
+
+            int result = await DrawingNumberService.UpdateCX0DrawingNumberByIdAsync(_c0x, DrawingType);
+
+            Logger.LogInformation("HandleUpdateDrawingNumber: Update result = {Result}", result);
+
+            if (result > 0)
+            {
+                Logger.LogInformation("HandleUpdateDrawingNumber: Update successful, preparing to navigate");
+                
+                // 跳转到图号列表页
+                string targetUrl = $"/order-drawing-numbers/{targetOrderId}";
+                Logger.LogInformation("HandleUpdateDrawingNumber: Navigating to {TargetUrl}", targetUrl);
+                NavigationManager.NavigateTo(targetUrl, false);
+            }
+            else
+            {
+                if (ToastService != null) await ToastService.Error("修改图号失败");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating drawing number");
+            if (ToastService != null) await ToastService.Error("修改图号时发生错误");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void NavigateBack()
+    {
+        if (_c0x != null)
+        {
+            NavigationManager.NavigateTo($"/order-drawing-numbers/{_c0x.OrderId}", false);
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/", false);
+        }
+    }
+}
