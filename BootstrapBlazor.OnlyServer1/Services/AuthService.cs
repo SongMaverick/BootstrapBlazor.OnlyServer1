@@ -33,27 +33,34 @@ namespace BootstrapBlazor.OnlyServer1.Services
             return System.Environment.UserName;
         }
 
-        public async Task<bool> Login(string username, string password)
+        public async Task<bool> Login(string workerNumberText, string password)
         {
             try
             {
+                // 员工号是 int,前端传过来先做转换,转换失败直接算登录失败(不抛异常)
+                if (!int.TryParse(workerNumberText?.Trim(), out var workerNumber))
+                {
+                    _logger.LogWarning("登录失败，员工号格式不合法: {Input}", workerNumberText);
+                    return false;
+                }
+
                 var encryptedPassword = MD5Helper.Encrypt(password);
-                
-                _logger.LogInformation("尝试登录用户: {Username}, 加密密码: {Password}", username, encryptedPassword);
-                
+
+                _logger.LogInformation("尝试登录员工号: {WorkerNumber}, 加密密码: {Password}", workerNumber, encryptedPassword);
+
                 var user = await _db.Queryable<Models.Users>()
-                    .Where(u => u.Name == username && u.Password == encryptedPassword && !u.IsDelete)
+                    .Where(u => u.WorkerNumber == workerNumber && u.Password == encryptedPassword && !u.IsDelete)
                     .FirstAsync();
-                
+
                 if (user != null)
                 {
-                    _logger.LogInformation("登录成功: {Username}", username);
+                    _logger.LogInformation("登录成功: {Name} (员工号: {WorkerNumber})", user.Name, workerNumber);
                     CurrentUser = user;
                     NotifyStateChanged();
                     return true;
                 }
 
-                _logger.LogWarning("登录失败，未找到用户或密码错误");
+                _logger.LogWarning("登录失败，员工号 {WorkerNumber} 未找到或密码错误", workerNumber);
                 return false;
             }
             catch (Exception ex)

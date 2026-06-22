@@ -2,6 +2,7 @@
 @inject BootstrapBlazor.OnlyServer1.Services.AuthService AuthService
 @inject NavigationManager NavigationManager
 @inject Microsoft.Extensions.Logging.ILogger<Login> Logger
+@inject BootstrapBlazor.Components.ToastService ToastService
 
 <PageTitle>登录</PageTitle>
 
@@ -18,15 +19,25 @@
                         <span class="visually-hidden">自动登录中...</span>
                     </div>
                     <p class="mt-2">正在尝试自动登录...</p>
-                    <p class="text-sm text-muted">当前系统用户名: @CurrentSystemUser</p>
                 </div>
             }
             else
             {
+                @* 自动登录失败时,顶部友好提示(不再暴露数据库) *@
+                @if (ShowUnauthorizedNotice)
+                {
+                    <div class="alert alert-warning d-flex align-items-center" role="alert">
+                        <i class="fa-solid fa-circle-exclamation me-2"></i>
+                        <div>
+                            您当前不在系统授权名单中,请联系管理员,或使用员工号 + 密码手动登录。
+                        </div>
+                    </div>
+                }
+
                 <form @onsubmit="HandleSubmit">
                     <div class="mb-3">
-                        <label for="username" class="form-label">用户名</label>
-                        <input type="text" class="form-control" id="username" @bind="Username" placeholder="请输入用户名" required>
+                        <label for="workerNumber" class="form-label">员工号</label>
+                        <input type="number" class="form-control" id="workerNumber" @bind="WorkerNumber" placeholder="请输入员工号" required>
                     </div>
                     <div class="mb-3">
                         <label for="password" class="form-label">密码</label>
@@ -36,139 +47,69 @@
                         @(IsLoading ? "登录中..." : "登录")
                     </button>
                 </form>
-                
-                @if (ShowLoginFailed)
-                {
-                    <div class="mt-3 alert alert-danger">
-                        <div class="d-flex align-items-center">
-                            <i class="fa-solid fa-exclamation-circle me-2"></i>
-                            <span>自动登录失败</span>
-                        </div>
-                        <div class="mt-2">
-                            <h6>调试信息：</h6>
-                            @foreach (var msg in DebugMessages)
-                            {
-                                <p class="mb-1 text-sm">@msg</p>
-                            }
-                            <hr>
-                            <p><strong>当前系统用户名:</strong> @CurrentSystemUser</p>
-                            <p><strong>数据库中所有用户:</strong></p>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered">
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>姓名</th>
-                                            <th>GID</th>
-                                            <th>IsDelete</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var user in AllDatabaseUsers)
-                                        {
-                                            <tr class="@(user.GID == CurrentSystemUser ? "table-warning" : "")">
-                                                <td>@user.Id</td>
-                                                <td>@user.Name</td>
-                                                <td>@user.GID</td>
-                                                <td>@user.IsDelete</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                }
             }
         </div>
     </div>
 </div>
 
 @code {
-    private string Username { get; set; } = string.Empty;
+    private string WorkerNumber { get; set; } = string.Empty;
     private string Password { get; set; } = string.Empty;
     private bool IsLoading { get; set; } = false;
     private bool IsAutoLogin { get; set; } = true;
-    private bool ShowLoginFailed { get; set; } = false;
-    private string CurrentSystemUser { get; set; } = string.Empty;
-    private List<BootstrapBlazor.OnlyServer1.Models.Users> AllDatabaseUsers { get; set; } = new List<BootstrapBlazor.OnlyServer1.Models.Users>();
-    private List<string> DebugMessages { get; set; } = new List<string>();
+    private bool ShowUnauthorizedNotice { get; set; } = false;
 
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-        
-        CurrentSystemUser = BootstrapBlazor.OnlyServer1.Services.AuthService.GetUID().ToUpper();
-        Logger.LogInformation("系统用户名: {UserName}", CurrentSystemUser);
-        
+
         IsAutoLogin = true;
-        
+        ShowUnauthorizedNotice = false;
+
         try
         {
-            AllDatabaseUsers = await AuthService.GetAllUsersForDebug();
-            Logger.LogInformation("数据库中共有 {Count} 个用户", AllDatabaseUsers.Count);
-            DebugMessages.Add($"系统获取到的用户名: {CurrentSystemUser}");
-            DebugMessages.Add($"数据库中共有 {AllDatabaseUsers.Count} 个用户");
-            
-            // 手动查找匹配的用户
-            var matchedUser = AllDatabaseUsers.FirstOrDefault(u => u.GID.ToUpper() == CurrentSystemUser);
-            if (matchedUser != null)
-            {
-                DebugMessages.Add($"✅ 找到匹配用户: {matchedUser.Name}, GID: {matchedUser.GID}, IsDelete: {matchedUser.IsDelete}");
-                
-                if (!matchedUser.IsDelete)
-                {
-                    DebugMessages.Add($"✅ 用户未被删除，应该可以登录");
-                }
-                else
-                {
-                    DebugMessages.Add($"❌ 用户已被删除，无法登录");
-                }
-            }
-            else
-            {
-                DebugMessages.Add($"❌ 未找到匹配的用户");
-            }
-            
             var success = await AuthService.AutoLoginByGID();
-            
+
             if (success)
             {
                 Logger.LogInformation("自动登录成功，用户: {UserName}", AuthService.CurrentUser?.Name);
                 NavigationManager.NavigateTo("/");
                 return;
             }
-            else
-            {
-                Logger.LogWarning("自动登录失败，未找到匹配的GID: {GID}", CurrentSystemUser);
-                DebugMessages.Add($"❌ AuthService.AutoLoginByGID() 返回失败");
-            }
+
+            Logger.LogWarning("自动登录失败，未找到匹配的GID");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "自动登录发生错误");
-            DebugMessages.Add($"❌ 发生异常: {ex.Message}");
         }
-        
+
         IsAutoLogin = false;
-        ShowLoginFailed = true;
+        ShowUnauthorizedNotice = true;
     }
 
     private async Task HandleSubmit()
     {
         IsLoading = true;
-        
+
         try
         {
-            var success = await AuthService.Login(Username, Password);
-            
+            var success = await AuthService.Login(WorkerNumber, Password);
+
             if (success)
             {
                 NavigationManager.NavigateTo("/");
             }
             else
             {
-                // 登录失败，可以在这里显示错误信息
+                await ToastService.Show(new BootstrapBlazor.Components.ToastOption()
+                {
+                    Category = BootstrapBlazor.Components.ToastCategory.Error,
+                    Title = "登录失败",
+                    Content = "账户或密码错误,请联系管理员"
+                });
+                // 清空密码框,保留员工号方便用户核对
+                Password = string.Empty;
             }
         }
         finally

@@ -42,7 +42,7 @@ FROM dbo.Logs
 ORDER BY LogDate DESC;</code></pre>
                 </li>
                 <li>如果看到刚才触发的日志 → <strong class="text-success">写入成功</strong></li>
-                <li>如果表里没数据 → 看项目目录下 <code>logs/fallback-*.log</code>(本地兜底) + <code>logs/nlog-internal-*.log</code>(NLog 诊断)</li>
+                <li>如果表里没数据 → 看网络盘 <code>\\jinwad5a\Applications\MXB\DrawingNumber\nlog\fallback-*.log</code>(业务兜底) + <code>\\jinwad5a\Applications\MXB\DrawingNumber\nlog\nlog-internal-*.log</code>(NLog 诊断)</li>
             </ol>
         </div>
     </div>

@@ -48,113 +48,59 @@
                     </div>
                 }
 
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card mb-3">
-                            <div class="card-header bg-warning text-dark">
-                                <h5 class="mb-0">外部 (ESL-01)</h5>
-                            </div>
-                            <div class="card-body">
-                                @if (unaddedEsl01DrawingNameList.Count == 0) {
-                                    <p class="text-muted">没有可添加的外部图号</p>
-                                }
-                                else {
-                                    @foreach (var item in unaddedEsl01DrawingNameList) {
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
-                                            <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
-                                                @item.drawingName.ComponentName
-                                                @if (item.IsAdded) {
-                                                    <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
-                                                }
-                                            </label>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        </div>
-                    </div>
+                @*
+                    动态分组渲染:
+                      - _partGroups 是 Dictionary<string, List<CheckboxItem>>,key = Part 名(ESL-01 / TItU / ...)
+                      - 一行两个 col-md-6,Part 多时自动换行
+                      - 颜色按 Part 名字 hash 选,保证同一 Part 颜色稳定
+                *@
+                @if (_partGroups.Count == 0) {
+                    <p class="text-muted">库里还没有任何图名,无法添加。请先在"图名列表"添加图名。</p>
+                }
+                else {
+                    <div class="row">
+                        @for (int i = 0; i < _orderedParts.Count; i++) {
+                            var part = _orderedParts[i];
+                            var items = _partGroups[part];
+                            var style = GetPartCardStyle(part);
 
-                    <div class="col-md-6">
-                        <div class="card mb-3">
-                            <div class="card-header bg-success text-white">
-                                <h5 class="mb-0">内部 (ESL-02)</h5>
-                            </div>
-                            <div class="card-body">
-                                @if (unaddedEsl02DrawingNameList.Count == 0) {
-                                    <p class="text-muted">没有可添加的内部图号</p>
-                                }
-                                else {
-                                    @foreach (var item in unaddedEsl02DrawingNameList) {
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
-                                            <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
-                                                @item.drawingName.ComponentName
-                                                @if (item.IsAdded) {
-                                                    <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
-                                                }
-                                            </label>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                            // 每两个 Part 凑一行:偶数下标开 row,奇数下标关 row
+                            if (i % 2 == 0) {
+                                @:<div class="row">
+                            }
 
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card mb-3">
-                            <div class="card-header bg-info text-white">
-                                <h5 class="mb-0">串联电抗器 (ESL-03)</h5>
+                            <div class="col-md-6">
+                                <div class="card mb-3">
+                                    <div class="card-header @style.HeaderClass @style.HeaderTextClass">
+                                        <h5 class="mb-0">@GetPartTitle(part)</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        @if (items.Count == 0) {
+                                            <p class="text-muted">没有可添加的 @part 图号</p>
+                                        }
+                                        else {
+                                            @foreach (var item in items) {
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
+                                                    <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
+                                                        @item.drawingName.ComponentName
+                                                        @if (item.IsAdded) {
+                                                            <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
+                                                        }
+                                                    </label>
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                @if (unaddedEsl03DrawingNameList.Count == 0) {
-                                    <p class="text-muted">没有可添加的串联电抗器图号</p>
-                                }
-                                else {
-                                    @foreach (var item in unaddedEsl03DrawingNameList) {
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
-                                            <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
-                                                @item.drawingName.ComponentName
-                                                @if (item.IsAdded) {
-                                                    <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
-                                                }
-                                            </label>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        </div>
-                    </div>
 
-                    <div class="col-md-6">
-                        <div class="card mb-3">
-                            <div class="card-header bg-secondary text-white">
-                                <h5 class="mb-0">铁芯 (ESL-Core)</h5>
-                            </div>
-                            <div class="card-body">
-                                @if (unaddedEslCoreDrawingNameList.Count == 0) {
-                                    <p class="text-muted">没有可添加的铁芯图号</p>
-                                }
-                                else {
-                                    @foreach (var item in unaddedEslCoreDrawingNameList) {
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
-                                            <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
-                                                @item.drawingName.ComponentName
-                                                @if (item.IsAdded) {
-                                                    <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
-                                                }
-                                            </label>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        </div>
+                            if (i % 2 == 1 || i == _orderedParts.Count - 1) {
+                                @:</div>
+                            }
+                        }
                     </div>
-                </div>
+                }
             </div>
         </div>
     }
@@ -202,16 +148,55 @@
     private bool dialogVisible = false;
     private string editorContent = string.Empty;
 
-    private List<CheckboxItem> unaddedEsl01DrawingNameList = new List<CheckboxItem>();
-    private List<CheckboxItem> unaddedEsl02DrawingNameList = new List<CheckboxItem>();
-    private List<CheckboxItem> unaddedEsl03DrawingNameList = new List<CheckboxItem>();
-    private List<CheckboxItem> unaddedEslCoreDrawingNameList = new List<CheckboxItem>();
+    // 动态分组:Part 名字 -> 该 Part 下的所有图名(按"是否已添加"标好状态)
+    private Dictionary<string, List<CheckboxItem>> _partGroups = new();
+    private List<string> _orderedParts = new();  // 稳定排序(ESL-01/02/03/Core 在前,新 Part 字典序追加)
 
     public class CheckboxItem {
         public int Id { get; set; }
         public BootstrapBlazor.OnlyServer1.Models.DrawingNames drawingName { get; set; } = new();
         public bool IsChecked { get; set; }
-        public bool IsAdded { get; set; }   // 已添加的图名,checkbox 禁用且勾选
+        public bool IsAdded { get; set; }
+    }
+
+    // 卡片样式:用 Part 名字 hash 选 Bootstrap 配色,同一 Part 颜色稳定
+    private record CardStyle(string HeaderClass, string HeaderTextClass);
+
+    private static readonly string[] _bgClasses = new[] {
+        "bg-warning", "bg-success", "bg-info", "bg-secondary",
+        "bg-primary", "bg-danger", "bg-dark", "bg-light"
+    };
+    private static readonly string[] _lightText = new[] { "text-dark", "text-white" };
+
+    private CardStyle GetPartCardStyle(string part) {
+        if (string.IsNullOrEmpty(part)) return new CardStyle("bg-secondary", "text-white");
+
+        // 优先复用原来的 4 个固定配色,保持视觉一致
+        var known = part.ToUpperInvariant() switch {
+            "ESL-01" => new CardStyle("bg-warning", "text-dark"),
+            "ESL-02" => new CardStyle("bg-success", "text-white"),
+            "ESL-03" => new CardStyle("bg-info", "text-white"),
+            "ESL-CORE" => new CardStyle("bg-secondary", "text-white"),
+            _ => null
+        };
+        if (known != null) return known;
+
+        // 新 Part:用 hash 分配颜色
+        int hash = Math.Abs(part.GetHashCode());
+        var bg = _bgClasses[hash % _bgClasses.Length];
+        var text = bg is "bg-warning" or "bg-light" ? "text-dark" : "text-white";
+        return new CardStyle(bg, text);
+    }
+
+    private string GetPartTitle(string part) {
+        // 4 个老 Part 用原来的中文标题,新 Part 直接显示 Part 名
+        return part.ToUpperInvariant() switch {
+            "ESL-01" => "外部 (ESL-01)",
+            "ESL-02" => "内部 (ESL-02)",
+            "ESL-03" => "串联电抗器 (ESL-03)",
+            "ESL-CORE" => "铁芯 (ESL-Core)",
+            _ => part
+        };
     }
 
     protected override async Task OnInitializedAsync() {
@@ -234,30 +219,33 @@
             var addedDrawingNames = await DrawingNumberService.GetAddedDrawingNumbersByOrderIdAsync(OrderId);
             var addedDrawNamesSet = new HashSet<string>(addedDrawingNames.Select(dn => dn.DrawName));
 
+            // 按 Part 分组(空 Part 走 "未分类")
+            _partGroups = new Dictionary<string, List<CheckboxItem>>(StringComparer.OrdinalIgnoreCase);
             foreach (var dn in allDrawingNames) {
                 var isAdded = addedDrawNamesSet.Contains(dn.ComponentName);
                 var checkboxItem = new CheckboxItem {
                     Id = dn.Id,
                     drawingName = dn,
-                    IsChecked = isAdded,   // 已添加的默认勾选
-                    IsAdded = isAdded      // 已添加的禁用 checkbox
+                    IsChecked = isAdded,
+                    IsAdded = isAdded
                 };
-
-                switch (dn.Part) {
-                    case "ESL-01":
-                        unaddedEsl01DrawingNameList.Add(checkboxItem);
-                        break;
-                    case "ESL-02":
-                        unaddedEsl02DrawingNameList.Add(checkboxItem);
-                        break;
-                    case "ESL-03":
-                        unaddedEsl03DrawingNameList.Add(checkboxItem);
-                        break;
-                    case "ESL-Core":
-                        unaddedEslCoreDrawingNameList.Add(checkboxItem);
-                        break;
+                var partKey = string.IsNullOrWhiteSpace(dn.Part) ? "未分类" : dn.Part;
+                if (!_partGroups.TryGetValue(partKey, out var list)) {
+                    list = new List<CheckboxItem>();
+                    _partGroups[partKey] = list;
                 }
+                list.Add(checkboxItem);
             }
+
+            // 排序:4 个老 Part 按业务顺序在前(ESL-01 → 02 → 03 → Core),其他字典序
+            var priority = new[] { "ESL-01", "ESL-02", "ESL-03", "ESL-Core" };
+            _orderedParts = _partGroups.Keys
+                .OrderBy(p => {
+                    var idx = Array.FindIndex(priority, x => x.Equals(p, StringComparison.OrdinalIgnoreCase));
+                    return idx < 0 ? int.MaxValue : idx;
+                })
+                .ThenBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
         catch (Exception ex) {
             Logger.LogError(ex, "Error initializing page");
@@ -266,13 +254,11 @@
     }
 
     private List<string> GetCheckedItems() {
-        var allItems = unaddedEsl01DrawingNameList
-            .Concat(unaddedEsl02DrawingNameList)
-            .Concat(unaddedEsl03DrawingNameList)
-            .Concat(unaddedEslCoreDrawingNameList)
+        return _partGroups.Values
+            .SelectMany(list => list)
+            .Where(item => item.IsChecked && !item.IsAdded)
+            .Select(item => item.drawingName.ComponentName)
             .ToList();
-
-        return allItems.Where(item => item.IsChecked && !item.IsAdded).Select(item => item.drawingName.ComponentName).ToList();
     }
 
     private Task HandleChangeSequence() {

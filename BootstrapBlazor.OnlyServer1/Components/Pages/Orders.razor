@@ -24,6 +24,7 @@
            ShowToolbar="true"
            ShowExtendButtons="true"
            ShowEditButton="false"
+           ShowDeleteButton="false"
            OnAddAsync="OnAddAsync"
            OnSaveAsync="OnSaveAsync"
            OnDeleteAsync="OnDeleteAsync"
@@ -31,8 +32,9 @@
            ShowSkeleton="true"
            IsMultipleSelect="true"
            Height="600"
-ShowExtendEditButtonCallback="@((Models.Orders item) => true)"
+ ShowExtendEditButtonCallback="@((Models.Orders item) => true)"
             DisableExtendEditButtonCallback="@((Models.Orders item) => HasDrawingNumber(item))"
+            DisableExtendDeleteButtonCallback="@((Models.Orders item) => HasDrawingNumber(item))"
            @ref="OrdersTable">
         <TableColumns>
             <TableColumn @bind-Field="@context.Id" Text="编号" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />

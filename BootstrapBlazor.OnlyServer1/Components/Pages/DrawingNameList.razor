@@ -131,7 +131,13 @@
     private string? _addErrorMessage = null;
     private AddModel _addModel = new();
 
-    private readonly List<string> _partOptions = new() {
+    private List<string> _partOptions = new();
+
+    /// <summary>
+    /// 预置 Part 类别(库里还没数据时作为兜底,保证下拉有内容)
+    /// 数据库里出现过任意 Part 后,这个列表会跟 DB 同步,自动包含新类别
+    /// </summary>
+    private static readonly List<string> _defaultPartOptions = new() {
         "ESL-01",
         "ESL-02",
         "ESL-03",
@@ -145,6 +151,26 @@
 
     protected override async Task OnInitializedAsync() {
         await LoadDataAsync();
+        await LoadPartOptionsAsync();
+    }
+
+    /// <summary>
+    /// 从 DB 加载 Part 类别下拉选项。库里有就用库里的;库里没数据时回退到 _defaultPartOptions 兜底。
+    /// </summary>
+    private async Task LoadPartOptionsAsync() {
+        if (DrawingNumberService == null) {
+            _partOptions = new List<string>(_defaultPartOptions);
+            return;
+        }
+
+        try {
+            var parts = await DrawingNumberService.GetDistinctPartsAsync();
+            _partOptions = parts.Count > 0 ? parts : new List<string>(_defaultPartOptions);
+        }
+        catch (Exception ex) {
+            Logger.LogError(ex, "LoadPartOptionsAsync failed, fallback to defaults");
+            _partOptions = new List<string>(_defaultPartOptions);
+        }
     }
 
     private async Task LoadDataAsync() {
@@ -207,6 +233,8 @@
                 await ToastService.Success($"图名「{_addModel.ComponentName}」添加成功");
                 CloseAddModal();
                 await LoadDataAsync();
+                // 新 Part 入库后立刻刷新下拉,避免刷新页面才能选
+                await LoadPartOptionsAsync();
             }
             else {
                 _addErrorMessage = "添加失败,请重试";

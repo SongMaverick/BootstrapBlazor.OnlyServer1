@@ -492,6 +492,29 @@ namespace BootstrapBlazor.OnlyServer1.Services
         }
 
         /// <summary>
+        /// 查询所有不重复的 Part 类别(去重 + 排序 + 过滤空值)
+        /// 供"添加图名"弹窗下拉框使用,自动跟库里的 Part 同步
+        /// </summary>
+        public async Task<List<string>> GetDistinctPartsAsync()
+        {
+            return await _db.Queryable<DrawingNames>()
+                .Where(dn => !string.IsNullOrWhiteSpace(dn.Part))
+                .Select(dn => dn.Part)
+                .Distinct()
+                .ToListAsync()
+                .ContinueWith(t =>
+                {
+                    // SqlSugar 的 Distinct 在 List<string> 上可能不生效,做一遍内存去重兜底
+                    var list = t.Result ?? new List<string>();
+                    return list
+                        .Where(p => !string.IsNullOrWhiteSpace(p))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                });
+        }
+
+        /// <summary>
         /// 新增图名
         /// </summary>
         public async Task<int> AddDrawingNameAsync(string componentName, string part)

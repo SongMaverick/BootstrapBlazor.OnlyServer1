@@ -12,6 +12,7 @@
             </div>
             <Logout ImageUrl="images/Argo-C.png" DisplayName="@(AuthService?.CurrentUser?.Name ?? "超级管理员")" UserName="@(AuthService?.CurrentUser?.GID ?? "Admin")">
                 <LinkTemplate>
+                    <a href="#" @onclick="ShowChangePasswordModal" @onclick:preventDefault><i class="fa-solid fa-key"></i>修改密码</a>
                     <a href="#"><i class="fa-solid fa-suitcase"></i>个人中心</a>
                     <a href="#"><i class="fa-solid fa-cog"></i>设置</a>
                     <a href="#"><i class="fa-solid fa-bell"></i>通知<span class="badge badge-pill badge-success"></span></a>
@@ -115,6 +116,47 @@
         </div>
     </Drawer>
 </BootstrapBlazorRoot>
+
+@* 修改密码弹窗 *@
+@if (_changePasswordModalVisible)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa-solid fa-key me-2"></i>修改密码</h5>
+                    <button type="button" class="btn-close" @onclick="CloseChangePasswordModal" disabled="@(_changePasswordSaving ? "disabled" : null)" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">旧密码</label>
+                        <input type="password" class="form-control" @bind="_oldPassword" disabled="@(_changePasswordSaving ? "disabled" : null)" autocomplete="current-password" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">新密码</label>
+                        <input type="password" class="form-control" @bind="_newPassword" disabled="@(_changePasswordSaving ? "disabled" : null)" autocomplete="new-password" />
+                        <div class="form-text">密码长度至少 6 位</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">确认新密码</label>
+                        <input type="password" class="form-control" @bind="_confirmPassword" disabled="@(_changePasswordSaving ? "disabled" : null)" autocomplete="new-password" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseChangePasswordModal" disabled="@(_changePasswordSaving ? "disabled" : null)">取消</button>
+                    <button type="button" class="btn btn-primary" @onclick="HandleChangePasswordAsync" disabled="@(_changePasswordSaving ? "disabled" : null)">
+                        @if (_changePasswordSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        }
+                        确认修改
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
 
 <div id="blazor-error-ui">
     An unhandled error has occurred.

@@ -30,9 +30,14 @@
         <TableColumns>
             <TableColumn @bind-Field="@context.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
             <TableColumn @bind-Field="@context.Name" Width="150" Sortable="true" />
-            <TableColumn @bind-Field="@context.Password" Width="150" />
             <TableColumn @bind-Field="@context.WorkerNumber" Width="120" Align="Alignment.Center" Sortable="true" />
             <TableColumn @bind-Field="@context.GID" Width="150" Sortable="true" />
+            @* 密码列:表格里不显示,只在"新建"弹窗里出现;修改密码统一走顶部按钮 *@
+            <TableColumn @bind-Field="@context.Password"
+                         Text="密码"
+                         Visible="false"
+                         IsVisibleWhenAdd="true"
+                         IsVisibleWhenEdit="false" />
             <TableColumn @bind-Field="@context.CreateTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
                 <Template Context="value">
                     @value.Value.ToString("yyyy-MM-dd HH:mm:ss")
@@ -126,12 +131,18 @@
             
             // 将 GID 转换为大写
             user.GID = user.GID.ToUpper();
-            
-            // 对密码进行MD5加密（无论是新增还是编辑）
-            user.Password = Helpers.MD5Helper.Encrypt(user.Password);
-            
+
             if (changedType == ItemChangedType.Add)
             {
+                // 新增:密码必填,且做 MD5 加密
+                if (string.IsNullOrEmpty(user.Password))
+                {
+                    Logger.LogWarning("Password cannot be empty when adding user: {Name}", user.Name);
+                    await ShowErrorMessage("新增用户时密码不能为空");
+                    return false;
+                }
+                user.Password = Helpers.MD5Helper.Encrypt(user.Password);
+
                 Logger.LogInformation("Adding new user: {Name}", user.Name);
                 user.CreateTime = DateTime.Now;
                 user.IsDelete = false;
@@ -139,8 +150,13 @@
             }
             else
             {
+                // 编辑:不修改 Password 字段(用户列表里没有密码列,user.Password 为空)
+                // 防止空字符串覆盖掉数据库里的真实密码
+                // 修改密码统一走右上角的"修改密码"按钮(需要输旧密码 + 新密码)
                 Logger.LogInformation("Updating user: {Name}", user.Name);
-                await Db.Updateable(user).ExecuteCommandAsync();
+                await Db.Updateable(user)
+                    .IgnoreColumns(u => new { u.Password, u.CreateTime, u.IsDelete })
+                    .ExecuteCommandAsync();
             }
             return true;
         }

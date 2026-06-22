@@ -1,7 +1,9 @@
 using BootstrapBlazor.Components;
 using Microsoft.AspNetCore.Components.Routing;
 using BootstrapBlazor.OnlyServer1.Services;
+using BootstrapBlazor.OnlyServer1.Helpers;
 using Microsoft.AspNetCore.Components;
+using SqlSugar;
 
 namespace BootstrapBlazor.OnlyServer1.Components.Shared
 {
@@ -15,6 +17,9 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
 
         [Inject]
         private ToastService? ToastService { get; set; }
+
+        [Inject]
+        private ISqlSugarClient? Db { get; set; }
 
         private bool UseTabSet { get; set; } = true;
 
@@ -109,6 +114,115 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
             {
                 AuthService.OnChange -= HandleAuthStateChanged;
             }
+        }
+
+        // ===== 修改密码弹窗 =====
+
+        private bool _changePasswordModalVisible = false;
+        private string _oldPassword = "";
+        private string _newPassword = "";
+        private string _confirmPassword = "";
+        private bool _changePasswordSaving = false;
+
+        private void ShowChangePasswordModal()
+        {
+            // 重置字段 + 打开
+            _oldPassword = "";
+            _newPassword = "";
+            _confirmPassword = "";
+            _changePasswordModalVisible = true;
+        }
+
+        private void CloseChangePasswordModal()
+        {
+            if (_changePasswordSaving) return;  // 提交中不允许关
+            _changePasswordModalVisible = false;
+        }
+
+        private async Task HandleChangePasswordAsync()
+        {
+            // 前端基本校验
+            if (AuthService?.CurrentUser == null)
+            {
+                await ShowToast("登录状态已失效,请重新登录", ToastCategory.Error);
+                return;
+            }
+            if (string.IsNullOrEmpty(_oldPassword) || string.IsNullOrEmpty(_newPassword))
+            {
+                await ShowToast("旧密码和新密码均不能为空", ToastCategory.Warning);
+                return;
+            }
+            if (_newPassword.Length < 6)
+            {
+                await ShowToast("新密码长度至少 6 位", ToastCategory.Warning);
+                return;
+            }
+            if (_newPassword != _confirmPassword)
+            {
+                await ShowToast("两次输入的新密码不一致", ToastCategory.Warning);
+                return;
+            }
+
+            if (Db == null)
+            {
+                await ShowToast("数据库未就绪,请稍后再试", ToastCategory.Error);
+                return;
+            }
+
+            _changePasswordSaving = true;
+            try
+            {
+                var currentUserId = AuthService.CurrentUser.Id;
+                var oldEncrypted = MD5Helper.Encrypt(_oldPassword);
+
+                // 用旧密码的 MD5 从 DB 拉这条记录,匹配才算验证通过
+                var user = await Db.Queryable<Models.Users>()
+                    .Where(u => u.Id == currentUserId && !u.IsDelete)
+                    .FirstAsync();
+
+                if (user == null || user.Password != oldEncrypted)
+                {
+                    await ShowToast("旧密码不正确", ToastCategory.Error);
+                    return;
+                }
+
+                // 写入新密码的 MD5
+                var newEncrypted = MD5Helper.Encrypt(_newPassword);
+                var rows = await Db.Updateable<Models.Users>()
+                    .SetColumns(u => u.Password == newEncrypted)
+                    .Where(u => u.Id == currentUserId)
+                    .ExecuteCommandAsync();
+
+                if (rows > 0)
+                {
+                    await ShowToast("密码修改成功", ToastCategory.Success);
+                    _changePasswordModalVisible = false;
+                }
+                else
+                {
+                    await ShowToast("密码修改失败,请重试", ToastCategory.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                // 错误日志会走 NLog(Program.cs 已经接了)
+                await ShowToast($"密码修改出错:{ex.Message}", ToastCategory.Error);
+            }
+            finally
+            {
+                _changePasswordSaving = false;
+            }
+        }
+
+        private async Task ShowToast(string message, ToastCategory category)
+        {
+            if (ToastService == null) return;
+            await ToastService.Show(new ToastOption()
+            {
+                Category = category,
+                Content = message,
+                Delay = 2000
+            });
         }
     }
 }
