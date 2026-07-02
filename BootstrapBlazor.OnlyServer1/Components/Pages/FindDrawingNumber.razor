@@ -1,10 +1,12 @@
 @page "/find-drawing-number"
 @attribute [TabItemOption(Text = "查询图号")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using BootstrapBlazor.OnlyServer1.Services
 @using BootstrapBlazor.OnlyServer1.Models
+@using BootstrapBlazor.OnlyServer1.Services.Identity
 @inject DrawingNumberService? DrawingNumberService
+@inject CurrentUserAccessor? CurrentUser
 @inject Microsoft.Extensions.Logging.ILogger<FindDrawingNumber> Logger
-@inject BootstrapBlazor.OnlyServer1.Services.AuthService? AuthService
 
 <PageTitle>查询图号</PageTitle>
 
@@ -165,9 +167,10 @@
             int fullNumber = int.Parse(fullNumberStr);
 
             // 记录查询日志
-            if (AuthService?.CurrentUser != null) {
+            var currentUserName = CurrentUser?.GetDisplayName();
+            if (!string.IsNullOrEmpty(currentUserName)) {
                 Logger.LogInformation("{User} 查询图号: {Type} {Middle} {Last} (full={Full})",
-                    AuthService.CurrentUser.Name,
+                    currentUserName,
                     _model.DrawingNumberType,
                     _model.MiddleDigits,
                     _model.LastDigits,

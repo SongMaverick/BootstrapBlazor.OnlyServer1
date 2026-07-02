@@ -1,5 +1,5 @@
 @inherits LayoutComponentBase
-@implements IDisposable
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
 <BootstrapBlazorRoot>
     <Layout SideWidth="250" IsPage="true" ShowGotoTop="true" ShowCollapseBar="true"
@@ -10,13 +10,17 @@
             <span class="ms-3 flex-sm-fill d-none d-sm-block">编号本</span>
             <div class="flex-fill d-sm-none">
             </div>
-            <Logout ImageUrl="images/Argo-C.png" DisplayName="@(AuthService?.CurrentUser?.Name ?? "超级管理员")" UserName="@(AuthService?.CurrentUser?.GID ?? "Admin")">
+            <Logout ImageUrl="images/Argo-C.png" DisplayName="@_displayName" UserName="@_userName">
                 <LinkTemplate>
                     <a href="#" @onclick="ShowChangePasswordModal" @onclick:preventDefault><i class="fa-solid fa-key"></i>修改密码</a>
                     <a href="#"><i class="fa-solid fa-suitcase"></i>个人中心</a>
                     <a href="#"><i class="fa-solid fa-cog"></i>设置</a>
                     <a href="#"><i class="fa-solid fa-bell"></i>通知<span class="badge badge-pill badge-success"></span></a>
-                    <a href="#" @onclick="HandleLogout"><i class="fa-solid fa-sign-out"></i>退出登录</a>
+                    <form method="post" action="/Account/Logout" class="d-inline">
+                        <button type="submit" class="dropdown-item" style="background:none;border:none;padding:0;color:inherit;">
+                            <i class="fa-solid fa-sign-out"></i>退出登录
+                        </button>
+                    </form>
                 </LinkTemplate>
             </Logout>
             <div class="layout-drawer" @onclick="@(e => IsOpen = !IsOpen)"><i class="fa fa-gears"></i></div>

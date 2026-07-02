@@ -1,7 +1,18 @@
+INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (1, '占位', 'C07', 37, '宋程', '2024-07-23 14:40:18.2091855', '宋程', '2024-07-23 14:40:18.2091856', 0);
+INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (2, '占位', 'C07', 37, '宋程', '2024-07-23 14:40:18.2091855', '宋程', '2024-07-23 14:40:18.2091856', 0);
+INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (3, '占位', 'C07', 37, '宋程', '2024-07-23 14:40:18.2091855', '宋程', '2024-07-23 14:40:18.2091856', 0);
+INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (4, '占位', 'C07', 37, '宋程', '2024-07-23 14:40:18.2091855', '宋程', '2024-07-23 14:40:18.2091856', 0);
+INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (5, '占位', 'C07', 37, '宋程', '2024-07-23 14:40:18.2091855', '宋程', '2024-07-23 14:40:18.2091856', 0);
+INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (6, '占位', 'C07', 37, '宋程', '2024-07-23 14:40:18.2091855', '宋程', '2024-07-23 14:40:18.2091856', 0);
+INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (7, '占位', 'C07', 37, '宋程', '2024-07-23 14:40:18.2091855', '宋程', '2024-07-23 14:40:18.2091856', 0);
+
 INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (8, '外形尺寸图', 'C07', 37, '宋程', '2024-07-23 14:40:18.2091855', '宋程', '2024-07-23 14:40:18.2091856', 0);
 INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (9, '铭牌', 'C07', 37, '宋程', '2024-07-23 13:37:07.7162372', '宋程', '2024-07-23 13:37:07.7162582', 0);
 INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (10, '端子箱', 'C07', 37, '宋程', '2024-07-23 13:37:07.8745512', '宋程', '2024-07-23 14:39:36.1092936', 0);
 INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (11, '冷控箱', 'C07', 37, '宋程', '2024-07-23 13:39:48.3850806', '宋程', '2024-07-23 14:39:44.2664656', 0);
+
+INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (13, '占位', 'C07', 37, '宋程', '2024-07-23 14:40:18.2091855', '宋程', '2024-07-23 14:40:18.2091856', 0);
+
 INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (12, '汇总箱', 'C07', 37, '宋程', '2024-07-23 14:29:55.5416512', '宋程', '2024-07-23 14:39:57.1809576', 0);
 INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (14, '涂漆技术条件', 'C07', 37, '李咏梅', '2024-08-01 14:12:27.1089287', '李咏梅', '2024-08-01 14:12:27.1089456', 0);
 INSERT INTO C07 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (15, '油箱', 'C07', 37, '李咏梅', '2024-08-09 09:54:37.6935427', '李咏梅', '2024-08-09 09:57:09.8734496', 0);

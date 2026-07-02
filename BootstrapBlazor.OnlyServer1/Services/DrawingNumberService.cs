@@ -1,19 +1,36 @@
-using SqlSugar;
 using BootstrapBlazor.OnlyServer1.Models;
-using BootstrapBlazor.OnlyServer1.Helpers;
+using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
+using SqlSugar;
 
 namespace BootstrapBlazor.OnlyServer1.Services
 {
+    /// <summary>
+    /// 图号 Service:封装 9 张 C0X 表的增删改查 + 图名管理 + 订单级并发控制。
+    /// Scoped 生命周期。
+    /// </summary>
     public class DrawingNumberService
     {
         private readonly ISqlSugarClient _db;
-        private readonly AuthService _authService;
+        private readonly CurrentUserAccessor _currentUser;
+        private readonly OrderLockProvider _orderLock;
+        private readonly IDrawingTypeRegistry _registry;
+        private readonly IDrawingNumberAllocator _allocator;
         private readonly ILogger<DrawingNumberService> _logger;
 
-        public DrawingNumberService(ISqlSugarClient db, AuthService authService, ILogger<DrawingNumberService> logger)
+        public DrawingNumberService(
+            ISqlSugarClient db,
+            CurrentUserAccessor currentUser,
+            OrderLockProvider orderLock,
+            IDrawingTypeRegistry registry,
+            IDrawingNumberAllocator allocator,
+            ILogger<DrawingNumberService> logger)
         {
             _db = db;
-            _authService = authService;
+            _currentUser = currentUser;
+            _orderLock = orderLock;
+            _registry = registry;
+            _allocator = allocator;
             _logger = logger;
         }
 
@@ -35,15 +52,12 @@ namespace BootstrapBlazor.OnlyServer1.Services
             }
 
             var c0xList = await GetAddedDrawingNumbersByOrderIdAsync(orderId);
-            var result = new List<DrawingNumberViewModel>();
+            var drawingType = _registry.GetDrawingType(order) ?? "";
 
-            foreach (var c0x in c0xList)
-            {
-                var vm = await DrawingNumber2DrawingNumberViewModelAsync(c0x);
-                result.Add(vm);
-            }
-
-            return result;
+            // 用纯静态 ToViewModel 转换,避免对 Orders 的 N+1 重复查询
+            return c0xList
+                .Select(c0x => ToViewModel(c0x, order.OrderNumber, drawingType))
+                .ToList();
         }
 
         public async Task<List<C0XBase>> GetAddedDrawingNumbersByOrderIdAsync(int orderId)
@@ -55,375 +69,202 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 return new List<C0XBase>();
             }
 
-            var drawingType = MyHelper.GetDrawingType(order);
+            var drawingType = _registry.GetDrawingType(order);
             if (string.IsNullOrEmpty(drawingType))
             {
                 _logger.LogWarning("Could not determine drawing type for order: {OrderId}", orderId);
                 return new List<C0XBase>();
             }
 
-            var result = new List<C0XBase>();
-
-            switch (drawingType)
-            {
-                case "C01":
-                    var c01List = await _db.Queryable<C01>().Where(n => n.OrderId == orderId && !n.IsDelete).ToListAsync();
-                    result.AddRange(c01List);
-                    break;
-                case "C02":
-                    var c02List = await _db.Queryable<C02>().Where(n => n.OrderId == orderId && !n.IsDelete).ToListAsync();
-                    result.AddRange(c02List);
-                    break;
-                case "C03":
-                    var c03List = await _db.Queryable<C03>().Where(n => n.OrderId == orderId && !n.IsDelete).ToListAsync();
-                    result.AddRange(c03List);
-                    break;
-                case "C04":
-                    var c04List = await _db.Queryable<C04>().Where(n => n.OrderId == orderId && !n.IsDelete).ToListAsync();
-                    result.AddRange(c04List);
-                    break;
-                case "C05":
-                    var c05List = await _db.Queryable<C05>().Where(n => n.OrderId == orderId && !n.IsDelete).ToListAsync();
-                    result.AddRange(c05List);
-                    break;
-                case "C06":
-                    var c06List = await _db.Queryable<C06>().Where(n => n.OrderId == orderId && !n.IsDelete).ToListAsync();
-                    result.AddRange(c06List);
-                    break;
-                case "C07":
-                    var c07List = await _db.Queryable<C07>().Where(n => n.OrderId == orderId && !n.IsDelete).ToListAsync();
-                    result.AddRange(c07List);
-                    break;
-                case "C08":
-                    var c08List = await _db.Queryable<C08>().Where(n => n.OrderId == orderId && !n.IsDelete).ToListAsync();
-                    result.AddRange(c08List);
-                    break;
-                case "C09":
-                    var c09List = await _db.Queryable<C09>().Where(n => n.OrderId == orderId && !n.IsDelete).ToListAsync();
-                    result.AddRange(c09List);
-                    break;
-            }
-
-            return result;
+            var handler = _registry.Resolve(drawingType);
+            return handler == null ? new List<C0XBase>() : await handler.GetAllByOrderIdAsync(_db, orderId);
         }
 
-        public async Task<int> AddDrawingNumbersAsync(int orderId, string[] drawingNames)
+        public async Task<DrawingNumberInsertResult> AddDrawingNumbersAsync(
+            int orderId, string[] drawingNames, CancellationToken ct = default)
         {
+            var result = new DrawingNumberInsertResult();
+            if (drawingNames == null || drawingNames.Length == 0) return result;
+
             var order = await _db.Queryable<Orders>().InSingleAsync(orderId);
             if (order == null)
             {
                 _logger.LogWarning("Order not found: {OrderId}", orderId);
-                return 0;
+                foreach (var n in drawingNames.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.Ordinal))
+                    result.Failures.Add(new(n, "订单不存在"));
+                return result;
             }
 
-            var drawingType = MyHelper.GetDrawingType(order);
+            var drawingType = _registry.GetDrawingType(order);
             if (string.IsNullOrEmpty(drawingType))
             {
                 _logger.LogWarning("Could not determine drawing type for order: {OrderId}", orderId);
-                return 0;
+                foreach (var n in drawingNames.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.Ordinal))
+                    result.Failures.Add(new(n, "订单类型无法识别"));
+                return result;
             }
 
-            var currentUser = _authService.CurrentUser;
-            if (currentUser == null)
+            var currentUserName = _currentUser.GetDisplayName();
+            if (string.IsNullOrEmpty(currentUserName))
             {
                 _logger.LogWarning("Current user not found");
+                foreach (var n in drawingNames.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.Ordinal))
+                    result.Failures.Add(new(n, "未登录"));
+                return result;
+            }
+
+            // 同订单串行化:防止两个并发请求预查后互穿插入产生重复行
+            using (await _orderLock.AcquireAsync(orderId, ct))
+            {
+                // 锁内重新查询最新已存在集合,确保看到锁释放前的真实状态
+                var existingNames = await GetExistingDrawingNamesAsync(orderId, drawingType, ct);
+
+                foreach (var drawingName in drawingNames
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Select(s => s.Trim())
+                    .Distinct(StringComparer.Ordinal))
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    if (existingNames.Contains(drawingName, StringComparer.Ordinal))
+                    {
+                        result.Failures.Add(new(drawingName, "已添加过该图号"));
+                        continue;
+                    }
+
+                    try
+                    {
+                        var id = await AddSingleDrawingNumberCoreAsync(
+                            order, drawingType, drawingName, currentUserName);
+                        if (id > 0)
+                        {
+                            result.Success.Add(drawingName);
+                            existingNames.Add(drawingName); // 防本次循环内重复
+                        }
+                        else
+                        {
+                            result.Failures.Add(new(drawingName, "插入失败(数据库返回 0)"));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error adding drawing number: {DrawingName}", drawingName);
+                        result.Failures.Add(new(drawingName, "服务器异常"));
+                    }
+                }
+            }
+
+            _logger.LogInformation(
+                "AddDrawingNumbersAsync: order={Order} type={Type} success={S} fail={F}",
+                orderId, drawingType, result.Success.Count, result.Failures.Count);
+
+            return result;
+        }
+
+        // 锁内辅助:拉取该订单当前所有未删除的 DrawName(通过 registry handler)
+        private async Task<HashSet<string>> GetExistingDrawingNamesAsync(
+            int orderId, string drawingType, CancellationToken ct)
+        {
+            var handler = _registry.Resolve(drawingType);
+            if (handler == null) return new HashSet<string>();
+            var names = await handler.GetExistingDrawNamesAsync(_db, orderId);
+            return new HashSet<string>(names, StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// 旧版包装方法:为单条插入场景保留(目前无外部调用方)。
+        /// </summary>
+        public async Task<bool> AddSingleDrawingNumberAsync(Orders order, string drawingType, string drawingName, string currentUserName)
+        {
+            try
+            {
+                var id = await AddSingleDrawingNumberCoreAsync(order, drawingType, drawingName, currentUserName);
+                return id > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "AddSingleDrawingNumberAsync failed: {DrawingName}", drawingName);
+                return false;
+            }
+        }
+
+        private async Task<int> AddSingleDrawingNumberCoreAsync(Orders order, string drawingType, string drawingName, string currentUserName)
+        {
+            var handler = _registry.Resolve(drawingType);
+            if (handler == null)
+            {
+                _logger.LogWarning("AddSingleDrawingNumberCoreAsync: no handler for drawingType {DrawingType}", drawingType);
                 return 0;
             }
 
-            var successCount = 0;
+            var now = DateTime.Now;
+            var c0x = handler.CreateNewEntity(
+                drawingName, drawingType, order.Id, currentUserName, now);
 
-            foreach (var drawingName in drawingNames)
-            {
-                try
-                {
-                    var added = await AddSingleDrawingNumberAsync(order, drawingType, drawingName, currentUser);
-                    if (added)
-                    {
-                        successCount++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error adding drawing number: {DrawingName}", drawingName);
-                }
-            }
-
-            return successCount;
-        }
-
-        private async Task<bool> AddSingleDrawingNumberAsync(Orders order, string drawingType, string drawingName, Users currentUser)
-        {
-            var c0x = new C0XBase
-            {
-                DrawName = drawingName,
-                DrawingType = drawingType,
-                OrderId = order.Id,
-                CreatedTime = DateTime.Now,
-                UpdatedTime = DateTime.Now,
-                CreatedBy = currentUser.Name,
-                UpdatedBy = currentUser.Name,
-                IsDelete = false
-            };
-
-            int insertedId = 0;
-
-            switch (drawingType)
-            {
-                case "C01":
-                    var c01 = new C01
-                    {
-                        DrawName = c0x.DrawName,
-                        DrawingType = c0x.DrawingType,
-                        OrderId = c0x.OrderId,
-                        CreatedTime = c0x.CreatedTime,
-                        UpdatedTime = c0x.UpdatedTime,
-                        CreatedBy = c0x.CreatedBy,
-                        UpdatedBy = c0x.UpdatedBy,
-                        IsDelete = c0x.IsDelete
-                    };
-                    insertedId = await _db.Insertable(c01).ExecuteReturnIdentityAsync();
-                    break;
-                case "C02":
-                    var c02 = new C02
-                    {
-                        DrawName = c0x.DrawName,
-                        DrawingType = c0x.DrawingType,
-                        OrderId = c0x.OrderId,
-                        CreatedTime = c0x.CreatedTime,
-                        UpdatedTime = c0x.UpdatedTime,
-                        CreatedBy = c0x.CreatedBy,
-                        UpdatedBy = c0x.UpdatedBy,
-                        IsDelete = c0x.IsDelete
-                    };
-                    insertedId = await _db.Insertable(c02).ExecuteReturnIdentityAsync();
-                    break;
-                case "C03":
-                    var c03 = new C03
-                    {
-                        DrawName = c0x.DrawName,
-                        DrawingType = c0x.DrawingType,
-                        OrderId = c0x.OrderId,
-                        CreatedTime = c0x.CreatedTime,
-                        UpdatedTime = c0x.UpdatedTime,
-                        CreatedBy = c0x.CreatedBy,
-                        UpdatedBy = c0x.UpdatedBy,
-                        IsDelete = c0x.IsDelete
-                    };
-                    insertedId = await _db.Insertable(c03).ExecuteReturnIdentityAsync();
-                    break;
-                case "C04":
-                    var c04 = new C04
-                    {
-                        DrawName = c0x.DrawName,
-                        DrawingType = c0x.DrawingType,
-                        OrderId = c0x.OrderId,
-                        CreatedTime = c0x.CreatedTime,
-                        UpdatedTime = c0x.UpdatedTime,
-                        CreatedBy = c0x.CreatedBy,
-                        UpdatedBy = c0x.UpdatedBy,
-                        IsDelete = c0x.IsDelete
-                    };
-                    insertedId = await _db.Insertable(c04).ExecuteReturnIdentityAsync();
-                    break;
-                case "C05":
-                    var c05 = new C05
-                    {
-                        DrawName = c0x.DrawName,
-                        DrawingType = c0x.DrawingType,
-                        OrderId = c0x.OrderId,
-                        CreatedTime = c0x.CreatedTime,
-                        UpdatedTime = c0x.UpdatedTime,
-                        CreatedBy = c0x.CreatedBy,
-                        UpdatedBy = c0x.UpdatedBy,
-                        IsDelete = c0x.IsDelete
-                    };
-                    insertedId = await _db.Insertable(c05).ExecuteReturnIdentityAsync();
-                    break;
-                case "C06":
-                    var c06 = new C06
-                    {
-                        DrawName = c0x.DrawName,
-                        DrawingType = c0x.DrawingType,
-                        OrderId = c0x.OrderId,
-                        CreatedTime = c0x.CreatedTime,
-                        UpdatedTime = c0x.UpdatedTime,
-                        CreatedBy = c0x.CreatedBy,
-                        UpdatedBy = c0x.UpdatedBy,
-                        IsDelete = c0x.IsDelete
-                    };
-                    insertedId = await _db.Insertable(c06).ExecuteReturnIdentityAsync();
-                    break;
-                case "C07":
-                    var c07 = new C07
-                    {
-                        DrawName = c0x.DrawName,
-                        DrawingType = c0x.DrawingType,
-                        OrderId = c0x.OrderId,
-                        CreatedTime = c0x.CreatedTime,
-                        UpdatedTime = c0x.UpdatedTime,
-                        CreatedBy = c0x.CreatedBy,
-                        UpdatedBy = c0x.UpdatedBy,
-                        IsDelete = c0x.IsDelete
-                    };
-                    insertedId = await _db.Insertable(c07).ExecuteReturnIdentityAsync();
-                    break;
-                case "C08":
-                    var c08 = new C08
-                    {
-                        DrawName = c0x.DrawName,
-                        DrawingType = c0x.DrawingType,
-                        OrderId = c0x.OrderId,
-                        CreatedTime = c0x.CreatedTime,
-                        UpdatedTime = c0x.UpdatedTime,
-                        CreatedBy = c0x.CreatedBy,
-                        UpdatedBy = c0x.UpdatedBy,
-                        IsDelete = c0x.IsDelete
-                    };
-                    insertedId = await _db.Insertable(c08).ExecuteReturnIdentityAsync();
-                    break;
-                case "C09":
-                    var c09 = new C09
-                    {
-                        DrawName = c0x.DrawName,
-                        DrawingType = c0x.DrawingType,
-                        OrderId = c0x.OrderId,
-                        CreatedTime = c0x.CreatedTime,
-                        UpdatedTime = c0x.UpdatedTime,
-                        CreatedBy = c0x.CreatedBy,
-                        UpdatedBy = c0x.UpdatedBy,
-                        IsDelete = c0x.IsDelete
-                    };
-                    insertedId = await _db.Insertable(c09).ExecuteReturnIdentityAsync();
-                    break;
-            }
+            // 先原子分配 DrawNumber,再写入
+            c0x.DrawNumber = await _allocator.AllocateAsync(drawingType);
+            int insertedId = await handler.InsertAsync(_db, c0x);
 
             if (insertedId > 0)
             {
-                _logger.LogInformation("User {UserName} added drawing number {DrawingName} to order {OrderNumber}", currentUser.Name, drawingName, order.OrderNumber);
+                _logger.LogInformation("User {UserName} added drawing number {DrawingName} (DrawNumber={DrawNumber}) to order {OrderNumber}",
+                    currentUserName, drawingName, c0x.DrawNumber, order.OrderNumber);
             }
 
-            return insertedId > 0;
+            return insertedId;
         }
 
-        public async Task<DrawingNumberViewModel> DrawingNumber2DrawingNumberViewModelAsync(C0XBase c0x)
+        public async Task<DrawingNumberViewModel> DrawingNumber2DrawingNumberViewModelAsync(C0XBase c0x, string drawingType)
         {
-            var vm = new DrawingNumberViewModel
+            var order = await _db.Queryable<Orders>().InSingleAsync(c0x.OrderId);
+            return ToViewModel(c0x, order?.OrderNumber ?? 0, drawingType);
+        }
+
+        /// <summary>
+        /// 纯转换:C0X 实体 + Order.OrderNumber + drawingType → ViewModel。
+        /// drawingType 由调用方提供(从 handler/registry 取),不再依赖 c0x 自身的 DrawingType 字段(已删除)。
+        /// 不查库,供 <see cref="GetAddedDrawingNumberViewModelsByOrderIdAsync"/> 在循环外复用,
+        /// 消除原 N+1 问题。
+        /// </summary>
+        public DrawingNumberViewModel ToViewModel(C0XBase c0x, int orderNumber, string drawingType)
+        {
+            // 图号直接来自持久化列 DrawNumber,不再做 MinDrawingNumber + Id 公式
+            string tempDrawingNumber = c0x.DrawNumber.ToString("D5");
+
+            return new DrawingNumberViewModel
             {
                 Id = c0x.Id,
-                DrawingType = c0x.DrawingType,
+                DrawingType = drawingType,
                 DrawName = c0x.DrawName,
                 CreatedBy = c0x.CreatedBy,
                 CreatedTime = c0x.CreatedTime,
                 UpdatedBy = c0x.UpdatedBy,
                 UpdatedTime = c0x.UpdatedTime,
                 IsDelete = c0x.IsDelete,
-                OrderId = c0x.OrderId
+                OrderId = c0x.OrderId,
+                OrderNumber = orderNumber,
+                DrawingTypeNumber =
+                    drawingType + " " + tempDrawingNumber.Substring(0, 2) + " " +
+                    tempDrawingNumber.Substring(2, 3)
             };
-
-            int beginDrawingNumber = MyHelper.GetMinDrawingNumber(c0x.DrawingType);
-            int end5 = beginDrawingNumber + c0x.Id;
-            string tempDrawingNumber = end5.ToString();
-            if (tempDrawingNumber.Length < 5)
-            {
-                int loopTime = 5 - tempDrawingNumber.Length;
-                for (int i = 0; i < loopTime; i++)
-                {
-                    tempDrawingNumber = "0" + tempDrawingNumber;
-                }
-            }
-            vm.DrawingTypeNumber =
-                c0x.DrawingType + " " + tempDrawingNumber.Substring(0, 2) + " " +
-                tempDrawingNumber.Substring(2, 3);
-
-            var order = await _db.Queryable<Orders>().InSingleAsync(c0x.OrderId);
-            vm.OrderNumber = order.OrderNumber;
-
-            return vm;
         }
 
         public async Task<C0XBase?> FindDrawingNumberByIdAsync(int id, string drawingType)
         {
-            switch (drawingType)
-            {
-                case "C01":
-                    return await _db.Queryable<C01>().InSingleAsync(id);
-                case "C02":
-                    return await _db.Queryable<C02>().InSingleAsync(id);
-                case "C03":
-                    return await _db.Queryable<C03>().InSingleAsync(id);
-                case "C04":
-                    return await _db.Queryable<C04>().InSingleAsync(id);
-                case "C05":
-                    return await _db.Queryable<C05>().InSingleAsync(id);
-                case "C06":
-                    return await _db.Queryable<C06>().InSingleAsync(id);
-                case "C07":
-                    return await _db.Queryable<C07>().InSingleAsync(id);
-                case "C08":
-                    return await _db.Queryable<C08>().InSingleAsync(id);
-                case "C09":
-                    return await _db.Queryable<C09>().InSingleAsync(id);
-                default:
-                    return null;
-            }
+            var handler = _registry.Resolve(drawingType);
+            return handler == null ? null : await handler.FindByIdAsync(_db, id);
         }
 
         public async Task<int> UpdateCX0DrawingNumberByIdAsync(C0XBase c0x, string drawingType)
         {
-            switch (drawingType)
-            {
-                case "C01":
-                    return await _db.Updateable<C01>()
-                        .SetColumns(it => new C01 { DrawName = c0x.DrawName, UpdatedBy = c0x.UpdatedBy, UpdatedTime = c0x.UpdatedTime })
-                        .Where(it => it.Id == c0x.Id)
-                        .ExecuteCommandAsync();
-                case "C02":
-                    return await _db.Updateable<C02>()
-                        .SetColumns(it => new C02 { DrawName = c0x.DrawName, UpdatedBy = c0x.UpdatedBy, UpdatedTime = c0x.UpdatedTime })
-                        .Where(it => it.Id == c0x.Id)
-                        .ExecuteCommandAsync();
-                case "C03":
-                    return await _db.Updateable<C03>()
-                        .SetColumns(it => new C03 { DrawName = c0x.DrawName, UpdatedBy = c0x.UpdatedBy, UpdatedTime = c0x.UpdatedTime })
-                        .Where(it => it.Id == c0x.Id)
-                        .ExecuteCommandAsync();
-                case "C04":
-                    return await _db.Updateable<C04>()
-                        .SetColumns(it => new C04 { DrawName = c0x.DrawName, UpdatedBy = c0x.UpdatedBy, UpdatedTime = c0x.UpdatedTime })
-                        .Where(it => it.Id == c0x.Id)
-                        .ExecuteCommandAsync();
-                case "C05":
-                    return await _db.Updateable<C05>()
-                        .SetColumns(it => new C05 { DrawName = c0x.DrawName, UpdatedBy = c0x.UpdatedBy, UpdatedTime = c0x.UpdatedTime })
-                        .Where(it => it.Id == c0x.Id)
-                        .ExecuteCommandAsync();
-                case "C06":
-                    return await _db.Updateable<C06>()
-                        .SetColumns(it => new C06 { DrawName = c0x.DrawName, UpdatedBy = c0x.UpdatedBy, UpdatedTime = c0x.UpdatedTime })
-                        .Where(it => it.Id == c0x.Id)
-                        .ExecuteCommandAsync();
-                case "C07":
-                    return await _db.Updateable<C07>()
-                        .SetColumns(it => new C07 { DrawName = c0x.DrawName, UpdatedBy = c0x.UpdatedBy, UpdatedTime = c0x.UpdatedTime })
-                        .Where(it => it.Id == c0x.Id)
-                        .ExecuteCommandAsync();
-                case "C08":
-                    return await _db.Updateable<C08>()
-                        .SetColumns(it => new C08 { DrawName = c0x.DrawName, UpdatedBy = c0x.UpdatedBy, UpdatedTime = c0x.UpdatedTime })
-                        .Where(it => it.Id == c0x.Id)
-                        .ExecuteCommandAsync();
-                case "C09":
-                    return await _db.Updateable<C09>()
-                        .SetColumns(it => new C09 { DrawName = c0x.DrawName, UpdatedBy = c0x.UpdatedBy, UpdatedTime = c0x.UpdatedTime })
-                        .Where(it => it.Id == c0x.Id)
-                        .ExecuteCommandAsync();
-                default:
-                    return 0;
-            }
+            var handler = _registry.Resolve(drawingType);
+            if (handler == null) return 0;
+            return await handler.UpdateDrawNameAsync(
+                _db, c0x.Id, c0x.DrawName, c0x.UpdatedBy, c0x.UpdatedTime);
         }
 
         // ============================================================
-        // 查询图号:按 "前三位 + 后五位" 查 C0X 表,返回第一个匹配的 ViewModel
+        // 查询图号:按 drawingType + drawNumber 查 C0X 表,返回匹配项
         // ============================================================
         public async Task<DrawingNumberViewModel?> FindDrawingNumberByTypeAndNumberAsync(string drawingType, int drawingNumber)
         {
@@ -432,43 +273,14 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 return null;
             }
 
-            int targetId = drawingNumber - MyHelper.GetMinDrawingNumber(drawingType);
-
-            // targetId 必须 >= 1(Id 是自增主键从 1 起)
-            if (targetId < 1)
-            {
-                return null;
-            }
+            var handler = _registry.Resolve(drawingType);
+            if (handler == null) return null;
 
             try
             {
-                C0XBase? c0x = drawingType switch
-                {
-                    "C01" => await _db.Queryable<C01>().InSingleAsync(targetId),
-                    "C02" => await _db.Queryable<C02>().InSingleAsync(targetId),
-                    "C03" => await _db.Queryable<C03>().InSingleAsync(targetId),
-                    "C04" => await _db.Queryable<C04>().InSingleAsync(targetId),
-                    "C05" => await _db.Queryable<C05>().InSingleAsync(targetId),
-                    "C06" => await _db.Queryable<C06>().InSingleAsync(targetId),
-                    "C07" => await _db.Queryable<C07>().InSingleAsync(targetId),
-                    "C08" => await _db.Queryable<C08>().InSingleAsync(targetId),
-                    "C09" => await _db.Queryable<C09>().InSingleAsync(targetId),
-                    _ => null
-                };
-
-                if (c0x == null)
-                {
-                    return null;
-                }
-
-                // 反算 DrawNumber 校验(防止非主键路径出错)
-                int verifyNumber = MyHelper.GetMinDrawingNumber(drawingType) + c0x.Id;
-                if (verifyNumber != drawingNumber)
-                {
-                    return null;
-                }
-
-                return await DrawingNumber2DrawingNumberViewModelAsync(c0x);
+                var c0x = await handler.FindByDrawNumberAsync(_db, drawingNumber);
+                if (c0x == null) return null;
+                return await DrawingNumber2DrawingNumberViewModelAsync(c0x, drawingType);
             }
             catch (Exception ex)
             {
@@ -497,21 +309,18 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// </summary>
         public async Task<List<string>> GetDistinctPartsAsync()
         {
-            return await _db.Queryable<DrawingNames>()
+            var list = await _db.Queryable<DrawingNames>()
                 .Where(dn => !string.IsNullOrWhiteSpace(dn.Part))
                 .Select(dn => dn.Part)
                 .Distinct()
-                .ToListAsync()
-                .ContinueWith(t =>
-                {
-                    // SqlSugar 的 Distinct 在 List<string> 上可能不生效,做一遍内存去重兜底
-                    var list = t.Result ?? new List<string>();
-                    return list
-                        .Where(p => !string.IsNullOrWhiteSpace(p))
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-                        .ToList();
-                });
+                .ToListAsync();
+
+            // SqlSugar 的 Distinct 在 List<string> 上可能不生效,做一遍内存去重兜底
+            return list
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         /// <summary>
@@ -525,16 +334,15 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 return 0;
             }
 
-            var currentUser = _authService.CurrentUser;
-            string userName = currentUser?.Name ?? "System";
+            var currentUserName = _currentUser.GetDisplayName() ?? "System";
 
             var newName = new DrawingNames
             {
                 Part = part,
                 ComponentName = componentName.Trim(),
-                CreatedBy = userName,
+                CreatedBy = currentUserName,
                 CreatedTime = DateTime.Now,
-                UpdatedBy = userName,
+                UpdatedBy = currentUserName,
                 UpdatedTime = DateTime.Now,
                 Isdelete = false
             };
@@ -542,7 +350,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
             try
             {
                 var insertedId = await _db.Insertable(newName).ExecuteReturnIdentityAsync();
-                _logger.LogInformation("Added drawing name: {Name} (Part={Part}) by {User}", componentName, part, userName);
+                _logger.LogInformation("Added drawing name: {Name} (Part={Part}) by {User}", componentName, part, currentUserName);
                 return insertedId;
             }
             catch (Exception ex)
@@ -559,8 +367,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         {
             try
             {
-                var currentUser = _authService.CurrentUser;
-                string userName = currentUser?.Name ?? "System";
+                string userName = _currentUser.GetDisplayName() ?? "System";
 
                 var result = await _db.Updateable<DrawingNames>()
                     .SetColumns(it => new DrawingNames

@@ -1,3 +1,9 @@
+INSERT INTO C04 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (1, '占位', 'C04', 30, '陈振东', '2024-10-15 13:45:53.3267203', '陈振东', '2024-10-15 13:45:53.3267542', 0);
+INSERT INTO C04 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (2, '占位', 'C04', 30, '陈振东', '2024-10-15 13:45:53.3267203', '陈振东', '2024-10-15 13:45:53.3267542', 0);
+INSERT INTO C04 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (3, '占位', 'C04', 30, '陈振东', '2024-10-15 13:45:53.3267203', '陈振东', '2024-10-15 13:45:53.3267542', 0);
+INSERT INTO C04 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (4, '占位', 'C04', 30, '陈振东', '2024-10-15 13:45:53.3267203', '陈振东', '2024-10-15 13:45:53.3267542', 0);
+INSERT INTO C04 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (5, '占位', 'C04', 30, '陈振东', '2024-10-15 13:45:53.3267203', '陈振东', '2024-10-15 13:45:53.3267542', 0);
+INSERT INTO C04 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (6, '占位', 'C04', 30, '陈振东', '2024-10-15 13:45:53.3267203', '陈振东', '2024-10-15 13:45:53.3267542', 0);
 INSERT INTO C04 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (7, '矽钢片', 'C04', 30, '陈振东', '2024-10-15 13:45:53.3267203', '陈振东', '2024-10-15 13:45:53.3267542', 0);
 INSERT INTO C04 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (8, '铁芯装配', 'C04', 30, '陈振东', '2024-10-15 13:45:53.5189843', '陈振东', '2024-10-15 13:45:53.5189848', 0);
 INSERT INTO C04 (Id, DrawName, DrawingType, OrderId, CreatedBy, CreatedTime, UpdatedBy, UpdatedTime, IsDelete) VALUES (9, '下夹件', 'C04', 30, '陈振东', '2024-10-15 13:45:53.6198324', '陈振东', '2024-10-15 13:45:53.6198326', 0);

@@ -1,10 +1,11 @@
 @page "/add-drawing-numbers/{orderId:int}"
 @attribute [TabItemOption(Text = "添加图号")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator")]
 @using BootstrapBlazor.OnlyServer1.Services
 @inject DrawingNumberService? DrawingNumberService
+@inject OrdersService OrdersService
 @inject NavigationManager NavigationManager
 @inject Microsoft.Extensions.Logging.ILogger<AddDrawingNumbers> Logger
-@inject SqlSugar.ISqlSugarClient? Db
 
 <PageTitle>添加图号</PageTitle>
 
@@ -36,15 +37,15 @@
                     </button>
                 </div>
 
-                @if (showSuccess) {
-                    <div class="alert alert-success" role="alert">
-                        图号添加成功！
-                    </div>
-                }
-
-                @if (showError) {
+                @if (showError && !string.IsNullOrEmpty(_partErrorMessage)) {
                     <div class="alert alert-danger" role="alert">
-                        添加图号时发生错误，请重试。
+                        <strong>添加失败</strong>
+                        <ul class="mb-0 mt-1">
+                            @foreach (var line in _partErrorMessage.Split('\n'))
+                            {
+                                <li>@line</li>
+                            }
+                        </ul>
                     </div>
                 }
 
@@ -135,6 +136,51 @@
         </div>
         <div class="modal-backdrop fade show"></div>
     }
+
+    <!-- 添加结果 Modal(全成功 / 部分成功 都用这个) -->
+    @if (_resultModalVisible && _result != null) {
+        <div class="modal d-block" tabindex="-1" role="dialog" style="display: block;">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            @if (_result.AllSucceeded) {
+                                <span class="text-success">添加成功</span>
+                            }
+                            else {
+                                <span class="text-warning">
+                                    添加结果:成功 @_result.Success.Count,失败 @_result.Failures.Count
+                                </span>
+                            }
+                        </h5>
+                        <button type="button" class="btn-close" @onclick="OnResultModalDismissed" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        @if (_result.Success.Count > 0) {
+                            <p class="text-success mb-1">成功添加 @_result.Success.Count 条:</p>
+                            <ul class="text-success small mb-3">
+                                @foreach (var name in _result.Success) {
+                                    <li>@name</li>
+                                }
+                            </ul>
+                        }
+                        @if (_result.Failures.Count > 0) {
+                            <p class="text-danger mb-1">失败明细:</p>
+                            <ul class="text-danger small mb-0">
+                                @foreach (var f in _result.Failures) {
+                                    <li><strong>@f.Name</strong> — @f.Reason</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" @onclick="OnResultModalDismissed">查看列表</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    }
 </div>
 
 @code {
@@ -143,10 +189,14 @@
 
     private BootstrapBlazor.OnlyServer1.Models.Orders? _order;
     private bool isAdding = false;
-    private bool showSuccess = false;
     private bool showError = false;
+    private string? _partErrorMessage;
     private bool dialogVisible = false;
     private string editorContent = string.Empty;
+
+    // 结果 Modal 状态
+    private DrawingNumberInsertResult? _result;
+    private bool _resultModalVisible;
 
     // 动态分组:Part 名字 -> 该 Part 下的所有图名(按"是否已添加"标好状态)
     private Dictionary<string, List<CheckboxItem>> _partGroups = new();
@@ -200,16 +250,16 @@
     }
 
     protected override async Task OnInitializedAsync() {
-        showSuccess = false;
         showError = false;
+        _partErrorMessage = null;
 
-        if (Db == null || DrawingNumberService == null) {
-            Logger.LogWarning("Db or DrawingNumberService is null");
+        if (DrawingNumberService == null) {
+            Logger.LogWarning("DrawingNumberService is null");
             return;
         }
 
         try {
-            _order = await Db.Queryable<BootstrapBlazor.OnlyServer1.Models.Orders>().InSingleAsync(OrderId);
+            _order = await OrdersService.GetByIdAsync(OrderId);
             if (_order == null) {
                 Logger.LogWarning("Order not found: {OrderId}", OrderId);
                 return;
@@ -250,6 +300,7 @@
         catch (Exception ex) {
             Logger.LogError(ex, "Error initializing page");
             showError = true;
+            _partErrorMessage = "页面初始化失败,请刷新重试";
         }
     }
 
@@ -270,13 +321,14 @@
 
     private async Task HandleDialogConfirm() {
         isAdding = true;
-        showSuccess = false;
         showError = false;
+        _partErrorMessage = null;
 
         try {
             if (DrawingNumberService == null) {
                 Logger.LogWarning("DrawingNumberService is null");
                 showError = true;
+                _partErrorMessage = "服务不可用";
                 return;
             }
 
@@ -293,22 +345,13 @@
             Logger.LogInformation("Adding {Count} drawing numbers (with custom order) to order {OrderId}", checkedDrawingNumbersList.Length, OrderId);
 
             var result = await DrawingNumberService.AddDrawingNumbersAsync(OrderId, checkedDrawingNumbersList);
-
-            if (result > 0) {
-                Logger.LogInformation("Successfully added {Count} drawing numbers", result);
-                dialogVisible = false;
-                showSuccess = true;
-                await Task.Delay(1000);
-                NavigationManager.NavigateTo($"/order-drawing-numbers/{OrderId}", false);
-            }
-            else {
-                Logger.LogWarning("No drawing numbers were added");
-                showError = true;
-            }
+            dialogVisible = false;
+            HandleInsertResult(result);
         }
         catch (Exception ex) {
             Logger.LogError(ex, "Error adding drawing numbers");
             showError = true;
+            _partErrorMessage = "添加图号时发生错误";
         }
         finally {
             isAdding = false;
@@ -322,13 +365,14 @@
 
     private async Task HandleAddDrawingNumbers() {
         isAdding = true;
-        showSuccess = false;
         showError = false;
+        _partErrorMessage = null;
 
         try {
             if (DrawingNumberService == null) {
                 Logger.LogWarning("DrawingNumberService is null");
                 showError = true;
+                _partErrorMessage = "服务不可用";
                 return;
             }
 
@@ -340,25 +384,49 @@
             Logger.LogInformation("Adding {Count} drawing numbers to order {OrderId}", checkedItems.Count, OrderId);
 
             var result = await DrawingNumberService.AddDrawingNumbersAsync(OrderId, checkedItems.ToArray());
-
-            if (result > 0) {
-                Logger.LogInformation("Successfully added {Count} drawing numbers", result);
-                showSuccess = true;
-                await Task.Delay(1000);
-                NavigationManager.NavigateTo($"/order-drawing-numbers/{OrderId}", false);
-            }
-            else {
-                Logger.LogWarning("No drawing numbers were added");
-                showError = true;
-            }
+            HandleInsertResult(result);
         }
         catch (Exception ex) {
             Logger.LogError(ex, "Error adding drawing numbers");
             showError = true;
+            _partErrorMessage = "添加图号时发生错误";
         }
         finally {
             isAdding = false;
         }
+    }
+
+    /// <summary>
+    /// 统一处理 AddDrawingNumbersAsync 返回的结果:
+    ///   - 全成功:直接跳列表页(forceLoad: true 拿最新数据)
+    ///   - 部分成功:弹 Modal 等用户确认/关闭,任何路径都跳列表页
+    ///   - 全失败:页面错误区显示失败明细,不跳转,允许用户改正后重试
+    /// </summary>
+    private void HandleInsertResult(DrawingNumberInsertResult result) {
+        _result = result;
+
+        if (result.NoneSucceeded) {
+            // 全失败:不弹 Modal,留在原页方便改正重试
+            showError = true;
+            _partErrorMessage = string.Join("\n",
+                result.Failures.Select(f => $"• {f.Name} — {f.Reason}"));
+            Logger.LogWarning("AddDrawingNumbers all failed: count={Count}", result.Failures.Count);
+            return;
+        }
+
+        // 全成功 或 部分成功:弹 Modal
+        _resultModalVisible = true;
+        Logger.LogInformation("AddDrawingNumbers done: success={S} fail={F}",
+            result.Success.Count, result.Failures.Count);
+    }
+
+    /// <summary>
+    /// 任何关闭路径(确认按钮 / 关闭按钮 / 取消)都跳转到订单图号列表页,
+    /// forceLoad: true 拿最新数据。
+    /// </summary>
+    private void OnResultModalDismissed() {
+        _resultModalVisible = false;
+        NavigationManager.NavigateTo($"/order-drawing-numbers/{OrderId}", forceLoad: true);
     }
 
     private void GoBack() {

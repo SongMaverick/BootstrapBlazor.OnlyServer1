@@ -1,0 +1,96 @@
+@page "/department-management"
+@attribute [TabItemOption(Text = "部门管理")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@inject BootstrapBlazor.OnlyServer1.Services.DepartmentsService DepartmentsService
+@inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
+@inject BootstrapBlazor.Components.ToastService ToastService
+
+<PageTitle>部门管理</PageTitle>
+
+<div class="page-department">
+    <h1>部门管理</h1>
+
+    <Table TItem="Models.Departments"
+           IsPagination="true"
+           PageItemsSource="@PageItemsSource"
+           RenderMode="TableRenderMode.Table"
+           IsFixedHeader="true"
+           IsStriped="true"
+           IsBordered="true"
+           OnQueryAsync="OnQueryAsync"
+           ShowSearch="true"
+           ShowToolbar="true"
+           ShowExtendButtons="true"
+           OnAddAsync="OnAddAsync"
+           OnSaveAsync="OnSaveAsync"
+           OnDeleteAsync="OnDeleteAsync"
+           EditMode="EditMode.Popup"
+           ShowSkeleton="true"
+           IsMultipleSelect="true"
+           Height="700"
+           ShowAddButton="@CurrentUser.HasPermission("Department.Create")"
+           ShowDeleteButton="@CurrentUser.HasPermission("Department.Delete")">
+        <TableColumns>
+            <TableColumn @bind-Field="@context.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.Name" Width="160" Sortable="true" />
+            <TableColumn @bind-Field="@context.Code" Width="120" Sortable="true" />
+            <TableColumn @bind-Field="@context.Description" Width="240" />
+            <TableColumn @bind-Field="@context.IsActive" Width="100" Align="Alignment.Center" ComponentType="typeof(BootstrapBlazor.Components.Switch)" />
+            <TableColumn @bind-Field="@context.CreateTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
+                <Template Context="value">
+                    @value.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                </Template>
+            </TableColumn>
+        </TableColumns>
+    </Table>
+</div>
+
+@code {
+    private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
+
+    private Task<QueryData<Models.Departments>> OnQueryAsync(QueryPageOptions options)
+        => DepartmentsService.QueryAsync(options);
+
+    private Task<Models.Departments> OnAddAsync()
+        => Task.FromResult(new Models.Departments
+        {
+            IsActive = true,
+            CreateTime = DateTime.Now
+        });
+
+    private async Task<bool> OnSaveAsync(Models.Departments dept, ItemChangedType changedType)
+    {
+        var (ok, error) = await DepartmentsService.SaveAsync(dept);
+        if (!ok)
+        {
+            await ShowToast(error ?? "保存失败", BootstrapBlazor.Components.ToastCategory.Error);
+            return false;
+        }
+        await ShowToast("保存成功", BootstrapBlazor.Components.ToastCategory.Success);
+        return true;
+    }
+
+    private async Task<bool> OnDeleteAsync(IEnumerable<Models.Departments> depts)
+    {
+        var ok = await DepartmentsService.SoftDeleteAsync(depts);
+        if (ok)
+        {
+            await ShowToast("已软删", BootstrapBlazor.Components.ToastCategory.Success);
+        }
+        else
+        {
+            await ShowToast("删除失败", BootstrapBlazor.Components.ToastCategory.Error);
+        }
+        return ok;
+    }
+
+    private async Task ShowToast(string content, BootstrapBlazor.Components.ToastCategory category)
+    {
+        await ToastService.Show(new BootstrapBlazor.Components.ToastOption
+        {
+            Category = category,
+            Content = content,
+            Delay = 2000
+        });
+    }
+}

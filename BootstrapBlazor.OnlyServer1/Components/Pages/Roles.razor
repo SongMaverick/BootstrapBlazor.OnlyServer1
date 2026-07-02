@@ -1,0 +1,313 @@
+@page "/roles"
+@attribute [TabItemOption(Text = "角色权限")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@using BootstrapBlazor.OnlyServer1.Services.Identity
+@inject BootstrapBlazor.OnlyServer1.Services.RolesService RolesService
+@inject BootstrapBlazor.OnlyServer1.Services.PermissionsService PermissionsService
+@inject BootstrapBlazor.Components.ToastService ToastService
+
+<PageTitle>角色权限</PageTitle>
+
+<div class="page-roles">
+    <h1>角色权限</h1>
+
+    <Table TItem="RoleRowViewModel"
+           IsPagination="true"
+           PageItemsSource="@PageItemsSource"
+           RenderMode="TableRenderMode.Table"
+           IsFixedHeader="true"
+           IsStriped="true"
+           IsBordered="true"
+           OnQueryAsync="OnQueryAsync"
+           ShowSearch="true"
+           ShowToolbar="true"
+           ShowExtendButtons="false"
+           OnAddAsync="OnAddAsync"
+           OnSaveAsync="OnSaveAsync"
+           OnDeleteAsync="OnDeleteAsync"
+           EditMode="EditMode.Popup"
+           ShowSkeleton="true"
+           IsMultipleSelect="true"
+           Height="600">
+        <TableColumns>
+            <TableColumn @bind-Field="@context.Role.Id" Text="Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.Role.Name" Width="180" Sortable="true" />
+            <TableColumn @bind-Field="@context.Role.NormalizedName" Width="180" Sortable="true" Readonly="true" Text="规范化名" />
+            <TableColumn @bind-Field="@context.UserCount" Text="用户数" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.PermissionCount" Text="权限数" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.PermissionCount" Title="操作" Width="200" Align="Alignment.Center" Readonly="true" Sortable="false">
+                <Template Context="value">
+                    <Button Size="Size.ExtraSmall" Color="Color.Info"
+                            OnClick="@(async () => await OpenPermDialogAsync(value.Row.Role.Id, value.Row.Role.Name ?? ""))">
+                        <i class="fa-solid fa-key"></i> 权限
+                    </Button>
+                    <Button Size="Size.ExtraSmall" Color="Color.Secondary" Class="ms-1"
+                            OnClick="@(async () => await OpenMembersDialogAsync(value.Row.Role.Id, value.Row.Role.Name ?? ""))">
+                        <i class="fa-solid fa-users"></i> 成员
+                    </Button>
+                </Template>
+            </TableColumn>
+        </TableColumns>
+    </Table>
+
+    @* 权限码勾选弹窗 *@
+    @if (_permDialogVisible && _editingRoleId > 0)
+    {
+        <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog" aria-modal="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fa-solid fa-key me-2"></i>分配权限 — @_editingRoleName
+                        </h5>
+                        <button type="button" class="btn-close" @onclick="ClosePermDialog"></button>
+                    </div>
+                    <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                        @if (_groupedPerms.Count == 0)
+                        {
+                            <div class="text-muted">暂无权限码定义,请先在数据库或 DbMigrator 中灌入种子</div>
+                        }
+                        else
+                        {
+                            @foreach (var grp in _groupedPerms)
+                            {
+                                <div class="mb-3">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <strong class="me-3">@grp.Key</strong>
+                                        <Button Size="Size.ExtraSmall" Color="Color.Primary"
+                                                OnClick="@(() => ToggleCategory(grp.Key, true))">全选</Button>
+                                        <Button Size="Size.ExtraSmall" Color="Color.Secondary" Class="ms-1"
+                                                OnClick="@(() => ToggleCategory(grp.Key, false))">取消</Button>
+                                        <span class="ms-3 text-muted small">
+                                            已选 @_selectedPermIds.Count(id => grp.Value.Any(p => p.Id == id)) / @grp.Value.Count
+                                        </span>
+                                    </div>
+                                    <div class="row">
+                                        @foreach (var perm in grp.Value)
+                                        {
+                                            <div class="col-md-6">
+                                                <label class="form-check">
+                                                    <input type="checkbox" class="form-check-input"
+                                                           checked="@_selectedPermIds.Contains(perm.Id)"
+                                                           @onchange="@(e => TogglePerm(perm.Id, (bool)e.Value!))" />
+                                                    <span class="form-check-label">@perm.Name <code class="ms-1 small text-muted">@perm.Code</code></span>
+                                                </label>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                <hr />
+                            }
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <span class="me-auto text-muted small">已选 @_selectedPermIds.Count 个权限</span>
+                        <button class="btn btn-secondary" @onclick="ClosePermDialog">取消</button>
+                        <button class="btn btn-primary" @onclick="SavePermsAsync" disabled="@_permSaving">
+                            @if (_permSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            保存
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    }
+
+    @* 成员列表弹窗 *@
+    @if (_membersDialogVisible)
+    {
+        <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog" aria-modal="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fa-solid fa-users me-2"></i>角色成员 — @_editingRoleName
+                        </h5>
+                        <button type="button" class="btn-close" @onclick="CloseMembersDialog"></button>
+                    </div>
+                    <div class="modal-body" style="max-height: 50vh; overflow-y: auto;">
+                        @if (_members.Count == 0)
+                        {
+                            <div class="text-muted">暂无成员</div>
+                        }
+                        else
+                        {
+                            <Table TItem="Models.Users" Items="@_members" IsBordered="true" IsStriped="true">
+                                <TableColumns>
+                                    <TableColumn @bind-Field="@context.Id" Width="80" />
+                                    <TableColumn @bind-Field="@context.Name" />
+                                    <TableColumn @bind-Field="@context.WorkerNumber" Title="员工号" Width="120" />
+                                    <TableColumn @bind-Field="@context.GID" Width="150" />
+                                </TableColumns>
+                            </Table>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" @onclick="CloseMembersDialog">关闭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    }
+</div>
+
+@code {
+    private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
+
+    private async Task<QueryData<RoleRowViewModel>> OnQueryAsync(QueryPageOptions options)
+    {
+        try
+        {
+            // 基础角色数据(RolesService.QueryAsync 返回的 Items 是 Roles 列表)
+            var baseQuery = await RolesService.QueryAsync(options);
+            var rows = new List<RoleRowViewModel>();
+            foreach (var r in baseQuery.Items)
+            {
+                var vm = new RoleRowViewModel { Role = r };
+                vm.UserCount = await RolesService.CountUsersInRoleAsync(r.Id);
+                vm.PermissionCount = await RolesService.CountPermissionsInRoleAsync(r.Id);
+                rows.Add(vm);
+            }
+            return new QueryData<RoleRowViewModel>
+            {
+                Items = rows,
+                TotalCount = baseQuery.TotalCount,
+                IsFiltered = baseQuery.IsFiltered,
+                IsSorted = baseQuery.IsSorted,
+                IsSearch = baseQuery.IsSearch
+            };
+        }
+        catch (Exception ex)
+        {
+            await ShowToast("查询失败:" + ex.Message, BootstrapBlazor.Components.ToastCategory.Error);
+            return new QueryData<RoleRowViewModel>();
+        }
+    }
+
+    private Task<RoleRowViewModel> OnAddAsync()
+        => Task.FromResult(new RoleRowViewModel { Role = new BootstrapBlazor.OnlyServer1.Models.Roles() });
+
+    private async Task<bool> OnSaveAsync(RoleRowViewModel row, ItemChangedType changedType)
+    {
+        var (ok, error) = await RolesService.SaveAsync(row.Role, Array.Empty<int>(), changedType);
+        if (!ok)
+        {
+            await ShowToast(error ?? "保存失败", BootstrapBlazor.Components.ToastCategory.Error);
+            return false;
+        }
+        await ShowToast("已保存。点击「权限」按钮可分配权限码", BootstrapBlazor.Components.ToastCategory.Success);
+        return true;
+    }
+
+    private async Task<bool> OnDeleteAsync(IEnumerable<RoleRowViewModel> rows)
+    {
+        var roles = rows.Select(r => r.Role);
+        var (ok, error) = await RolesService.DeleteAsync(roles);
+        if (!ok)
+        {
+            await ShowToast(error ?? "删除失败", BootstrapBlazor.Components.ToastCategory.Error);
+        }
+        else
+        {
+            await ShowToast("已删除", BootstrapBlazor.Components.ToastCategory.Success);
+        }
+        return ok;
+    }
+
+    // ===== 权限码勾选弹窗 =====
+    private bool _permDialogVisible;
+    private int _editingRoleId;
+    private string _editingRoleName = "";
+    private Dictionary<string, List<Models.Permissions>> _groupedPerms = new();
+    private HashSet<int> _selectedPermIds = new();
+    private bool _permSaving;
+
+    private async Task OpenPermDialogAsync(int roleId, string roleName)
+    {
+        _editingRoleId = roleId;
+        _editingRoleName = roleName;
+        _groupedPerms = await PermissionsService.GetGroupedByCategoryAsync();
+        var codes = await PermissionsService.GetCodesByRoleIdAsync(roleId);
+        _selectedPermIds = _groupedPerms
+            .SelectMany(g => g.Value)
+            .Where(p => codes.Contains(p.Code))
+            .Select(p => p.Id)
+            .ToHashSet();
+        _permDialogVisible = true;
+    }
+
+    private void ClosePermDialog()
+    {
+        _permDialogVisible = false;
+    }
+
+    private void TogglePerm(int permId, bool isChecked)
+    {
+        if (isChecked) _selectedPermIds.Add(permId);
+        else _selectedPermIds.Remove(permId);
+    }
+
+    private void ToggleCategory(string category, bool selectAll)
+    {
+        if (!_groupedPerms.TryGetValue(category, out var perms)) return;
+        if (selectAll)
+        {
+            foreach (var p in perms) _selectedPermIds.Add(p.Id);
+        }
+        else
+        {
+            foreach (var p in perms) _selectedPermIds.Remove(p.Id);
+        }
+    }
+
+    private async Task SavePermsAsync()
+    {
+        _permSaving = true;
+        try
+        {
+            await PermissionsService.SetRolePermissionsAsync(_editingRoleId, _selectedPermIds);
+            await ShowToast($"已保存 {_selectedPermIds.Count} 个权限,相关用户需重新登录生效", BootstrapBlazor.Components.ToastCategory.Success);
+            _permDialogVisible = false;
+        }
+        catch (Exception ex)
+        {
+            await ShowToast($"保存失败:{ex.Message}", BootstrapBlazor.Components.ToastCategory.Error);
+        }
+        finally
+        {
+            _permSaving = false;
+        }
+    }
+
+    // ===== 成员列表弹窗 =====
+    private bool _membersDialogVisible;
+    private List<Models.Users> _members = new();
+
+    private async Task OpenMembersDialogAsync(int roleId, string roleName)
+    {
+        _editingRoleId = roleId;
+        _editingRoleName = roleName;
+        _members = await RolesService.GetUsersInRoleAsync(roleId);
+        _membersDialogVisible = true;
+    }
+
+    private void CloseMembersDialog()
+    {
+        _membersDialogVisible = false;
+    }
+
+    private async Task ShowToast(string content, BootstrapBlazor.Components.ToastCategory category)
+    {
+        await ToastService.Show(new BootstrapBlazor.Components.ToastOption
+        {
+            Category = category,
+            Content = content,
+            Delay = 2000
+        });
+    }
+}

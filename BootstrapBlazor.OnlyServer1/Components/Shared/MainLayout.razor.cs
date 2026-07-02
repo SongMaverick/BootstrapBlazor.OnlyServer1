@@ -1,25 +1,26 @@
+using System.Security.Claims;
 using BootstrapBlazor.Components;
-using Microsoft.AspNetCore.Components.Routing;
 using BootstrapBlazor.OnlyServer1.Services;
-using BootstrapBlazor.OnlyServer1.Helpers;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
 using Microsoft.AspNetCore.Components;
-using SqlSugar;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Routing;
 
 namespace BootstrapBlazor.OnlyServer1.Components.Shared
 {
     public sealed partial class MainLayout
     {
         [Inject]
-        private AuthService? AuthService { get; set; }
+        private AuthenticationStateProvider? AuthStateProvider { get; set; }
 
         [Inject]
-        private NavigationManager? NavigationManager { get; set; }
+        private UsersService? UsersService { get; set; }
+
+        [Inject]
+        private CurrentUserAccessor? CurrentUser { get; set; }
 
         [Inject]
         private ToastService? ToastService { get; set; }
-
-        [Inject]
-        private ISqlSugarClient? Db { get; set; }
 
         private bool UseTabSet { get; set; } = true;
 
@@ -37,83 +38,89 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
 
         private List<MenuItem>? Menus { get; set; }
 
-        protected override void OnInitialized()
+        // 从 ClaimsPrincipal 取出的用户展示信息
+        private string _displayName = "";
+        private string _userName = "";
+
+        // 公共菜单:所有已登录用户可见
+        private static readonly List<MenuItem> PublicMenus = new()
         {
-            base.OnInitialized();
+            new() { Text = "首页", Icon = "fa-solid fa-fw fa-flag", Url = "/", Match = NavLinkMatch.All },
+            new() { Text = "查询图号", Icon = "fa-solid fa-fw fa-magnifying-glass", Url = "/find-drawing-number" },
+        };
 
-            if (AuthService != null)
-            {
-                AuthService.OnChange += HandleAuthStateChanged;
-            }
+        // 业务菜单:按角色过滤
+        //   Admin    —— 系统管理员,全权
+        //   Operator —— 业务操作员(图号分配 / 订单处理 / 图名维护)
+        //   Viewer   —— 只读(可看订单)
+        // 调整后必须让用户重新登录才能看到新菜单(Cookie Claims 缓存)
+        private static readonly List<(MenuItem item, string[] requiredRoles)> BusinessMenus = new()
+        {
+            (new() { Text = "订单列表", Icon = "fa-solid fa-fw fa-file-invoice", Url = "/orders" },
+                new[] { "Admin", "Operator", "Viewer" }),
+            (new() { Text = "图名列表", Icon = "fa-solid fa-fw fa-list", Url = "/drawing-names" },
+                new[] { "Admin", "Operator" }),
+            (new() { Text = "人员列表", Icon = "fa-solid fa-fw fa-users", Url = "/user-management" },
+                new[] { "Admin" }),
+            (new() { Text = "部门管理", Icon = "fa-solid fa-fw fa-building", Url = "/department-management" },
+                new[] { "Admin" }),
+            (new() { Text = "角色权限", Icon = "fa-solid fa-fw fa-shield-halved", Url = "/roles" },
+                new[] { "Admin" }),
+            (new() { Text = "用户角色", Icon = "fa-solid fa-fw fa-user-tag", Url = "/user-roles" },
+                new[] { "Admin" }),
+            (new() { Text = "添加图号", Icon = "fa-solid fa-fw fa-plus", Url = "/add-drawing-numbers" },
+                new[] { "Admin", "Operator" }),
+            (new() { Text = "修改图号", Icon = "fa-solid fa-fw fa-pen-to-square", Url = "/update-drawing-number" },
+                new[] { "Admin", "Operator" }),
+        };
 
-            if (AuthService != null && !AuthService.IsLoggedIn && NavigationManager != null)
+        protected override async Task OnInitializedAsync()
+        {
+            // 走 AuthStateProvider 而不是 IHttpContextAccessor:
+            // Blazor Server 交互式渲染下,MainLayout.OnInitializedAsync 触发时
+            // IHttpContextAccessor.HttpContext 经常是 null/空,导致 IsAuthenticated
+            // 永远返回 false,菜单被错误地只显示公共项。
+            // AuthStateProvider 在任何生命周期都可靠。
+            if (AuthStateProvider == null)
             {
-                // forceLoad: true 会重建 SignalR circuit,确保 scoped AuthService 拿到干净状态
-                NavigationManager.NavigateTo("/login", forceLoad: true);
+                Menus = PublicMenus;
                 return;
             }
 
-            Menus = GetIconSideMenuItems();
+            var state = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = state.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _displayName = user.FindFirst(ClaimsPrincipalExtensions.DisplayNameClaim)?.Value
+                                ?? user.Identity.Name
+                                ?? "";
+                _userName = user.FindFirst(ClaimsPrincipalExtensions.GIDClaim)?.Value
+                            ?? user.Identity.Name
+                            ?? "";
+                Menus = GetIconSideMenuItems(user);
+            }
+            else
+            {
+                Menus = PublicMenus;
+            }
         }
 
-        private async void HandleAuthStateChanged()
+        /// <summary>
+        /// 根据 ClaimsPrincipal 过滤业务菜单(角色匹配则加入)。
+        /// 公共菜单始终包含。
+        /// </summary>
+        private static List<MenuItem> GetIconSideMenuItems(ClaimsPrincipal user)
         {
-            // 登录/登出/自动登录成功后,CurrentUser 已变化,
-            // 强制刷新 layout 让 header 里的用户名立即更新(不再需要 F5)
-            try
+            var all = new List<MenuItem>(PublicMenus);
+            foreach (var (item, roles) in BusinessMenus)
             {
-                await InvokeAsync(StateHasChanged);
-            }
-            catch
-            {
-                // 组件已销毁,忽略
-            }
-        }
-
-        private static List<MenuItem> GetIconSideMenuItems()
-        {
-            var menus = new List<MenuItem>
-            {
-                new() { Text = "首页", Icon = "fa-solid fa-fw fa-flag", Url = "/" , Match = NavLinkMatch.All},
-                new() { Text = "人员列表", Icon = "fa-solid fa-fw fa-users", Url = "/users" },
-                new() { Text = "订单列表", Icon = "fa-solid fa-fw fa-file-invoice", Url = "/orders" },
-                new() { Text = "查询图号", Icon = "fa-solid fa-fw fa-magnifying-glass", Url = "/find-drawing-number" },
-                new() { Text = "图名列表", Icon = "fa-solid fa-fw fa-list", Url = "/drawing-names" }
-            };
-
-            return menus;
-        }
-
-        private async Task HandleLogout()
-        {
-            if (AuthService != null)
-            {
-                AuthService.Logout();
-            }
-
-            if (ToastService != null)
-            {
-                await ToastService.Show(new ToastOption()
+                if (roles.Any(r => user.IsInRole(r)))
                 {
-                    Category = ToastCategory.Success,
-                    Content = "退出登录成功！",
-                    Delay = 2000
-                });
+                    all.Add(item);
+                }
             }
-
-            if (NavigationManager != null)
-            {
-                NavigationManager.NavigateTo("/login");
-            }
-        }
-
-        public void Dispose()
-        {
-            // 取消订阅,避免 component 销毁后事件 handler 还在被调用的内存泄漏
-            if (AuthService != null)
-            {
-                AuthService.OnChange -= HandleAuthStateChanged;
-            }
+            return all;
         }
 
         // ===== 修改密码弹窗 =====
@@ -126,7 +133,6 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
 
         private void ShowChangePasswordModal()
         {
-            // 重置字段 + 打开
             _oldPassword = "";
             _newPassword = "";
             _confirmPassword = "";
@@ -135,18 +141,26 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
 
         private void CloseChangePasswordModal()
         {
-            if (_changePasswordSaving) return;  // 提交中不允许关
+            if (_changePasswordSaving) return;
             _changePasswordModalVisible = false;
         }
 
         private async Task HandleChangePasswordAsync()
         {
-            // 前端基本校验
-            if (AuthService?.CurrentUser == null)
+            if (AuthStateProvider == null || UsersService == null)
+            {
+                await ShowToast("服务未就绪,请稍后再试", ToastCategory.Error);
+                return;
+            }
+
+            var state = await AuthStateProvider.GetAuthenticationStateAsync();
+            var currentUserIdClaim = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(currentUserIdClaim, out var currentUserId) || currentUserId <= 0)
             {
                 await ShowToast("登录状态已失效,请重新登录", ToastCategory.Error);
                 return;
             }
+
             if (string.IsNullOrEmpty(_oldPassword) || string.IsNullOrEmpty(_newPassword))
             {
                 await ShowToast("旧密码和新密码均不能为空", ToastCategory.Warning);
@@ -163,50 +177,21 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
                 return;
             }
 
-            if (Db == null)
-            {
-                await ShowToast("数据库未就绪,请稍后再试", ToastCategory.Error);
-                return;
-            }
-
             _changePasswordSaving = true;
             try
             {
-                var currentUserId = AuthService.CurrentUser.Id;
-                var oldEncrypted = MD5Helper.Encrypt(_oldPassword);
+                var (ok, error) = await UsersService.ChangePasswordAsync(currentUserId, _oldPassword, _newPassword);
 
-                // 用旧密码的 MD5 从 DB 拉这条记录,匹配才算验证通过
-                var user = await Db.Queryable<Models.Users>()
-                    .Where(u => u.Id == currentUserId && !u.IsDelete)
-                    .FirstAsync();
-
-                if (user == null || user.Password != oldEncrypted)
-                {
-                    await ShowToast("旧密码不正确", ToastCategory.Error);
-                    return;
-                }
-
-                // 写入新密码的 MD5
-                var newEncrypted = MD5Helper.Encrypt(_newPassword);
-                var rows = await Db.Updateable<Models.Users>()
-                    .SetColumns(u => u.Password == newEncrypted)
-                    .Where(u => u.Id == currentUserId)
-                    .ExecuteCommandAsync();
-
-                if (rows > 0)
+                if (ok)
                 {
                     await ShowToast("密码修改成功", ToastCategory.Success);
                     _changePasswordModalVisible = false;
                 }
                 else
                 {
-                    await ShowToast("密码修改失败,请重试", ToastCategory.Error);
+                    await ShowToast(error ?? "密码修改失败,请重试",
+                        error?.Contains("旧密码") == true ? ToastCategory.Error : ToastCategory.Warning);
                 }
-            }
-            catch (Exception ex)
-            {
-                // 错误日志会走 NLog(Program.cs 已经接了)
-                await ShowToast($"密码修改出错:{ex.Message}", ToastCategory.Error);
             }
             finally
             {

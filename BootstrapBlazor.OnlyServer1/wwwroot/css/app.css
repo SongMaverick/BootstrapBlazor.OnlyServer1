@@ -157,3 +157,24 @@
     background-color: #475569 !important;
     color: #ffffff !important;
 }
+
+/* 登录页:全屏渐变背景 + 居中卡片 */
+.login-page {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-card {
+    width: 420px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    border: none;
+    border-radius: 0.5rem;
+}
+
+.login-card .card-header {
+    border-radius: 0.5rem 0.5rem 0 0 !important;
+}

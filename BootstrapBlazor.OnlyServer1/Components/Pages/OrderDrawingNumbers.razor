@@ -1,12 +1,14 @@
 @page "/order-drawing-numbers/{orderId:int}"
 @attribute [TabItemOption(Text = "订单图号列表")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator")]
 @using BootstrapBlazor.OnlyServer1.Services
 @using BootstrapBlazor.OnlyServer1.Models
+@using BootstrapBlazor.OnlyServer1.Services.Identity
 @inject DrawingNumberService? DrawingNumberService
+@inject OrdersService OrdersService
 @inject NavigationManager NavigationManager
 @inject Microsoft.Extensions.Logging.ILogger<OrderDrawingNumbers> Logger
-@inject SqlSugar.ISqlSugarClient? Db
-@inject BootstrapBlazor.OnlyServer1.Services.AuthService? AuthService
+@inject CurrentUserAccessor? CurrentUser
 @inject ToastService? ToastService
 
 <PageTitle>订单图号列表</PageTitle>
@@ -82,12 +84,9 @@
                     else
                     {
                         <div class="mb-3">
-                            <label class="form-label">编号</label>
-                            <input class="form-control" type="text" value="@_editingViewModel.Id" disabled />
-                        </div>
-                        <div class="mb-3">
                             <label class="form-label">图号</label>
                             <input class="form-control" type="text" value="@_editingViewModel.DrawingTypeNumber" disabled />
+                            <small class="text-muted">主键 ID:@_editingViewModel.Id</small>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">图纸名称</label>
@@ -146,7 +145,7 @@
     protected override async Task OnInitializedAsync()
     {
         Logger.LogInformation("OrderDrawingNumbers: OnInitializedAsync, OrderId = {OrderId}", OrderId);
-        await LoadData();
+        await LoadDataAsync();
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -157,52 +156,82 @@
         }
     }
 
-    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    // 同步签名 + InvokeAsync:消除 async void 风险
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
+        // InvokeAsync 在已 Dispose 的组件上直接返回,不会抛
+        _ = InvokeAsync(async () => await ReloadIfMatchesAsync(e.Location));
+    }
+
+    private async Task ReloadIfMatchesAsync(string url)
+    {
+        if (_disposed) return;
+        if (!url.Contains($"/order-drawing-numbers/{OrderId}", StringComparison.OrdinalIgnoreCase)) return;
+
+        // 取消上一次未完成的加载,避免后到的被先到的覆盖
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = new CancellationTokenSource();
+        var token = _loadCts.Token;
+
         try
         {
-            if (e.Location.Contains($"/order-drawing-numbers/{OrderId}"))
-            {
-                Logger.LogInformation("OrderDrawingNumbers: LocationChanged, reloading for OrderId = {OrderId}", OrderId);
-                _order = null;
-                _drawingNumbers = new List<DrawingNumberViewModel>();
-                await LoadData();
-                await InvokeAsync(StateHasChanged);
-            }
+            _order = null;
+            _drawingNumbers = new List<DrawingNumberViewModel>();
+            await LoadDataAsync(token);
+            if (!_disposed) StateHasChanged();
+        }
+        catch (OperationCanceledException)
+        {
+            // 预期的取消,忽略
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "OrderDrawingNumbers: Error in OnLocationChanged");
+            if (!_disposed)
+                Logger.LogError(ex, "OrderDrawingNumbers: Error in ReloadIfMatchesAsync for OrderId = {OrderId}", OrderId);
         }
     }
 
+    private CancellationTokenSource? _loadCts;
+    private bool _disposed;
+
     public void Dispose()
     {
+        _disposed = true;
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
         NavigationManager.LocationChanged -= OnLocationChanged;
     }
 
-    private async Task LoadData()
+    private async Task LoadDataAsync(CancellationToken ct = default)
     {
         Logger.LogInformation("OrderDrawingNumbers: LoadData starting for OrderId = {OrderId}", OrderId);
 
-        if (Db == null || DrawingNumberService == null)
+        if (DrawingNumberService == null)
         {
-            Logger.LogWarning("OrderDrawingNumbers: Db or DrawingNumberService is null");
+            Logger.LogWarning("OrderDrawingNumbers: DrawingNumberService is null");
             return;
         }
 
         try
         {
-            _order = await Db.Queryable<BootstrapBlazor.OnlyServer1.Models.Orders>().InSingleAsync(OrderId);
+            ct.ThrowIfCancellationRequested();
+            _order = await OrdersService.GetByIdAsync(OrderId);
             if (_order == null)
             {
                 Logger.LogWarning("Order not found: {OrderId}", OrderId);
                 return;
             }
 
+            ct.ThrowIfCancellationRequested();
             Logger.LogInformation("OrderDrawingNumbers: Loaded order successfully");
             _drawingNumbers = await DrawingNumberService.GetAddedDrawingNumberViewModelsByOrderIdAsync(OrderId);
+            ct.ThrowIfCancellationRequested();
             Logger.LogInformation("OrderDrawingNumbers: Loaded {Count} drawing numbers", _drawingNumbers.Count);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -266,7 +295,7 @@
 
     private async Task HandleEditConfirm()
     {
-        if (DrawingNumberService == null || AuthService == null || _editingC0x == null || _editingViewModel == null)
+        if (DrawingNumberService == null || CurrentUser == null || _editingC0x == null || _editingViewModel == null)
         {
             if (ToastService != null) await ToastService.Error("服务不可用");
             return;
@@ -283,8 +312,8 @@
 
         try
         {
-            var currentUser = AuthService.CurrentUser;
-            if (currentUser == null)
+            var currentUserName = CurrentUser.GetDisplayName();
+            if (string.IsNullOrEmpty(currentUserName))
             {
                 if (ToastService != null) await ToastService.Error("未登录");
                 _editSaving = false;
@@ -293,11 +322,11 @@
 
             string oldDrawingName = _editingC0x.DrawName;
             _editingC0x.DrawName = _editModel.DrawName.Trim();
-            _editingC0x.UpdatedBy = currentUser.Name;
+            _editingC0x.UpdatedBy = currentUserName;
             _editingC0x.UpdatedTime = DateTime.Now;
 
             Logger.LogInformation("User {UserName} updating drawing number {DrawingTypeNumber}, from '{OldName}' to '{NewName}'",
-                currentUser.Name, _editingViewModel.DrawingTypeNumber, oldDrawingName, _editingC0x.DrawName);
+                currentUserName, _editingViewModel.DrawingTypeNumber, oldDrawingName, _editingC0x.DrawName);
 
             int result = await DrawingNumberService.UpdateCX0DrawingNumberByIdAsync(_editingC0x, _editingViewModel.DrawingType);
 
@@ -307,7 +336,7 @@
                 if (ToastService != null) await ToastService.Success("修改成功");
                 CloseEditModal();
                 // 不跳转页面,只刷新当前列表
-                await LoadData();
+                await LoadDataAsync();
             }
             else
             {

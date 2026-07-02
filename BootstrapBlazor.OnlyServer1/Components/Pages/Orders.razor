@@ -1,9 +1,10 @@
 @page "/orders"
 @attribute [TabItemOption(Text = "订单列表")]
-@inject SqlSugar.ISqlSugarClient? Db
-@inject Microsoft.Extensions.Logging.ILogger<Orders> Logger
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator,Viewer")]
+@inject BootstrapBlazor.OnlyServer1.Services.OrdersService OrdersService
 @inject BootstrapBlazor.OnlyServer1.Services.DrawingNumberService? DrawingNumberService
-@inject BootstrapBlazor.OnlyServer1.Services.AuthService AuthService
+@inject Microsoft.Extensions.Logging.ILogger<Orders> Logger
+@inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
 @inject BootstrapBlazor.Components.ToastService ToastService
 @inject NavigationManager NavigationManager
 
@@ -32,12 +33,13 @@
            ShowSkeleton="true"
            IsMultipleSelect="true"
            Height="600"
- ShowExtendEditButtonCallback="@((Models.Orders item) => true)"
+           ShowAddButton="@CurrentUser.HasPermission("Order.Create")"
+  ShowExtendEditButtonCallback="@((Models.Orders item) => CurrentUser.HasPermission("Order.Edit"))"
             DisableExtendEditButtonCallback="@((Models.Orders item) => HasDrawingNumber(item))"
-            DisableExtendDeleteButtonCallback="@((Models.Orders item) => HasDrawingNumber(item))"
-           @ref="OrdersTable">
+            DisableExtendDeleteButtonCallback="@((Models.Orders item) => !CurrentUser.HasPermission("Order.Delete") || HasDrawingNumber(item))"
+            @ref="OrdersTable">
         <TableColumns>
-            <TableColumn @bind-Field="@context.Id" Text="编号" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.Id" Text="编号" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" IsVisibleWhenAdd="false" />
             <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="120" Align="Alignment.Center" Sortable="true" ReadonlyCallback="@((Models.Orders item) => item.Id > 0)" />
             <TableColumn @bind-Field="@context.Power" Text="容量" Width="100" Align="Alignment.Center" Sortable="true" />
             <TableColumn @bind-Field="@context.RatedVoltage" Text="额定电压" Width="120" Align="Alignment.Center" Sortable="true" />
@@ -59,22 +61,28 @@
                     }
                 </Template>
             </TableColumn>
-            <TableColumn @bind-Field="@context.CreatedBy" Text="创建者" Width="120" Sortable="true" Readonly="true" />
-            <TableColumn @bind-Field="@context.CreatedTime" Text="创建时间" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
+            <TableColumn @bind-Field="@context.CreatedBy" Text="创建者" Width="120" Sortable="true" Readonly="true" IsVisibleWhenAdd="false" />
+            <TableColumn @bind-Field="@context.CreatedTime" Text="创建时间" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true" IsVisibleWhenAdd="false">
                 <Template Context="value">
                     @value.Value.ToString("yyyy-MM-dd HH:mm:ss")
                 </Template>
             </TableColumn>
         </TableColumns>
         <TableToolbarTemplate>
-            <Button Color="Color.Primary" Icon="fa-solid fa-plus"
-                    OnClick="OnToolbarAddDrawingNumberClick">
-                添加图号
-            </Button>
-            <Button Color="Color.Primary" Icon="fa-solid fa-list"
-                    OnClick="OnToolbarViewDrawingNumberClick">
-                查看图号
-            </Button>
+            @if (CurrentUser.HasPermission("DrawingNumber.Allocate"))
+            {
+                <Button Color="Color.Primary" Icon="fa-solid fa-plus"
+                        OnClick="OnToolbarAddDrawingNumberClick">
+                    添加图号
+                </Button>
+            }
+            @if (CurrentUser.HasPermission("DrawingNumber.Read"))
+            {
+                <Button Color="Color.Primary" Icon="fa-solid fa-list"
+                        OnClick="OnToolbarViewDrawingNumberClick">
+                    查看图号
+                </Button>
+            }
         </TableToolbarTemplate>
     </Table>
 </div>
@@ -83,10 +91,6 @@
     private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
 
     private Table<Models.Orders>? OrdersTable { get; set; }
-
-    // 缓存:订单 Id -> 是否存在未删除的图号。供 DisableExtendEditButtonCallback 使用,
-    // 避免每行每次渲染都查一次 DB。
-    private readonly Dictionary<int, bool> _hasDrawingNumberCache = new();
 
     private async Task OnToolbarAddDrawingNumberClick()
     {
@@ -138,65 +142,16 @@
 
     private async Task<QueryData<Models.Orders>> OnQueryAsync(QueryPageOptions options)
     {
-        if (Db == null)
-        {
-            Logger.LogWarning("Db is null, returning empty result");
-            return new QueryData<Models.Orders>();
-        }
-        
-        try
-        {
-            var query = Db.Queryable<Models.Orders>();
-            
-            // 只查询未删除的数据
-            query = query.Where(o => !o.IsDeleted);
-
-            // 处理搜索
-            if (!string.IsNullOrEmpty(options.SearchText))
-            {
-                query = query.Where(o => o.OrderNumber.ToString().Contains(options.SearchText) 
-                                     || o.CreatedBy.Contains(options.SearchText));
-            }
-
-            // 处理排序
-            if (!string.IsNullOrEmpty(options.SortName))
-            {
-                query = options.SortOrder == SortOrder.Asc 
-                    ? query.OrderBy($"{options.SortName} asc") 
-                    : query.OrderBy($"{options.SortName} desc");
-            }
-            else
-            {
-                query = query.OrderByDescending(o => o.CreatedTime);
-            }
-
-            var total = query.Count();
-            var items = query.Skip((options.PageIndex - 1) * options.PageItems).Take(options.PageItems).ToList();
-
-            // 预热本页订单的"是否有图号"缓存,供 DisableExtendEditButtonCallback 使用
-            await PreloadDrawingNumberCacheAsync(items);
-
-            return new QueryData<Models.Orders>()
-            {
-                Items = items,
-                TotalCount = total,
-                IsFiltered = options.Filters.Any(),
-                IsSorted = !string.IsNullOrEmpty(options.SortName),
-                IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.SearchModel != null
-            };
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error querying orders");
-            return new QueryData<Models.Orders>();
-        }
+        var result = await OrdersService.QueryAsync(options);
+        // 预热本页订单的"是否有图号"缓存(由 OrdersService 内部按 drawingType 分组批量查)
+        await OrdersService.PreloadHasDrawingNumberCacheAsync(result.Items);
+        return result;
     }
 
     private Task<Models.Orders> OnAddAsync()
     {
-        // 用当前登录用户的姓名预填创建者;未登录时回退到 Windows 账号
-        var currentUserName = AuthService?.CurrentUser?.Name
-            ?? Services.AuthService.GetUID();
+        // 用当前登录用户的姓名预填创建者;未登录时使用空字符串占位,由 SaveAsync 的后续流程处理
+        var currentUserName = CurrentUser.GetDisplayName() ?? string.Empty;
 
         return Task.FromResult(new Models.Orders()
         {
@@ -211,181 +166,27 @@
 
     private async Task<bool> OnSaveAsync(Models.Orders order, ItemChangedType changedType)
     {
-        if (Db == null)
+        var (ok, error) = await OrdersService.SaveAsync(order, changedType);
+        if (!ok && !string.IsNullOrEmpty(error))
         {
-            Logger.LogWarning("Db is null, cannot save");
-            return false;
+            await ToastService.Error(error);
         }
-        
-        try
-        {
-            // 验证订单号不能为空
-            if (order.OrderNumber <= 0)
-            {
-                Logger.LogWarning("OrderNumber cannot be empty or zero");
-                await ToastService.Error("订单号不能为空");
-                return false;
-            }
-
-            // 订单号查重:新建时不能与已有订单号重复;编辑时排除自己
-            var duplicateQuery = Db.Queryable<Models.Orders>()
-                .Where(o => o.OrderNumber == order.OrderNumber && !o.IsDeleted);
-            if (changedType == ItemChangedType.Update)
-            {
-                duplicateQuery = duplicateQuery.Where(o => o.Id != order.Id);
-            }
-            var isDuplicate = await duplicateQuery.AnyAsync();
-            if (isDuplicate)
-            {
-                Logger.LogWarning("Duplicate OrderNumber: {OrderNumber}", order.OrderNumber);
-                await ToastService.Error($"订单号 {order.OrderNumber} 已存在,请使用其他订单号");
-                return false;
-            }
-
-            // 兜底拦截:编辑订单时,如果该订单下已存在图号,则不允许修改
-            // 前端已经通过 DisableExtendEditButtonCallback 把按钮禁用了,
-            // 但这里再做一次校验,防止绕过 UI 的请求也能被挡住
-            if (changedType == ItemChangedType.Update)
-            {
-                if (DrawingNumberService == null)
-                {
-                    Logger.LogWarning("DrawingNumberService is null, cannot verify drawing numbers");
-                }
-                else
-                {
-                    var drawingNumbers = await DrawingNumberService.GetAddedDrawingNumbersByOrderIdAsync(order.Id);
-                    if (drawingNumbers != null && drawingNumbers.Count > 0)
-                    {
-                        Logger.LogWarning("Order {OrderNumber} (Id={Id}) has {Count} drawing numbers, modification not allowed",
-                            order.OrderNumber, order.Id, drawingNumbers.Count);
-                        await ToastService.Error($"订单 {order.OrderNumber} 下存在 {drawingNumbers.Count} 个图号,不允许修改。请先删除相关图号后再修改订单信息。");
-                        return false;
-                    }
-                }
-            }
-
-            if (changedType == ItemChangedType.Add)
-            {
-                Logger.LogInformation("Adding new order: {OrderNumber}", order.OrderNumber);
-                order.CreatedTime = DateTime.Now;
-                order.UpdatedTime = DateTime.Now;
-                order.IsDeleted = false;
-                order.UpdatedBy = order.CreatedBy;
-                await Db.Insertable(order).ExecuteCommandAsync();
-            }
-            else
-            {
-                Logger.LogInformation("Updating order: {OrderNumber}", order.OrderNumber);
-                order.UpdatedTime = DateTime.Now;
-                await Db.Updateable(order).ExecuteCommandAsync();
-            }
-
-            // 订单变更后清缓存,下次按需重新计算
-            InvalidateDrawingNumberCache();
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error saving order");
-            return false;
-        }
+        return ok;
     }
 
     private async Task<bool> OnDeleteAsync(IEnumerable<Models.Orders> orders)
     {
-        if (Db == null)
-        {
-            Logger.LogWarning("Db is null, cannot delete");
-            return false;
-        }
-
-        try
-        {
-            foreach (var order in orders)
-            {
-                Logger.LogInformation("Deleting order: {OrderNumber}", order.OrderNumber);
-                order.IsDeleted = true;
-                await Db.Updateable(order).UpdateColumns(o => new { o.IsDeleted }).ExecuteCommandAsync();
-            }
-
-            // 订单变更后清缓存,下次按需重新计算
-            InvalidateDrawingNumberCache();
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error deleting orders");
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// 预热本页订单的"是否有图号"缓存。一次性查所有 Id,避免逐行回调触发多次查询。
-    /// </summary>
-    private async Task PreloadDrawingNumberCacheAsync(IEnumerable<Models.Orders> orders)
-    {
-        if (DrawingNumberService == null) return;
-
-        var ids = orders.Select(o => o.Id).ToList();
-        foreach (var id in ids)
-        {
-            // 已经查过的就跳过
-            if (_hasDrawingNumberCache.ContainsKey(id)) continue;
-
-            try
-            {
-                var list = await DrawingNumberService.GetAddedDrawingNumbersByOrderIdAsync(id);
-                _hasDrawingNumberCache[id] = list != null && list.Count > 0;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error preloading drawing number cache for order {Id}", id);
-                // 查询失败时按"没有图号"处理,允许编辑,避免误伤
-                _hasDrawingNumberCache[id] = false;
-            }
-        }
+        return await OrdersService.SoftDeleteAsync(orders);
     }
 
     /// <summary>
     /// 单行查询:供 DisableExtendEditButtonCallback 使用。
-    /// 先查缓存;缓存没有再调 Service 并写入缓存。
+    /// 直接读 OrdersService 缓存;缓存未命中时返回 false(允许编辑),
+    /// 真实状态在 PreloadHasDrawingNumberCacheAsync 完成后通过 StateHasChanged 刷新。
     /// </summary>
     private bool HasDrawingNumber(Models.Orders item)
     {
         if (item == null) return false;
-        if (_hasDrawingNumberCache.TryGetValue(item.Id, out var has)) return has;
-
-        // 缓存未命中 — 同步等待异步查询。Blazor 渲染期间这里调用是阻塞的,
-        // 但首次调用后立即写入缓存,后续行不会再触发。
-        // 为了避免在渲染线程里出现死锁/警告,直接返回 false 让 UI 先放开按钮,
-        // 真实状态在 PreloadDrawingNumberCacheAsync 完成后通过 StateHasChanged 刷新。
-        _ = LoadHasDrawingNumberAsync(item.Id);
-        return false;
-    }
-
-    private async Task LoadHasDrawingNumberAsync(int orderId)
-    {
-        if (DrawingNumberService == null) return;
-        if (_hasDrawingNumberCache.ContainsKey(orderId)) return;
-
-        try
-        {
-            var list = await DrawingNumberService.GetAddedDrawingNumbersByOrderIdAsync(orderId);
-            _hasDrawingNumberCache[orderId] = list != null && list.Count > 0;
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error loading drawing number status for order {Id}", orderId);
-            _hasDrawingNumberCache[orderId] = false;
-        }
-    }
-
-    /// <summary>
-    /// 增删改完成后清空缓存,下次按需重新计算。
-    /// </summary>
-    private void InvalidateDrawingNumberCache()
-    {
-        _hasDrawingNumberCache.Clear();
+        return OrdersService.TryGetHasDrawingNumber(item.Id, out var has) && has;
     }
 }

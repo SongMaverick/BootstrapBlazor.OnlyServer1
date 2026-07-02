@@ -1,6 +1,7 @@
 @page "/add-drawing-numbers-select"
 @attribute [TabItemOption(Text = "添加图号")]
-@inject SqlSugar.ISqlSugarClient? Db
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator")]
+@inject BootstrapBlazor.OnlyServer1.Services.OrdersService OrdersService
 @inject Microsoft.Extensions.Logging.ILogger<AddDrawingNumbersSelect> Logger
 @inject NavigationManager NavigationManager
 
@@ -131,64 +132,8 @@
     private string? _reactorFilter;
     private Models.Orders? selectedOrder;
 
-    private async Task<QueryData<Models.Orders>> OnQueryAsync(QueryPageOptions options)
-    {
-        if (Db == null)
-        {
-            Logger.LogWarning("Db is null, returning empty result");
-            return new QueryData<Models.Orders>();
-        }
-
-        try
-        {
-            var query = Db.Queryable<Models.Orders>().Where(o => !o.IsDeleted);
-
-            if (!string.IsNullOrWhiteSpace(_orderNumberKeyword))
-            {
-                var kw = _orderNumberKeyword.Trim();
-                query = query.Where(o => o.OrderNumber.ToString().Contains(kw));
-            }
-
-            if (!string.IsNullOrWhiteSpace(_createdByKeyword))
-            {
-                var kw = _createdByKeyword.Trim();
-                query = query.Where(o => o.CreatedBy.Contains(kw));
-            }
-
-            if (!string.IsNullOrWhiteSpace(_reactorFilter) && bool.TryParse(_reactorFilter, out var isReactor))
-            {
-                query = query.Where(o => o.IsReactor == isReactor);
-            }
-
-            if (!string.IsNullOrEmpty(options.SortName))
-            {
-                query = options.SortOrder == SortOrder.Asc
-                    ? query.OrderBy($"{options.SortName} asc")
-                    : query.OrderBy($"{options.SortName} desc");
-            }
-            else
-            {
-                query = query.OrderByDescending(o => o.OrderNumber);
-            }
-
-            var total = query.Count();
-            var items = query.Skip((options.PageIndex - 1) * options.PageItems).Take(options.PageItems).ToList();
-
-            return new QueryData<Models.Orders>()
-            {
-                Items = items,
-                TotalCount = total,
-                IsFiltered = options.Filters.Any(),
-                IsSorted = !string.IsNullOrEmpty(options.SortName),
-                IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.SearchModel != null
-            };
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error querying orders");
-            return new QueryData<Models.Orders>();
-        }
-    }
+    private Task<QueryData<Models.Orders>> OnQueryAsync(QueryPageOptions options)
+        => OrdersService.SearchAsync(options, _orderNumberKeyword, _createdByKeyword, _reactorFilter);
 
     private void OnSelectedRowsChanged(IEnumerable<Models.Orders> rows)
     {

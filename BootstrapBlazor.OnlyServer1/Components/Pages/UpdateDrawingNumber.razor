@@ -1,11 +1,13 @@
 @page "/update-drawing-number/{id:int}/{drawingType}"
 @attribute [TabItemOption(Text = "修改图号")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator")]
 @using BootstrapBlazor.OnlyServer1.Services
 @using BootstrapBlazor.OnlyServer1.Models
+@using BootstrapBlazor.OnlyServer1.Services.Identity
 @inject DrawingNumberService? DrawingNumberService
 @inject NavigationManager NavigationManager
 @inject Microsoft.Extensions.Logging.ILogger<UpdateDrawingNumber> Logger
-@inject AuthService? AuthService
+@inject CurrentUserAccessor? CurrentUser
 @inject ToastService? ToastService
 
 <PageTitle>修改图号</PageTitle>
@@ -94,14 +96,14 @@
             return;
         }
 
-        _viewModel = await DrawingNumberService.DrawingNumber2DrawingNumberViewModelAsync(_c0x);
+        _viewModel = await DrawingNumberService.DrawingNumber2DrawingNumberViewModelAsync(_c0x, DrawingType);
         _editModel.DrawName = _viewModel.DrawName;
         _loading = false;
     }
 
     private async Task HandleUpdateDrawingNumber()
     {
-        if (DrawingNumberService == null || AuthService == null || _c0x == null)
+        if (DrawingNumberService == null || CurrentUser == null || _c0x == null)
         {
             Logger.LogError("HandleUpdateDrawingNumber: _c0x is null at start");
             return;
@@ -112,8 +114,8 @@
         Logger.LogInformation("HandleUpdateDrawingNumber: targetOrderId = {TargetOrderId}", targetOrderId);
 
         _saving = true;
-        var currentUser = AuthService.CurrentUser;
-        if (currentUser == null)
+        var currentUserName = CurrentUser.GetDisplayName();
+        if (string.IsNullOrEmpty(currentUserName))
         {
             if (ToastService != null) await ToastService.Error("未登录");
             _saving = false;
@@ -124,11 +126,11 @@
         {
             string oldDrawingName = _c0x.DrawName;
             _c0x.DrawName = _editModel.DrawName;
-            _c0x.UpdatedBy = currentUser.Name;
+            _c0x.UpdatedBy = currentUserName;
             _c0x.UpdatedTime = DateTime.Now;
 
-            Logger.LogInformation("User {UserName} updating drawing number {DrawingTypeNumber}, from '{OldName}' to '{NewName}'", 
-                currentUser.Name, _viewModel.DrawingTypeNumber, oldDrawingName, _editModel.DrawName);
+            Logger.LogInformation("User {UserName} updating drawing number {DrawingTypeNumber}, from '{OldName}' to '{NewName}'",
+                currentUserName, _viewModel.DrawingTypeNumber, oldDrawingName, _editModel.DrawName);
 
             int result = await DrawingNumberService.UpdateCX0DrawingNumberByIdAsync(_c0x, DrawingType);
 

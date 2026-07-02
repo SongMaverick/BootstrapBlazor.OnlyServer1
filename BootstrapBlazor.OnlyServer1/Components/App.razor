@@ -17,22 +17,21 @@
     <link rel="apple-touch-icon" href="favicon.png">
     <base href="/" />
     <Link Href="_content/BootstrapBlazor.FontAwesome/css/font-awesome.min.css" />
-    <Link Href="_content/BootstrapBlazor.MaterialDesign/css/md.min.css" />
     <Link Href="_content/BootstrapBlazor/css/bootstrap.blazor.bundle.min.css" />
     <Link Href="_content/BootstrapBlazor/css/motronic.min.css" />
     <Link Href="BootstrapBlazor.OnlyServer1.styles.css" />
     <Link Href="css/app.css" />
     <title>Bootstrap Blazor Server App</title>
-    <HeadOutlet @rendermode="new InteractiveServerRenderMode(false)" />
+    <HeadOutlet />
 </head>
 
 <body>
-    <Routes @rendermode="new InteractiveServerRenderMode(false)" />
+    <Routes @rendermode="new InteractiveServerRenderMode()" />
 
-    <ReconnectorOutlet ReconnectInterval="5000" @rendermode="new InteractiveServerRenderMode(false)" />
+    <ReconnectorOutlet ReconnectInterval="5000" @rendermode="new InteractiveServerRenderMode()" />
 
-    <Script Src="_content/BootstrapBlazor/js/bootstrap.blazor.bundle.min.js"></Script>
     <script src="_framework/blazor.web.js"></script>
+    <Script Src="_content/BootstrapBlazor/js/bootstrap.blazor.bundle.min.js"></Script>
 </body>
 
 </html>

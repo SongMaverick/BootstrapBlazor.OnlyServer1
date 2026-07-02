@@ -1,8 +1,11 @@
 @page "/drawing-names"
 @attribute [TabItemOption(Text = "图名列表")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator")]
 @using BootstrapBlazor.OnlyServer1.Services
 @using BootstrapBlazor.OnlyServer1.Models
+@using BootstrapBlazor.OnlyServer1.Services.Identity
 @inject DrawingNumberService? DrawingNumberService
+@inject CurrentUserAccessor CurrentUser
 @inject Microsoft.Extensions.Logging.ILogger<DrawingNameList> Logger
 @inject BootstrapBlazor.Components.ToastService ToastService
 
@@ -11,10 +14,13 @@
 <div class="container-fluid mt-4">
     <div class="d-flex align-items-center mb-3">
         <h3 class="mb-0">图名列表</h3>
-        <button class="btn btn-primary ms-auto" @onclick="OpenAddModal">
-            <i class="fa-solid fa-plus me-1"></i>
-            <span>添加图名</span>
-        </button>
+        @if (CurrentUser.HasPermission("DrawingName.Create"))
+        {
+            <button class="btn btn-primary ms-auto" @onclick="OpenAddModal">
+                <i class="fa-solid fa-plus me-1"></i>
+                <span>添加图名</span>
+            </button>
+        }
         <button class="btn btn-outline-secondary ms-2" @onclick="LoadDataAsync" disabled="@_isLoading">
             <i class="fa-solid fa-refresh me-1"></i>
             <span>刷新</span>
@@ -61,7 +67,7 @@
                                 }
                             </td>
                             <td>
-                                @if (!item.Isdelete) {
+                                @if (!item.Isdelete && CurrentUser.HasPermission("DrawingName.Delete")) {
                                     <button class="btn btn-sm btn-danger" @onclick="() => HandleDelete(item.Id, item.ComponentName)">
                                         <i class="fa-solid fa-trash"></i>
                                         <span class="ms-1">删除</span>

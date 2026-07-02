@@ -1,120 +1,53 @@
 @page "/login"
-@inject BootstrapBlazor.OnlyServer1.Services.AuthService AuthService
-@inject NavigationManager NavigationManager
-@inject Microsoft.Extensions.Logging.ILogger<Login> Logger
-@inject BootstrapBlazor.Components.ToastService ToastService
+@layout BootstrapBlazor.OnlyServer1.Components.Shared.LoginLayout
 
 <PageTitle>登录</PageTitle>
 
-<div class="container min-vh-100 d-flex align-items-center justify-content-center">
-    <div class="card" style="width: 600px;">
-        <div class="card-header bg-primary text-white text-center">
-            <h3>后台管理系统</h3>
+<div class="login-page" style="position: fixed; inset: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center;">
+    <div class="card login-card" style="width: 420px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); border: none; border-radius: 0.5rem;">
+        <div class="card-header bg-primary text-white text-center py-4">
+            <i class="fa-solid fa-shield-halved fa-2x mb-2 d-block"></i>
+            <h3 class="mb-0">后台管理系统</h3>
         </div>
-        <div class="card-body">
-            @if (IsAutoLogin)
-            {
-                <div class="text-center">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">自动登录中...</span>
-                    </div>
-                    <p class="mt-2">正在尝试自动登录...</p>
+        <div class="card-body p-4">
+            <form method="post" action="/Account/Login">
+                <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
+
+                <div class="mb-3">
+                    <label for="workerNumber" class="form-label">员工号</label>
+                    <input type="text"
+                           name="WorkerNumber"
+                           id="workerNumber"
+                           class="form-control"
+                           required
+                           autocomplete="username"
+                           placeholder="请输入员工号" />
                 </div>
-            }
-            else
-            {
-                @* 自动登录失败时,顶部友好提示(不再暴露数据库) *@
-                @if (ShowUnauthorizedNotice)
+                <div class="mb-3">
+                    <label for="password" class="form-label">密码</label>
+                    <input type="password"
+                           name="Password"
+                           id="password"
+                           class="form-control"
+                           required
+                           autocomplete="current-password"
+                           placeholder="请输入密码" />
+                </div>
+
+                @if (ErrorMessage is not null)
                 {
-                    <div class="alert alert-warning d-flex align-items-center" role="alert">
-                        <i class="fa-solid fa-circle-exclamation me-2"></i>
-                        <div>
-                            您当前不在系统授权名单中,请联系管理员,或使用员工号 + 密码手动登录。
-                        </div>
-                    </div>
+                    <div class="alert alert-danger mb-3" role="alert">@ErrorMessage</div>
                 }
 
-                <form @onsubmit="HandleSubmit">
-                    <div class="mb-3">
-                        <label for="workerNumber" class="form-label">员工号</label>
-                        <input type="number" class="form-control" id="workerNumber" @bind="WorkerNumber" placeholder="请输入员工号" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="password" class="form-label">密码</label>
-                        <input type="password" class="form-control" id="password" @bind="Password" placeholder="请输入密码" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100" disabled="@IsLoading">
-                        @(IsLoading ? "登录中..." : "登录")
-                    </button>
-                </form>
-            }
+                <button type="submit" class="btn btn-primary w-100">登录</button>
+            </form>
         </div>
     </div>
 </div>
 
 @code {
-    private string WorkerNumber { get; set; } = string.Empty;
-    private string Password { get; set; } = string.Empty;
-    private bool IsLoading { get; set; } = false;
-    private bool IsAutoLogin { get; set; } = true;
-    private bool ShowUnauthorizedNotice { get; set; } = false;
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
 
-    protected override async Task OnInitializedAsync()
-    {
-        await base.OnInitializedAsync();
-
-        IsAutoLogin = true;
-        ShowUnauthorizedNotice = false;
-
-        try
-        {
-            var success = await AuthService.AutoLoginByGID();
-
-            if (success)
-            {
-                Logger.LogInformation("自动登录成功，用户: {UserName}", AuthService.CurrentUser?.Name);
-                NavigationManager.NavigateTo("/");
-                return;
-            }
-
-            Logger.LogWarning("自动登录失败，未找到匹配的GID");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "自动登录发生错误");
-        }
-
-        IsAutoLogin = false;
-        ShowUnauthorizedNotice = true;
-    }
-
-    private async Task HandleSubmit()
-    {
-        IsLoading = true;
-
-        try
-        {
-            var success = await AuthService.Login(WorkerNumber, Password);
-
-            if (success)
-            {
-                NavigationManager.NavigateTo("/");
-            }
-            else
-            {
-                await ToastService.Show(new BootstrapBlazor.Components.ToastOption()
-                {
-                    Category = BootstrapBlazor.Components.ToastCategory.Error,
-                    Title = "登录失败",
-                    Content = "账户或密码错误,请联系管理员"
-                });
-                // 清空密码框,保留员工号方便用户核对
-                Password = string.Empty;
-            }
-        }
-        finally
-        {
-            IsLoading = false;
-        }
-    }
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? ErrorMessage { get; set; }
 }

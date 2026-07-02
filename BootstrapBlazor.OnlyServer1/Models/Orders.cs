@@ -4,9 +4,9 @@ namespace BootstrapBlazor.OnlyServer1.Models {
     public class Orders {
 
         /// <summary>
-        /// 序号 自增
+        /// 序号 自增(Order / ReactorOrder 合并,Id 用新自增值,保证唯一)
         /// </summary>
-        [SugarColumn(IsPrimaryKey = true, IsIdentity = true)] //数据库是自增才配自增 
+        [SugarColumn(IsPrimaryKey = true, IsIdentity = true)]
         public int Id { get; set; }
 
         /// <summary>
@@ -32,8 +32,7 @@ namespace BootstrapBlazor.OnlyServer1.Models {
         /// <summary>
         /// 创建人
         /// </summary>
-        
-        public String CreatedBy { get; set; } 
+        public string CreatedBy { get; set; } = "";
 
         /// <summary>
         /// 更新时间
@@ -43,8 +42,7 @@ namespace BootstrapBlazor.OnlyServer1.Models {
         /// <summary>
         /// 更新人
         /// </summary>
-        
-        public String UpdatedBy { get; set; } 
+        public string UpdatedBy { get; set; } = "";
 
         /// <summary>
         /// 创建时间
@@ -54,6 +52,6 @@ namespace BootstrapBlazor.OnlyServer1.Models {
         /// <summary>
         /// 是否删除
         /// </summary>
-        public bool IsDeleted { get; set; }
+        public bool IsDeleted { get; set; } = false;
     }
 }
