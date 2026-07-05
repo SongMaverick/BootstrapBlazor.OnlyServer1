@@ -1,10 +1,13 @@
 using System.Security.Claims;
 using BootstrapBlazor.Components;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Services;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Routing;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 
 namespace BootstrapBlazor.OnlyServer1.Components.Shared
 {
@@ -21,6 +24,9 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
 
         [Inject]
         private ToastService? ToastService { get; set; }
+
+        [Inject]
+        private IOptions<IdentityOptions>? IdentityOptions { get; set; }
 
         private bool UseTabSet { get; set; } = true;
 
@@ -57,21 +63,22 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
         private static readonly List<(MenuItem item, string[] requiredRoles)> BusinessMenus = new()
         {
             (new() { Text = "订单列表", Icon = "fa-solid fa-fw fa-file-invoice", Url = "/orders" },
-                new[] { "Admin", "Operator", "Viewer" }),
+                RoleNames.All),
             (new() { Text = "图名列表", Icon = "fa-solid fa-fw fa-list", Url = "/drawing-names" },
-                new[] { "Admin", "Operator" }),
+                new[] { RoleNames.Admin, RoleNames.Operator }),
             (new() { Text = "人员列表", Icon = "fa-solid fa-fw fa-users", Url = "/user-management" },
-                new[] { "Admin" }),
+                new[] { RoleNames.Admin }),
             (new() { Text = "部门管理", Icon = "fa-solid fa-fw fa-building", Url = "/department-management" },
-                new[] { "Admin" }),
+                new[] { RoleNames.Admin }),
             (new() { Text = "角色权限", Icon = "fa-solid fa-fw fa-shield-halved", Url = "/roles" },
-                new[] { "Admin" }),
+                new[] { RoleNames.Admin }),
             (new() { Text = "用户角色", Icon = "fa-solid fa-fw fa-user-tag", Url = "/user-roles" },
-                new[] { "Admin" }),
-            (new() { Text = "添加图号", Icon = "fa-solid fa-fw fa-plus", Url = "/add-drawing-numbers" },
-                new[] { "Admin", "Operator" }),
-            (new() { Text = "修改图号", Icon = "fa-solid fa-fw fa-pen-to-square", Url = "/update-drawing-number" },
-                new[] { "Admin", "Operator" }),
+                new[] { RoleNames.Admin }),
+            // 注:"添加图号"(/add-drawing-numbers/{orderId:int})和"修改图号"
+            // (/update-drawing-number/{id:int}/{drawingType})的路由都需要 URL 参数,
+            // 菜单项无法带参数 → 点击直接 404。入口改由业务页内嵌按钮触发:
+            //   - 添加图号:Orders 表格工具栏 / OrderDrawingNumbers 列表页顶部按钮
+            //   - 修改图号:OrderDrawingNumbers 表格内 "修改" 按钮(弹窗编辑)
         };
 
         protected override async Task OnInitializedAsync()
@@ -166,9 +173,10 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
                 await ShowToast("旧密码和新密码均不能为空", ToastCategory.Warning);
                 return;
             }
-            if (_newPassword.Length < 6)
+            var minLen = IdentityOptions?.Value.Password.RequiredLength ?? 6;
+            if (_newPassword.Length < minLen)
             {
-                await ShowToast("新密码长度至少 6 位", ToastCategory.Warning);
+                await ShowToast($"新密码长度至少 {minLen} 位", ToastCategory.Warning);
                 return;
             }
             if (_newPassword != _confirmPassword)

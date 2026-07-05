@@ -1,10 +1,12 @@
 @page "/user-management"
 @attribute [TabItemOption(Text = "人员列表")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin)]
+@using Microsoft.Extensions.Options
 @inject BootstrapBlazor.OnlyServer1.Services.UsersService UsersService
 @inject BootstrapBlazor.OnlyServer1.Services.DepartmentsService DepartmentsService
 @inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
-@inject BootstrapBlazor.Components.ToastService ToastService
+@inject ToastService ToastService
+@inject Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Identity.IdentityOptions> IdentityOptions
 
 <PageTitle>人员列表</PageTitle>
 
@@ -29,8 +31,8 @@
            ShowSkeleton="true"
            IsMultipleSelect="true"
            Height="700"
-           ShowAddButton="@CurrentUser.HasPermission("User.Create")"
-           ShowDeleteButton="@CurrentUser.HasPermission("User.Delete")">
+           ShowAddButton="@CurrentUser.HasPermission(PermissionCodes.UserCreate)"
+           ShowDeleteButton="@CurrentUser.HasPermission(PermissionCodes.UserDelete)">
         <TableColumns>
             <TableColumn @bind-Field="@context.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
             <TableColumn @bind-Field="@context.Name" Width="150" Sortable="true" />
@@ -56,7 +58,7 @@
             <TableColumn @bind-Field="@context.PasswordHash"
                          Text="密码哈希"
                          Visible="false" />
-            <TableColumn @bind-Field="@context.CreateTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
+            <TableColumn @bind-Field="@context.CreatedTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
                 <Template Context="value">
                     @value.Value.ToString("yyyy-MM-dd HH:mm:ss")
                 </Template>
@@ -90,7 +92,7 @@
                         <div class="mb-3">
                             <label class="form-label">部门</label>
                             <Select Items="_departmentItems"
-                                    TItem="BootstrapBlazor.Components.SelectedItem"
+                                    TItem="SelectedItem"
                                     TItemValue="int?"
                                     @bind-Value="_pendingAddUser!.DepartmentId"
                                     ShowSearch="true"
@@ -98,7 +100,7 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">初始密码</label>
-                            <input type="password" class="form-control" @bind="_pendingPassword" placeholder="至少 6 位" />
+                            <input type="password" class="form-control" @bind="_pendingPassword" placeholder="@($"至少 {IdentityOptions.Value.Password.RequiredLength} 位")" />
                         </div>
                         <div class="mb-3">
                             <label class="form-label">确认密码</label>
@@ -125,7 +127,7 @@
 @code {
     private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
 
-    private List<BootstrapBlazor.Components.SelectedItem> _departmentItems = new();
+    private List<SelectedItem> _departmentItems = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -133,7 +135,7 @@
         {
             var depts = await DepartmentsService.GetActiveAsync();
             _departmentItems = depts
-                .Select(d => new BootstrapBlazor.Components.SelectedItem(d.Id.ToString(), d.Name))
+                .Select(d => new SelectedItem(d.Id.ToString(), d.Name))
                 .ToList();
         }
         catch
@@ -143,8 +145,11 @@
         }
     }
 
-    private Task<QueryData<Models.Users>> OnQueryAsync(QueryPageOptions options)
-        => UsersService.QueryAsync(options);
+    private async Task<QueryData<Models.Users>> OnQueryAsync(QueryPageOptions options)
+    {
+        var result = await UsersService.QueryAsync(options.ToPagedQuery());
+        return result.ToQueryData();
+    }
 
     private Task<Models.Users> OnAddAsync()
         => UsersService.NewUserAsync();
@@ -162,12 +167,12 @@
         }
         else
         {
-            var (ok, error) = await UsersService.SaveAsync(user, null, changedType);
+            var (ok, error) = await UsersService.SaveAsync(user, null, changedType.ToDomain());
             if (!ok && !string.IsNullOrEmpty(error))
             {
-                await ToastService.Show(new BootstrapBlazor.Components.ToastOption
+                await ToastService.Show(new ToastOption
                 {
-                    Category = BootstrapBlazor.Components.ToastCategory.Error,
+                    Category = ToastCategory.Error,
                     Content = error
                 });
             }
@@ -195,29 +200,29 @@
     {
         if (_pendingAddUser == null) return;
 
-        if (string.IsNullOrEmpty(_pendingPassword) || _pendingPassword.Length < 6)
+        if (string.IsNullOrEmpty(_pendingPassword) || _pendingPassword.Length < IdentityOptions.Value.Password.RequiredLength)
         {
-            await ShowToast("初始密码至少 6 位", BootstrapBlazor.Components.ToastCategory.Warning);
+            await ShowToast($"初始密码至少 {IdentityOptions.Value.Password.RequiredLength} 位", ToastCategory.Warning);
             return;
         }
         if (_pendingPassword != _pendingPasswordConfirm)
         {
-            await ShowToast("两次输入的密码不一致", BootstrapBlazor.Components.ToastCategory.Warning);
+            await ShowToast("两次输入的密码不一致", ToastCategory.Warning);
             return;
         }
 
         _addSaving = true;
         try
         {
-            var (ok, error) = await UsersService.SaveAsync(_pendingAddUser, _pendingPassword, ItemChangedType.Add);
+            var (ok, error) = await UsersService.SaveAsync(_pendingAddUser, _pendingPassword, ItemChangedType.Add.ToDomain());
             if (ok)
             {
-                await ShowToast("用户创建成功", BootstrapBlazor.Components.ToastCategory.Success);
+                await ShowToast("用户创建成功", ToastCategory.Success);
                 CloseAddPasswordModal();
             }
             else
             {
-                await ShowToast(error ?? "创建失败", BootstrapBlazor.Components.ToastCategory.Error);
+                await ShowToast(error ?? "创建失败", ToastCategory.Error);
             }
         }
         finally
@@ -226,9 +231,9 @@
         }
     }
 
-    private async Task ShowToast(string content, BootstrapBlazor.Components.ToastCategory category)
+    private async Task ShowToast(string content, ToastCategory category)
     {
-        await ToastService.Show(new BootstrapBlazor.Components.ToastOption
+        await ToastService.Show(new ToastOption
         {
             Category = category,
             Content = content,

@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build *)",
+      "Bash(dotnet --list-sdks)",
+      "Bash(dotnet --list-runtimes)",
+      "Bash(dotnet new *)",
+      "Bash(rm \"D:/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1.Tests/UnitTest1.cs\")",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet test *)",
+      "Bash(grep -rn \"\\\\\"Admin\\\\\"\\\\|\\\\\"Operator\\\\\"\\\\|\\\\\"Viewer\\\\\"\\\\|\\\\\"Order\\\\\\\\.\\\\|\\\\\"User\\\\\\\\.\\\\|\\\\\"Department\\\\\\\\.\\\\|\\\\\"DrawingName\\\\\\\\.\\\\|\\\\\"DrawingNumber\\\\\\\\.\" \"D:/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1/\" --include=\"*.razor\" --include=\"*.cs\")",
+      "Bash(grep *)",
+      "Bash(sed -i 's|Authorize\\(Roles = \"Admin\"|Authorize\\(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin|g' Components/Pages/*.razor)",
+      "Bash(sed -i 's|Authorize\\(Roles = \"Admin,Operator\"|Authorize\\(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + \",\" + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator|g' Components/Pages/*.razor)",
+      "Bash(sed -i 's|Authorize\\(Roles = \"Admin,Operator,Viewer\"|Authorize\\(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + \",\" + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator + \",\" + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Viewer|g' Components/Pages/*.razor)",
+      "Bash(sed -i 's/IsDelete\\\\b/IsDeleted/g' Models/*.cs Services/**/*.cs Services/*.cs)",
+      "Bash(sed -i 's/Isdelete\\\\b/IsDeleted/g' Models/*.cs Services/**/*.cs Services/*.cs)",
+      "Bash(iconv -f UTF-16LE -t UTF-8 Users.sql)",
+      "Bash(iconv -f UTF-16LE -t UTF-8 DrawingNames.sql)"
+    ]
+  }
+}

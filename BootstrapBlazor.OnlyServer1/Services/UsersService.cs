@@ -1,6 +1,6 @@
-using BootstrapBlazor.Components;
 using BootstrapBlazor.OnlyServer1.Models;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 using SqlSugar;
 
 namespace BootstrapBlazor.OnlyServer1.Services
@@ -13,19 +13,22 @@ namespace BootstrapBlazor.OnlyServer1.Services
     {
         private readonly ISqlSugarClient _db;
         private readonly UserManager<Users> _userManager;
+        private readonly IdentityOptions _identityOptions;
         private readonly ILogger<UsersService> _logger;
 
         public UsersService(
             ISqlSugarClient db,
             UserManager<Users> userManager,
+            IOptions<IdentityOptions> identityOptions,
             ILogger<UsersService> logger)
         {
             _db = db;
             _userManager = userManager;
+            _identityOptions = identityOptions.Value;
             _logger = logger;
         }
 
-        public Task<QueryData<Users>> QueryAsync(QueryPageOptions options)
+        public Task<PagedResult<Users>> QueryAsync(PagedQuery options)
         {
             try
             {
@@ -34,7 +37,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 // 唯一超管不可解除 ADMIN 的保护由 RolesService.RemoveUserFromRoleAsync 提供
                 var query = _db.Queryable<Users>()
                     .LeftJoin<Departments>((u, d) => u.DepartmentId == d.Id)
-                    .Where(u => !u.IsDelete);
+                    .Where(u => !u.IsDeleted);
 
                 if (!string.IsNullOrEmpty(options.SearchText))
                 {
@@ -43,7 +46,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 if (!string.IsNullOrEmpty(options.SortName))
                 {
-                    query = options.SortOrder == SortOrder.Asc
+                    query = options.SortOrder == SortDirection.Asc
                         ? query.OrderBy($"{options.SortName} asc")
                         : query.OrderBy($"{options.SortName} desc");
                 }
@@ -60,8 +63,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
                         Name = u.Name,
                         WorkerNumber = u.WorkerNumber,
                         GID = u.GID,
-                        CreateTime = u.CreateTime,
-                        IsDelete = u.IsDelete,
+                        CreatedTime = u.CreatedTime,
+                        IsDeleted = u.IsDeleted,
                         UserName = u.UserName,
                         NormalizedUserName = u.NormalizedUserName,
                         Email = u.Email,
@@ -101,19 +104,19 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     }
                 }
 
-                return Task.FromResult(new QueryData<Users>
+                return Task.FromResult(new PagedResult<Users>
                 {
                     Items = items,
                     TotalCount = total,
-                    IsFiltered = options.Filters.Any(),
+                    IsFiltered = options.FilterCount > 0,
                     IsSorted = !string.IsNullOrEmpty(options.SortName),
-                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.SearchModel != null
+                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.HasSearchModel
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error querying users");
-                return Task.FromResult(new QueryData<Users>());
+                return Task.FromResult(new PagedResult<Users>());
             }
         }
 
@@ -121,8 +124,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
         {
             return Task.FromResult(new Users
             {
-                CreateTime = DateTime.Now,
-                IsDelete = false,
+                CreatedTime = DateTime.Now,
+                IsDeleted = false,
                 DepartmentId = null
             });
         }
@@ -130,7 +133,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// <summary>
         /// 保存用户。返回 (ok, error):
         ///   - Add:必填初始密码,GID 必填且转大写
-        ///   - Update:不修改 PasswordHash / CreateTime / IsDelete(防止覆盖)
+        ///   - Update:不修改 PasswordHash / CreatedTime / IsDeleted(防止覆盖)
         /// </summary>
         public async Task<(bool ok, string? error)> SaveAsync(Users user, string? rawPassword, ItemChangedType changedType)
         {
@@ -151,8 +154,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     }
 
                     user.UserName = user.WorkerNumber.ToString();
-                    user.CreateTime = DateTime.Now;
-                    user.IsDelete = false;
+                    user.CreatedTime = DateTime.Now;
+                    user.IsDeleted = false;
 
                     _logger.LogInformation("Adding new user: {Name}", user.Name);
                     var result = await _userManager.CreateAsync(user, rawPassword);
@@ -164,7 +167,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 }
                 else
                 {
-                    // 编辑:不改 PasswordHash / CreateTime / IsDelete
+                    // 编辑:不改 PasswordHash / CreatedTime / IsDeleted
                     _logger.LogInformation("Updating user: {Name}", user.Name);
                     user.SecurityStamp = Guid.NewGuid().ToString();
                     var result = await _userManager.UpdateAsync(user);
@@ -209,6 +212,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
         /// <summary>
         /// 改密码:由 UserManager.ChangePasswordAsync 处理(PBKDF2 校验旧密码 + 哈希新密码)。
+        /// 长度下限从 IdentityOptions.Password.RequiredLength 读取(配置项)。
         /// </summary>
         public async Task<(bool ok, string? error)> ChangePasswordAsync(int userId, string oldPassword, string newPassword)
         {
@@ -216,9 +220,9 @@ namespace BootstrapBlazor.OnlyServer1.Services
             {
                 return (false, "旧密码和新密码均不能为空");
             }
-            if (newPassword.Length < 6)
+            if (newPassword.Length < _identityOptions.Password.RequiredLength)
             {
-                return (false, "新密码长度至少 6 位");
+                return (false, $"新密码长度至少 {_identityOptions.Password.RequiredLength} 位");
             }
 
             try

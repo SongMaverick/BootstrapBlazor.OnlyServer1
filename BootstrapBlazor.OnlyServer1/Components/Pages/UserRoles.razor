@@ -1,9 +1,9 @@
 @page "/user-roles"
 @attribute [TabItemOption(Text = "用户角色")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin)]
 @inject BootstrapBlazor.OnlyServer1.Services.RolesService RolesService
 @inject BootstrapBlazor.OnlyServer1.Services.UsersService UsersService
-@inject BootstrapBlazor.Components.ToastService ToastService
+@inject ToastService ToastService
 
 <PageTitle>用户角色</PageTitle>
 
@@ -36,7 +36,7 @@
     {
         <div class="mb-3 d-flex align-items-center" style="background: #f8f9fa; padding: 12px; border-radius: 6px;">
             <span class="me-2">批量设置角色:</span>
-            <Select Items="_roleItems" TItem="BootstrapBlazor.Components.SelectedItem" TItemValue="int?"
+            <Select Items="_roleItems" TItem="SelectedItem" TItemValue="int?"
                     @bind-Value="_batchRoleId" ShowSearch="true" PlaceHolder="选择一个角色" Style="width: 240px;" />
             <Button Color="Color.Primary" Icon="fa-solid fa-check" Class="ms-2"
                     OnClick="ApplyBatchAsync" IsDisabled="@(_selectedUserIds.Count == 0 || _batchRoleId == null)">
@@ -92,7 +92,7 @@
             {
                 <TableColumn @bind-Field="@context.PrimaryRoleId" Title="设置角色" Width="320" Readonly="true">
                     <Template Context="value">
-                        <Select Items="_roleItems" TItem="BootstrapBlazor.Components.SelectedItem" TItemValue="int?"
+                        <Select Items="_roleItems" TItem="SelectedItem" TItemValue="int?"
                                 Value="value.Value"
                                 ValueChanged="@(async (int? newVal) => await OnSingleRoleChangeAsync(value.Row.User.Id, newVal))"
                                 ShowSearch="true" PlaceHolder="选择角色" Style="width: 280px;" />
@@ -108,29 +108,44 @@
 
     private string _mode = "single";
 
-    private List<BootstrapBlazor.Components.SelectedItem> _roleItems = new();
+    private List<SelectedItem> _roleItems = new();
     private HashSet<int> _selectedUserIds = new();
     private int? _batchRoleId;
 
     protected override async Task OnInitializedAsync()
     {
-        _roleItems = await RolesService.GetSelectItemsAsync();
+        var items = await RolesService.GetSelectItemsAsync();
+        _roleItems = items.ToSelectedItems();
     }
 
     private async Task<QueryData<UserWithRolesViewModel>> OnQueryAsync(QueryPageOptions options)
     {
-        var result = await UsersService.QueryAsync(options);
-        var rows = new List<UserWithRolesViewModel>();
-        foreach (var u in result.Items)
+        var result = await UsersService.QueryAsync(options.ToPagedQuery());
+        if (result.Items.Count == 0)
         {
-            var ids = await RolesService.GetRoleIdsByUserIdAsync(u.Id);
-            rows.Add(new UserWithRolesViewModel
+            return new QueryData<UserWithRolesViewModel>
             {
-                User = u,
-                RoleNames = u.RoleNames ?? "",
-                PrimaryRoleId = ids.Count > 0 ? (int?)ids[0] : null
-            });
+                Items = new List<UserWithRolesViewModel>(),
+                TotalCount = result.TotalCount,
+                IsFiltered = result.IsFiltered,
+                IsSorted = result.IsSorted,
+                IsSearch = result.IsSearch
+            };
         }
+
+        // 批量取本页所有用户的角色 Id(消除 N+1)
+        var userIds = result.Items.Select(u => u.Id).ToList();
+        var roleIdsMap = await RolesService.GetRoleIdsByUserIdsAsync(userIds);
+
+        var rows = result.Items.Select(u => new UserWithRolesViewModel
+        {
+            User = u,
+            RoleNames = u.RoleNames ?? "",
+            PrimaryRoleId = roleIdsMap.TryGetValue(u.Id, out var ids) && ids.Count > 0
+                ? (int?)ids[0]
+                : null
+        }).ToList();
+
         return new QueryData<UserWithRolesViewModel>
         {
             Items = rows,
@@ -152,10 +167,10 @@
         var (ok, error) = await RolesService.SetUserRolesAsync(userId, new[] { newRoleId.Value });
         if (!ok)
         {
-            await ShowToast(error ?? "设置失败", BootstrapBlazor.Components.ToastCategory.Error);
+            await ShowToast(error ?? "设置失败", ToastCategory.Error);
             return;
         }
-        await ShowToast("已设置,该用户需重新登录生效", BootstrapBlazor.Components.ToastCategory.Success);
+        await ShowToast("已设置,该用户需重新登录生效", ToastCategory.Success);
     }
 
     private async Task ApplyBatchAsync()
@@ -176,7 +191,7 @@
             }
         }
         var msg = $"成功 {success} 人" + (failed > 0 ? $",失败 {failed} 人({firstError})" : "") + ",相关用户需重新登录";
-        await ShowToast(msg, failed > 0 ? BootstrapBlazor.Components.ToastCategory.Warning : BootstrapBlazor.Components.ToastCategory.Success);
+        await ShowToast(msg, failed > 0 ? ToastCategory.Warning : ToastCategory.Success);
     }
 
     private async Task RemoveBatchAsync()
@@ -197,12 +212,12 @@
             }
         }
         var msg = $"从 {success} 人移除成功" + (failed > 0 ? $",{failed} 人失败({firstError})" : "");
-        await ShowToast(msg, failed > 0 ? BootstrapBlazor.Components.ToastCategory.Warning : BootstrapBlazor.Components.ToastCategory.Success);
+        await ShowToast(msg, failed > 0 ? ToastCategory.Warning : ToastCategory.Success);
     }
 
-    private async Task ShowToast(string content, BootstrapBlazor.Components.ToastCategory category)
+    private async Task ShowToast(string content, ToastCategory category)
     {
-        await ToastService.Show(new BootstrapBlazor.Components.ToastOption
+        await ToastService.Show(new ToastOption
         {
             Category = category,
             Content = content,

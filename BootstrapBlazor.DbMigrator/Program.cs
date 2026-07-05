@@ -68,7 +68,8 @@ public class Program
             .AddJsonFile("appsettings.json", optional: false)
             .Build();
 
-        var connStr = config.GetConnectionString("SqlServer");
+        //var connStr = config.GetConnectionString("SqlServer");
+        var connStr = config.GetConnectionString("sqlServerConnectionStringHomeSA");
         if (string.IsNullOrWhiteSpace(connStr))
         {
             Console.Error.WriteLine("错误:appsettings.json 中未配置 ConnectionStrings.SqlServer");
@@ -331,6 +332,11 @@ public class Program
         await EnsureUniqueIndex(db, "Roles", "IX_Roles_NormalizedName", "NormalizedName");
         await EnsureUniqueIndex(db, "Departments", "IX_Departments_NormalizedName", "NormalizedName");
 
+        // Orders.OrderNumber 用 filtered unique index(仅约束 IsDeleted=0 的活跃行):
+        //   软删订单(IsDeleted=1)允许保留原 OrderNumber,
+        //   新建订单可以重新使用已软删的订单号,不会因历史数据阻塞业务。
+        await EnsureFilteredUniqueIndex(db, "Orders", "IX_Orders_OrderNumber", "OrderNumber", "IsDeleted = 0");
+
         foreach (var table in new[] { "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09" })
         {
             await EnsureUniqueIndex(db, table, $"IX_{table}_DrawNumber", "DrawNumber");
@@ -404,6 +410,30 @@ END";
         }
     }
 
+    /// <summary>
+    /// filtered unique index:仅约束 WHERE 子句命中的行。
+    /// 典型用途:Orders.OrderNumber 只约束 IsDeleted=0 的活跃行,
+    /// 软删订单(IsDeleted=1)保留原 OrderNumber,允许业务重新使用同一订单号。
+    /// </summary>
+    private static async Task EnsureFilteredUniqueIndex(ISqlSugarClient db, string tableName, string indexName, string columns, string whereClause)
+    {
+        var sql = $@"
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{indexName}' AND object_id = OBJECT_ID('{tableName}'))
+BEGIN
+    CREATE UNIQUE INDEX {indexName} ON {tableName} ({columns}) WHERE {whereClause};
+    PRINT '  ✓ Filtered Unique Index {indexName} created';
+END";
+        try
+        {
+            await db.Ado.ExecuteCommandAsync(sql);
+            Console.WriteLine($"  ✓ 过滤唯一索引 {indexName} (WHERE {whereClause}) 已就绪");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ! 过滤唯一索引 {indexName} 失败:{ex.Message}");
+        }
+    }
+
     private static async Task DropAllTables(ISqlSugarClient db)
     {
         // 注意顺序:先删有外键依赖的,后删父表
@@ -467,8 +497,8 @@ END";
                 Code = d.Code,
                 Description = d.Desc,
                 IsActive = true,
-                CreateTime = DateTime.Now,
-                IsDelete = false
+                CreatedTime = DateTime.Now,
+                IsDeleted = false
             }).ExecuteReturnIdentityAsync();
             Console.WriteLine($"  ✓ 部门种子:{d.Name}(Id={newId})");
         }
@@ -484,7 +514,7 @@ END";
     private static async Task BackfillUserDepartmentsAsync(ISqlSugarClient db)
     {
         var defaultDept = await db.Queryable<Departments>()
-            .Where(d => d.NormalizedName == "MD 部门" && !d.IsDelete)
+            .Where(d => d.NormalizedName == "MD 部门" && !d.IsDeleted)
             .FirstAsync();
         if (defaultDept == null)
         {
@@ -498,7 +528,7 @@ END";
               LEFT JOIN [UserRoles] ur ON ur.UserId = u.Id
               LEFT JOIN [Roles] r      ON r.Id  = ur.RoleId AND r.NormalizedName = 'ADMIN'
               WHERE u.DepartmentId IS NULL
-                AND u.IsDelete = 0
+                AND u.IsDeleted = 0
                 AND r.Id IS NULL",
             new SugarParameter("@deptId", defaultDept.Id));
 
@@ -530,8 +560,8 @@ END";
                 Name = "超级管理员",
                 WorkerNumber = 1,
                 GID = "ADMIN",
-                CreateTime = DateTime.Now,
-                IsDelete = false,
+                CreatedTime = DateTime.Now,
+                IsDeleted = false,
                 LockoutEnabled = true,
                 SecurityStamp = Guid.NewGuid().ToString(),
                 ConcurrencyStamp = Guid.NewGuid().ToString()
@@ -786,7 +816,7 @@ END";
 
         // 找所有非超管、非软删的用户 Id
         var candidateUserIds = await db.Queryable<Users>()
-            .Where(u => !u.IsDelete && u.Id != superAdminUserId)
+            .Where(u => !u.IsDeleted && u.Id != superAdminUserId)
             .Select(u => u.Id)
             .ToListAsync();
 
@@ -969,8 +999,8 @@ END";
                     Email = email,
                     NormalizedEmail = email?.ToUpperInvariant(),
                     PhoneNumber = row["PhoneNumber"] as string,
-                    CreateTime = ToDateTime(row["CreateTime"]) ?? DateTime.Now,
-                    IsDelete = false,
+                    CreatedTime = ToDateTime(row["CreateTime"]) ?? DateTime.Now,
+                    IsDeleted = false,
                     LockoutEnabled = true,
                     // 预设密码 123456(明文),用 Identity PBKDF2 哈希
                     PasswordHash = passwordHasher.HashPassword(
@@ -1215,7 +1245,7 @@ END";
                     CreatedTime = ToDateTime(row["CreatedTime"]) ?? DateTime.Now,
                     UpdatedBy = row["UpdatedBy"] as string ?? "",
                     UpdatedTime = ToDateTime(row["UpdatedTime"]) ?? DateTime.Now,
-                    Isdelete = row["Isdelete"] != null && Convert.ToBoolean(row["Isdelete"])
+                    IsDeleted = row["Isdelete"] != null && Convert.ToBoolean(row["Isdelete"])
                 };
                 await db.Insertable(dn).ExecuteCommandAsync();
                 inserted++;
@@ -1283,7 +1313,7 @@ END";
             UpdatedBy = d.UpdatedBy,
             CreatedTime = d.CreatedTime,
             UpdatedTime = d.UpdatedTime,
-            IsDelete = d.IsDelete
+            IsDeleted = d.IsDelete
         };
     }
 

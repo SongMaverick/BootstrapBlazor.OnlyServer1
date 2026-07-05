@@ -40,19 +40,14 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             if (!string.IsNullOrEmpty(user.GID))
                 identity.AddClaim(new Claim(ClaimsPrincipalExtensions.GIDClaim, user.GID));
 
-            // 权限码(从 UserRoles × RolePermissions × Permissions 联合查)
-            // 失败时静默忽略(用户没任何权限码即可,不会阻塞登录)
-            try
+            // 权限码(从 UserRoles × RolePermissions × Permissions 联合查)。
+            // 失败时直接抛回 SignInManager — 登录整体失败,避免"幽灵登录"产生
+            // 「已认证但无任何 Permission claim」的状态(前端按钮全灰但仍
+            // 能进业务页 + 跑非权限校验的 SQL)。
+            var codes = await _permissionsService.GetCodesByUserIdAsync(user.Id);
+            foreach (var code in codes.Distinct())
             {
-                var codes = await _permissionsService.GetCodesByUserIdAsync(user.Id);
-                foreach (var code in codes.Distinct())
-                {
-                    identity.AddClaim(new Claim(ClaimsPrincipalExtensions.PermissionClaim, code));
-                }
-            }
-            catch
-            {
-                // 启动早期或 DB 异常时,登录依然要成功
+                identity.AddClaim(new Claim(ClaimsPrincipalExtensions.PermissionClaim, code));
             }
 
             return identity;

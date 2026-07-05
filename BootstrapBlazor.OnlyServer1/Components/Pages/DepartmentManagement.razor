@@ -1,9 +1,9 @@
 @page "/department-management"
 @attribute [TabItemOption(Text = "部门管理")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin)]
 @inject BootstrapBlazor.OnlyServer1.Services.DepartmentsService DepartmentsService
 @inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
-@inject BootstrapBlazor.Components.ToastService ToastService
+@inject ToastService ToastService
 
 <PageTitle>部门管理</PageTitle>
 
@@ -28,15 +28,15 @@
            ShowSkeleton="true"
            IsMultipleSelect="true"
            Height="700"
-           ShowAddButton="@CurrentUser.HasPermission("Department.Create")"
-           ShowDeleteButton="@CurrentUser.HasPermission("Department.Delete")">
+           ShowAddButton="@CurrentUser.HasPermission(PermissionCodes.DepartmentCreate)"
+           ShowDeleteButton="@CurrentUser.HasPermission(PermissionCodes.DepartmentDelete)">
         <TableColumns>
             <TableColumn @bind-Field="@context.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
             <TableColumn @bind-Field="@context.Name" Width="160" Sortable="true" />
             <TableColumn @bind-Field="@context.Code" Width="120" Sortable="true" />
             <TableColumn @bind-Field="@context.Description" Width="240" />
-            <TableColumn @bind-Field="@context.IsActive" Width="100" Align="Alignment.Center" ComponentType="typeof(BootstrapBlazor.Components.Switch)" />
-            <TableColumn @bind-Field="@context.CreateTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
+            <TableColumn @bind-Field="@context.IsActive" Width="100" Align="Alignment.Center" ComponentType="typeof(Switch)" />
+            <TableColumn @bind-Field="@context.CreatedTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
                 <Template Context="value">
                     @value.Value.ToString("yyyy-MM-dd HH:mm:ss")
                 </Template>
@@ -48,14 +48,17 @@
 @code {
     private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
 
-    private Task<QueryData<Models.Departments>> OnQueryAsync(QueryPageOptions options)
-        => DepartmentsService.QueryAsync(options);
+    private async Task<QueryData<Models.Departments>> OnQueryAsync(QueryPageOptions options)
+    {
+        var result = await DepartmentsService.QueryAsync(options.ToPagedQuery());
+        return result.ToQueryData();
+    }
 
     private Task<Models.Departments> OnAddAsync()
         => Task.FromResult(new Models.Departments
         {
             IsActive = true,
-            CreateTime = DateTime.Now
+            CreatedTime = DateTime.Now
         });
 
     private async Task<bool> OnSaveAsync(Models.Departments dept, ItemChangedType changedType)
@@ -63,10 +66,10 @@
         var (ok, error) = await DepartmentsService.SaveAsync(dept);
         if (!ok)
         {
-            await ShowToast(error ?? "保存失败", BootstrapBlazor.Components.ToastCategory.Error);
+            await ShowToast(error ?? "保存失败", ToastCategory.Error);
             return false;
         }
-        await ShowToast("保存成功", BootstrapBlazor.Components.ToastCategory.Success);
+        await ShowToast("保存成功", ToastCategory.Success);
         return true;
     }
 
@@ -75,18 +78,18 @@
         var ok = await DepartmentsService.SoftDeleteAsync(depts);
         if (ok)
         {
-            await ShowToast("已软删", BootstrapBlazor.Components.ToastCategory.Success);
+            await ShowToast("已软删", ToastCategory.Success);
         }
         else
         {
-            await ShowToast("删除失败", BootstrapBlazor.Components.ToastCategory.Error);
+            await ShowToast("删除失败", ToastCategory.Error);
         }
         return ok;
     }
 
-    private async Task ShowToast(string content, BootstrapBlazor.Components.ToastCategory category)
+    private async Task ShowToast(string content, ToastCategory category)
     {
-        await ToastService.Show(new BootstrapBlazor.Components.ToastOption
+        await ToastService.Show(new ToastOption
         {
             Category = category,
             Content = content,

@@ -1,29 +1,35 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.BusinessRules;
+using Microsoft.Extensions.Options;
 
 namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
 {
     /// <summary>
     /// DrawingType registry:解析 drawingType 字符串 → 对应 IDrawingTypeHandler。
-    /// 同时集中 Orders → DrawingType 的映射逻辑。
+    /// 业务规则(Power 区间 → drawingType、Reactor 类型、Seed 值)集中从
+    /// <see cref="DrawingTypeOptions"/> 读取,放于 appsettings.json。
+    /// 添加新规则(例如细化区间)无需改代码。
     /// </summary>
     public interface IDrawingTypeRegistry
     {
         IReadOnlyList<string> AllTypes { get; }
         IDrawingTypeHandler? Resolve(string drawingType);
 
-        /// <summary>根据订单属性推算对应的 drawingType(电抗器/C02~C07)。null 表示无法识别</summary>
+        /// <summary>根据订单属性推算对应的 drawingType(电抗器 / Power 区间)。null 表示无法识别。</summary>
         string? GetDrawingType(Orders order);
 
-        /// <summary>取得该 drawingType 的图号种子值(分配器首次初始化时使用)</summary>
+        /// <summary>取得该 drawingType 的图号种子值(分配器首次初始化时使用)。缺省 0。</summary>
         int GetSeedDrawingNumber(string drawingType);
     }
 
     public class DrawingTypeRegistry : IDrawingTypeRegistry
     {
         private readonly Dictionary<string, IDrawingTypeHandler> _handlers;
+        private readonly DrawingTypeOptions _options;
 
-        public DrawingTypeRegistry()
+        public DrawingTypeRegistry(IOptions<DrawingTypeOptions> options)
         {
+            _options = options.Value;
             _handlers = new IDrawingTypeHandler[]
             {
                 new C01Handler(),
@@ -49,20 +55,30 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
 
         public string? GetDrawingType(Orders order)
         {
-            if (order.IsReactor) return "C08";
-            if (order.Power > 2 && order.Power <= 10) return "C02";
-            if (order.Power > 10 && order.Power < 40) return "C03";
-            if (order.Power >= 40 && order.Power < 100) return "C04";
-            if (order.Power >= 100 && order.Power < 200) return "C05";
-            if (order.Power >= 200 && order.Power < 400) return "C06";
-            if (order.Power >= 400) return "C07";
+            // 电抗器订单:固定映射(配置项)
+            if (order.IsReactor)
+            {
+                return _options.ReactorType;
+            }
+
+            // Power 区间映射:遍历 PowerRanges,找第一条 Min ≤ Power 且 (Max 为 null 或 Power ≤ Max) 的规则
+            foreach (var range in _options.PowerRanges)
+            {
+                if (range.Min > order.Power) continue;
+                if (range.Max.HasValue && order.Power > range.Max.Value) continue;
+                return range.Type;
+            }
+
             return null;
         }
 
         public int GetSeedDrawingNumber(string drawingType)
         {
-            var handler = Resolve(drawingType);
-            return handler?.SeedDrawingNumber ?? 0;
+            if (_options.Seeds.TryGetValue(drawingType, out var seed))
+            {
+                return seed;
+            }
+            return 0;
         }
     }
 }

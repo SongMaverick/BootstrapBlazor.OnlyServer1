@@ -1,6 +1,6 @@
 using BootstrapBlazor.OnlyServer1.Models;
 
-namespace BootstrapBlazor.OnlyServer1.Components.Pages
+namespace BootstrapBlazor.OnlyServer1.Models.ViewModels
 {
     /// <summary>
     /// 用户-角色管理页的列表行视图:在 Users 基础上附加 RoleNames(逗号分隔)和 PrimaryRoleId(主角色 Id,供下拉回显)。

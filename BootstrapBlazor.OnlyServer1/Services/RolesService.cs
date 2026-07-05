@@ -1,4 +1,3 @@
-using BootstrapBlazor.Components;
 using BootstrapBlazor.OnlyServer1.Models;
 using Microsoft.AspNetCore.Identity;
 using SqlSugar;
@@ -18,7 +17,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         private readonly UserManager<Users> _userManager;
         private readonly ILogger<RolesService> _logger;
 
-        public const string AdminRoleName = "Admin";
+        public const string AdminRoleName = Models.Identity.RoleNames.Admin;
 
         public RolesService(
             ISqlSugarClient db,
@@ -35,7 +34,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         // ============================================================
 
         /// <summary>管理列表:含 用户数 / 权限数 字段,支持搜索/排序/分页。</summary>
-        public Task<QueryData<Roles>> QueryAsync(QueryPageOptions options)
+        public Task<PagedResult<Roles>> QueryAsync(PagedQuery options)
         {
             try
             {
@@ -48,7 +47,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 if (!string.IsNullOrEmpty(options.SortName))
                 {
-                    query = options.SortOrder == SortOrder.Asc
+                    query = options.SortOrder == SortDirection.Asc
                         ? query.OrderBy($"{options.SortName} asc")
                         : query.OrderBy($"{options.SortName} desc");
                 }
@@ -70,19 +69,19 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     .Take(options.PageItems)
                     .ToList();
 
-                return Task.FromResult(new QueryData<Roles>
+                return Task.FromResult(new PagedResult<Roles>
                 {
                     Items = items,
                     TotalCount = total,
-                    IsFiltered = options.Filters.Any(),
+                    IsFiltered = options.FilterCount > 0,
                     IsSorted = !string.IsNullOrEmpty(options.SortName),
-                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.SearchModel != null
+                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.HasSearchModel
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error querying roles");
-                return Task.FromResult(new QueryData<Roles>());
+                return Task.FromResult(new PagedResult<Roles>());
             }
         }
 
@@ -92,11 +91,11 @@ namespace BootstrapBlazor.OnlyServer1.Services
             return _db.Queryable<Roles>().OrderBy(r => r.Id).ToListAsync();
         }
 
-        /// <summary>下拉选项 Id → Name 映射。</summary>
-        public async Task<List<SelectedItem>> GetSelectItemsAsync()
+        /// <summary>下拉选项 Id → Name 映射(框架无关,UI 层再映射为 SelectedItem)。</summary>
+        public async Task<List<SelectItem<int>>> GetSelectItemsAsync()
         {
             var roles = await GetAllAsync();
-            return roles.Select(r => new SelectedItem(r.Id.ToString(), r.Name)).ToList();
+            return roles.Select(r => new SelectItem<int>(r.Id, r.Name ?? string.Empty)).ToList();
         }
 
         /// <summary>角色下的用户数。</summary>
@@ -116,7 +115,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         {
             return await _db.Queryable<Users>()
                 .InnerJoin<UserRolesRow>((u, ur) => u.Id == ur.UserId)
-                .Where((u, ur) => ur.RoleId == roleId && !u.IsDelete)
+                .Where((u, ur) => ur.RoleId == roleId && !u.IsDeleted)
                 .Select((u, ur) => new Users
                 {
                     Id = u.Id,
@@ -142,6 +141,72 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 .Where((r, ur) => ur.UserId == userId)
                 .Select((r, ur) => r.Name)
                 .ToListAsync();
+        }
+
+        // ============================================================
+        // 批量查询(消除 N+1:list 页每行单独 count/查询改成一次 IN)
+        // ============================================================
+
+        /// <summary>
+        /// 批量取多个角色的用户数(返回 roleId → 用户数)。
+        /// 没有用户的角色也返回 0(保证调用方按 roleId 直接索引不缺值)。
+        /// </summary>
+        public async Task<Dictionary<int, int>> GetUserCountsByRoleIdsAsync(IEnumerable<int> roleIds)
+        {
+            var ids = roleIds.Distinct().ToList();
+            var dict = ids.ToDictionary(id => id, _ => 0);
+            if (ids.Count == 0) return dict;
+
+            var rows = await _db.Queryable<UserRolesRow>()
+                .Where(ur => ids.Contains(ur.RoleId))
+                .Select(ur => ur.RoleId)
+                .ToListAsync();
+
+            foreach (var grp in rows.GroupBy(id => id))
+            {
+                dict[grp.Key] = grp.Count();
+            }
+            return dict;
+        }
+
+        /// <summary>
+        /// 批量取多个角色的权限数(返回 roleId → 权限数)。
+        /// 没有权限的角色也返回 0。
+        /// </summary>
+        public async Task<Dictionary<int, int>> GetPermissionCountsByRoleIdsAsync(IEnumerable<int> roleIds)
+        {
+            var ids = roleIds.Distinct().ToList();
+            var dict = ids.ToDictionary(id => id, _ => 0);
+            if (ids.Count == 0) return dict;
+
+            var rows = await _db.Queryable<RolePermissions>()
+                .Where(rp => ids.Contains(rp.RoleId))
+                .Select(rp => rp.RoleId)
+                .ToListAsync();
+
+            foreach (var grp in rows.GroupBy(id => id))
+            {
+                dict[grp.Key] = grp.Count();
+            }
+            return dict;
+        }
+
+        /// <summary>
+        /// 批量取多个用户的角色 Id 列表(返回 userId → 角色 Id 列表)。
+        /// 没有角色的用户不返回键(调用方 TryGetValue 即可)。
+        /// </summary>
+        public async Task<Dictionary<int, List<int>>> GetRoleIdsByUserIdsAsync(IEnumerable<int> userIds)
+        {
+            var ids = userIds.Distinct().ToList();
+            if (ids.Count == 0) return new Dictionary<int, List<int>>();
+
+            var rows = await _db.Queryable<UserRolesRow>()
+                .Where(ur => ids.Contains(ur.UserId))
+                .ToListAsync();
+
+            return rows
+                .GroupBy(ur => ur.UserId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.RoleId).ToList());
         }
 
         // ============================================================
@@ -228,7 +293,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "保存角色失败: {Name}", role.Name);
-                return (false, $"保存失败:{ex.Message}");
+                return (false, "保存失败,请重试");
             }
         }
 

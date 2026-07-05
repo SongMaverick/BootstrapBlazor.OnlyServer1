@@ -1,4 +1,3 @@
-using BootstrapBlazor.Components;
 using BootstrapBlazor.OnlyServer1.Models;
 using Microsoft.Extensions.Logging;
 using SqlSugar;
@@ -24,17 +23,17 @@ namespace BootstrapBlazor.OnlyServer1.Services
         public Task<List<Departments>> GetActiveAsync()
         {
             return _db.Queryable<Departments>()
-                .Where(d => d.IsActive && !d.IsDelete)
+                .Where(d => d.IsActive && !d.IsDeleted)
                 .OrderBy(d => d.Id)
                 .ToListAsync();
         }
 
         /// <summary>管理列表用:支持 Name/Code 搜索 + 排序 + 分页(包含软删)。</summary>
-        public Task<QueryData<Departments>> QueryAsync(QueryPageOptions options)
+        public Task<PagedResult<Departments>> QueryAsync(PagedQuery options)
         {
             try
             {
-                var query = _db.Queryable<Departments>().Where(d => !d.IsDelete);
+                var query = _db.Queryable<Departments>().Where(d => !d.IsDeleted);
 
                 if (!string.IsNullOrEmpty(options.SearchText))
                 {
@@ -44,7 +43,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 if (!string.IsNullOrEmpty(options.SortName))
                 {
-                    query = options.SortOrder == SortOrder.Asc
+                    query = options.SortOrder == SortDirection.Asc
                         ? query.OrderBy($"{options.SortName} asc")
                         : query.OrderBy($"{options.SortName} desc");
                 }
@@ -56,19 +55,19 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 var total = query.Count();
                 var items = query.Skip((options.PageIndex - 1) * options.PageItems).Take(options.PageItems).ToList();
 
-                return Task.FromResult(new QueryData<Departments>
+                return Task.FromResult(new PagedResult<Departments>
                 {
                     Items = items,
                     TotalCount = total,
-                    IsFiltered = options.Filters.Any(),
+                    IsFiltered = options.FilterCount > 0,
                     IsSorted = !string.IsNullOrEmpty(options.SortName),
-                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.SearchModel != null
+                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.HasSearchModel
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error querying departments");
-                return Task.FromResult(new QueryData<Departments>());
+                return Task.FromResult(new PagedResult<Departments>());
             }
         }
 
@@ -86,7 +85,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
             {
                 // 同名冲突检测(忽略自己)
                 var dup = await _db.Queryable<Departments>()
-                    .Where(x => x.NormalizedName == d.NormalizedName && x.Id != d.Id && !x.IsDelete)
+                    .Where(x => x.NormalizedName == d.NormalizedName && x.Id != d.Id && !x.IsDeleted)
                     .FirstAsync();
                 if (dup != null)
                 {
@@ -95,8 +94,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 if (d.Id == 0)
                 {
-                    d.CreateTime = DateTime.Now;
-                    d.IsDelete = false;
+                    d.CreatedTime = DateTime.Now;
+                    d.IsDeleted = false;
                     if (!d.IsActive) d.IsActive = true;
                     var newId = await _db.Insertable(d).ExecuteReturnIdentityAsync();
                     d.Id = newId;
@@ -106,7 +105,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 {
                     _logger.LogInformation("更新部门: {Name} (Id={Id})", d.Name, d.Id);
                     await _db.Updateable(d)
-                        .IgnoreColumns(x => new { x.CreateTime, x.IsDelete })
+                        .IgnoreColumns(x => new { x.CreatedTime, x.IsDeleted })
                         .ExecuteCommandAsync();
                 }
                 return (true, null);
@@ -114,11 +113,11 @@ namespace BootstrapBlazor.OnlyServer1.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "保存部门失败: {Name}", d.Name);
-                return (false, $"保存失败:{ex.Message}");
+                return (false, "保存失败,请重试");
             }
         }
 
-        /// <summary>软删:置 IsDelete=true,IsActive=false。下拉不再出现。</summary>
+        /// <summary>软删:置 IsDeleted=true,IsActive=false。下拉不再出现。</summary>
         public async Task<bool> SoftDeleteAsync(IEnumerable<Departments> depts)
         {
             var list = depts.ToList();
@@ -126,11 +125,11 @@ namespace BootstrapBlazor.OnlyServer1.Services
             {
                 foreach (var d in list)
                 {
-                    d.IsDelete = true;
+                    d.IsDeleted = true;
                     d.IsActive = false;
                     _logger.LogInformation("软删部门: {Name}(Id={Id})", d.Name, d.Id);
                     await _db.Updateable(d)
-                        .UpdateColumns(x => new { x.IsDelete, x.IsActive })
+                        .UpdateColumns(x => new { x.IsDeleted, x.IsActive })
                         .Where(x => x.Id == d.Id)
                         .ExecuteCommandAsync();
                 }

@@ -4,7 +4,7 @@
 @using BootstrapBlazor.OnlyServer1.Services
 @using BootstrapBlazor.OnlyServer1.Models
 @using BootstrapBlazor.OnlyServer1.Services.Identity
-@inject DrawingNumberService? DrawingNumberService
+@inject C0XQueryService? C0XQuery
 @inject CurrentUserAccessor? CurrentUser
 @inject Microsoft.Extensions.Logging.ILogger<FindDrawingNumber> Logger
 
@@ -95,7 +95,7 @@
 
                             <dt class="col-sm-3">状态</dt>
                             <dd class="col-sm-9">
-                                @if (_result.IsDelete) {
+                                @if (_result.IsDeleted) {
                                     <span class="badge bg-danger">已被删除,不可用</span>
                                 } else {
                                     <span class="badge bg-success">可以使用</span>
@@ -138,8 +138,8 @@
         _result = null;
 
         try {
-            if (DrawingNumberService == null) {
-                Logger.LogWarning("DrawingNumberService is null");
+            if (C0XQuery == null) {
+                Logger.LogWarning("C0XQuery is null");
                 return;
             }
 
@@ -177,7 +177,7 @@
                     fullNumber);
             }
 
-            _result = await DrawingNumberService.FindDrawingNumberByTypeAndNumberAsync(
+            _result = await C0XQuery.FindDrawingNumberByTypeAndNumberAsync(
                 _model.DrawingNumberType,
                 fullNumber);
 

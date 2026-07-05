@@ -12,8 +12,6 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
     {
         public abstract string DrawingType { get; }
 
-        public abstract int SeedDrawingNumber { get; }
-
         public Type EntityType => typeof(TEntity);
 
         /// <summary>
@@ -32,7 +30,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
                 UpdatedBy = createdBy,
                 CreatedTime = createdTime,
                 UpdatedTime = createdTime,
-                IsDelete = false
+                IsDeleted = false
             };
         }
 
@@ -41,7 +39,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
         public virtual async Task<List<string>> GetExistingDrawNamesAsync(ISqlSugarClient db, int orderId)
         {
             return await db.Queryable<TEntity>()
-                .Where(n => n.OrderId == orderId && !n.IsDelete)
+                .Where(n => n.OrderId == orderId && !n.IsDeleted)
                 .Select(n => n.DrawName)
                 .ToListAsync();
         }
@@ -49,7 +47,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
         public virtual async Task<List<C0XBase>> GetAllByOrderIdAsync(ISqlSugarClient db, int orderId)
         {
             var list = await db.Queryable<TEntity>()
-                .Where(n => n.OrderId == orderId && !n.IsDelete)
+                .Where(n => n.OrderId == orderId && !n.IsDeleted)
                 .ToListAsync();
             var result = new List<C0XBase>(list.Count);
             result.AddRange(list);
@@ -60,23 +58,23 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
         {
             if (orderIds == null || orderIds.Count == 0) return new List<int>();
             return await db.Queryable<TEntity>()
-                .Where(n => orderIds.Contains(n.OrderId) && !n.IsDelete)
+                .Where(n => orderIds.Contains(n.OrderId) && !n.IsDeleted)
                 .Select(n => n.OrderId)
                 .ToListAsync();
         }
 
         public virtual async Task<C0XBase?> FindByIdAsync(ISqlSugarClient db, int id)
         {
-            // 过滤 IsDelete=true(占位行)。反推路径遇到占位行时返回 null,避免用户输入跳号图号时错误命中。
+            // 过滤 IsDeleted=true(占位行)。反推路径遇到占位行时返回 null,避免用户输入跳号图号时错误命中。
             return await db.Queryable<TEntity>()
-                .Where(n => n.Id == id && !n.IsDelete)
+                .Where(n => n.Id == id && !n.IsDeleted)
                 .FirstAsync();
         }
 
         public virtual async Task<C0XBase?> FindByDrawNumberAsync(ISqlSugarClient db, int drawNumber)
         {
             return await db.Queryable<TEntity>()
-                .Where(n => n.DrawNumber == drawNumber && !n.IsDelete)
+                .Where(n => n.DrawNumber == drawNumber && !n.IsDeleted)
                 .FirstAsync();
         }
 
@@ -95,7 +93,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
 
         public virtual Task<int> UpdateDrawNameAsync(ISqlSugarClient db, int id, string newDrawName, string updatedBy, DateTime updatedTime)
         {
-            // 过滤 IsDelete=true:不允许编辑占位行(占位行的 DrawName 是占位符,编辑会污染真实数据)
+            // 过滤 IsDeleted=true:不允许编辑占位行(占位行的 DrawName 是占位符,编辑会污染真实数据)
             return db.Updateable<TEntity>()
                 .SetColumns(it => new TEntity
                 {
@@ -103,7 +101,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
                     UpdatedBy = updatedBy,
                     UpdatedTime = updatedTime
                 })
-                .Where(it => it.Id == id && !it.IsDelete)
+                .Where(it => it.Id == id && !it.IsDeleted)
                 .ExecuteCommandAsync();
         }
     }

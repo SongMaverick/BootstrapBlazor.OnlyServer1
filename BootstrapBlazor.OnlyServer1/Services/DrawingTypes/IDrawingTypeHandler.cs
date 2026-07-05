@@ -16,12 +16,6 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
         Type EntityType { get; }
 
         /// <summary>
-        /// 该 drawingType 的图号种子值 — 首次分配 DrawNumber 时的起始值(分配后 = seed + 1)。
-        /// 例如 C04 = 17000 → 首张图号 17001。
-        /// </summary>
-        int SeedDrawingNumber { get; }
-
-        /// <summary>
         /// 由 handler 创建具体类型的实体实例。
         /// C0XBase 是 abstract,无法直接 new;handler 必须 new 自己的具体类型(C01/C02/...),
         /// SqlSugar 多态写入才能正确路由到对应表。

@@ -35,11 +35,17 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         // ============================================================
         // IQueryableUserStore
         // ============================================================
+        // SqlSugar 的 ISugarQueryable<T> 在 v5.1.4 不实现 System.Linq.IQueryable<T>,
+        // 这里只能把数据先拉到内存再 AsQueryable() 返回 — 每次属性访问都触发 ToList(),
+        // 用户表大时是隐患。当前用法上 Identity 框架主要走 FindByNameAsync 等精确查询,
+        // 不频繁走 Users 属性,实测可接受。如果未来 Users 用户量上千 / 万级,改为:
+        //   1) 自定义 IQueryable<TUser> 适配器把 Expression 翻译给 SqlSugar;或
+        //   2) 把 IQueryableUserStore 拆出 SqlSugarUserStore,只暴露精确查询方法。
         public IQueryable<Users> Users
         {
             get
             {
-                var list = _db.Queryable<Users>().Where(u => !u.IsDelete).ToList();
+                var list = _db.Queryable<Users>().Where(u => !u.IsDeleted).ToList();
                 return list.AsQueryable();
             }
         }
@@ -122,7 +128,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
                 // 每次更新刷新 ConcurrencyStamp,防止脏写
                 user.ConcurrencyStamp = Guid.NewGuid().ToString();
                 var rows = await _db.Updateable(user)
-                    .IgnoreColumns(u => new { u.IsDelete, u.CreateTime })
+                    .IgnoreColumns(u => new { u.IsDeleted, u.CreatedTime })
                     .ExecuteCommandAsync(cancellationToken);
                 return rows > 0
                     ? IdentityResult.Success
@@ -139,9 +145,9 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             ThrowIfDisposed();
             try
             {
-                user.IsDelete = true;
+                user.IsDeleted = true;
                 var rows = await _db.Updateable<Users>()
-                    .UpdateColumns(u => new { u.IsDelete, u.ConcurrencyStamp })
+                    .UpdateColumns(u => new { u.IsDeleted, u.ConcurrencyStamp })
                     .Where(u => u.Id == user.Id)
                     .ExecuteCommandAsync(cancellationToken);
                 return rows > 0
@@ -159,7 +165,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             ThrowIfDisposed();
             if (!int.TryParse(userId, out var id)) return null;
             return await _db.Queryable<Users>()
-                .Where(u => u.Id == id && !u.IsDelete)
+                .Where(u => u.Id == id && !u.IsDeleted)
                 .FirstAsync(cancellationToken);
         }
 
@@ -167,7 +173,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         {
             ThrowIfDisposed();
             return await _db.Queryable<Users>()
-                .Where(u => u.NormalizedUserName == normalizedUserName && !u.IsDelete)
+                .Where(u => u.NormalizedUserName == normalizedUserName && !u.IsDeleted)
                 .FirstAsync(cancellationToken);
         }
 
@@ -299,7 +305,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         {
             ThrowIfDisposed();
             return await _db.Queryable<Users>()
-                .Where(u => u.NormalizedEmail == normalizedEmail && !u.IsDelete)
+                .Where(u => u.NormalizedEmail == normalizedEmail && !u.IsDeleted)
                 .FirstAsync(cancellationToken);
         }
 
@@ -373,7 +379,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
                 .ToListAsync(cancellationToken);
             if (userIds.Count == 0) return new List<Users>();
             return await _db.Queryable<Users>()
-                .Where(u => userIds.Contains(u.Id) && !u.IsDelete)
+                .Where(u => userIds.Contains(u.Id) && !u.IsDeleted)
                 .ToListAsync();
         }
 
@@ -517,7 +523,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
                 .ToListAsync(cancellationToken);
             if (userIds.Count == 0) return new List<Users>();
             return await _db.Queryable<Users>()
-                .Where(u => userIds.Contains(u.Id) && !u.IsDelete)
+                .Where(u => userIds.Contains(u.Id) && !u.IsDeleted)
                 .ToListAsync();
         }
 

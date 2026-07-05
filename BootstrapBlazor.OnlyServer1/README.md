@@ -238,24 +238,6 @@ SQL Server(数据库)
 
 ---
 
-#### `/add-drawing-numbers-select` — 选择订单添加图号
-
-**文件**: `Components/Pages/AddDrawingNumbersSelect.razor`
-
-- **路由**: `/add-drawing-numbers-select`(无参数)
-- **数据源**: `OrdersService.SearchAsync(options, orderNumber, createdBy, isReactor)`
-- **依赖服务**: `OrdersService`
-- **功能**:
-  - 筛选区:订单号(模糊)、创建者(模糊)、是否电抗器(下拉)
-  - 订单表格(单选模式 `ClickToSelect`)
-  - 选中后显示订单摘要(订单号 + 容量 + 类型徽章)
-  - 底部两个按钮:
-    - **添加图号** → 跳转 `/add-drawing-numbers/{OrderId}`
-    - **查看图号列表** → 跳转 `/order-drawing-numbers/{OrderId}`
-- **用途**:替代 `/orders` 页面的"添加图号"流程,提供更精确的订单搜索能力
-
----
-
 #### `/add-drawing-numbers/{orderId:int}` — 添加图号(主页面)
 
 **文件**: `Components/Pages/AddDrawingNumbers.razor`
@@ -301,21 +283,6 @@ SQL Server(数据库)
   - 主键 ID(只读,灰色小字)
 - **注意**:图号(DrawNumber)**不能改**,只能改 DrawName;改完跳回列表页
 - **响应式刷新**:监听 `NavigationManager.LocationChanged`,切回本页时自动 `LoadDataAsync()`
-
----
-
-#### `/update-drawing-number/{id:int}/{drawingType}` — 单独修改图号页
-
-**文件**: `Components/Pages/UpdateDrawingNumber.razor`
-
-- **路由**: `/update-drawing-number/{id}/{drawingType}` (如 `/update-drawing-number/123/C04`)
-- **数据源**: `DrawingNumberService.FindDrawingNumberByIdAsync(id, drawingType)`
-- **依赖服务**: `DrawingNumberService`, `CurrentUserAccessor`, `ToastService`
-- **功能**:
-  - 显示编号(图号主键 Id)、图号(DrawingTypeNumber)、图纸名称(可编辑)
-  - 保存 → `DrawingNumberService.UpdateCX0DrawingNumberByIdAsync(c0x, drawingType)`
-  - 成功跳回 `/order-drawing-numbers/{OrderId}`
-- **注意**:这个独立页当前代码里**没有任何按钮调用**(只有 `OrderDrawingNumbers.razor` 弹窗式修改),但保留为备选入口
 
 ---
 
@@ -424,33 +391,34 @@ SQL Server(数据库)
 
 每种 drawingType 行为的接口:
 - `DrawingType` — `"C01"` .. `"C09"`
-- `SeedDrawingNumber` — 该类型的图号种子值(分配器首次初始化用)
 - `CreateNewEntity` — 创建新 C0XBase 实例(handler 必须 `new TEntity`)
 - `GetExistingDrawNamesAsync` / `GetAllByOrderIdAsync` / `QueryExistingOrderIdsAsync` / `FindByIdAsync` / `FindByDrawNumberAsync` — 查询
 - `InsertAsync` / `UpdateDrawNameAsync` — 写入
 
+> 注:`SeedDrawingNumber` 已从 handler 上抽取到 `BusinessRules.DrawingType.Seeds`(见 `appsettings.json`),改业务规则不动代码。
+
 #### `DrawingTypeHandlerBase<TEntity>.cs`
 
-泛型基类,实现所有 IDrawingTypeHandler 方法,子类只需声明 `DrawingType` 和 `SeedDrawingNumber`。
+泛型基类,实现所有 IDrawingTypeHandler 方法,子类只需声明 `DrawingType`。
 
 #### `IDrawingTypeRegistry` / `DrawingTypeRegistry.cs`
 
 - 9 个 handler 的注册表(`Dictionary<string, IDrawingTypeHandler>`)
-- `GetDrawingType(Orders)` — 根据订单属性推算 drawingType:
-  - `IsReactor` → `C08`
-  - Power 区间 → `C02..C07`(2-10 / 10-40 / 40-100 / 100-200 / 200-400 / 400+)
-  - 其它返回 null(无法识别)
-- `GetSeedDrawingNumber(drawingType)` — 给分配器初始化用
+- **业务规则改为从 `IOptions<DrawingTypeOptions>` 读**(在 `appsettings.json` 的 `BusinessRules.DrawingType` 节):
+  - `ReactorType` — 电抗器订单对应的 drawingType(默认 `C08`)
+  - `PowerRanges` — Power 区间 → drawingType 闭区间列表(Min ≤ Power ≤ Max,Max 为 null 表示无上限)
+  - `Seeds` — 每种 drawingType 的图号种子值(分配器兜底用)
+- `GetDrawingType(Orders)` — 优先 `IsReactor` 走 ReactorType,否则遍历 PowerRanges 匹配
+- `GetSeedDrawingNumber(drawingType)` — 从 `Seeds` 字典读
 
 #### 9 个 Handler(`C01Handler.cs` .. `C09Handler.cs`)
 
-每个只有 ~10 行,声明 `DrawingType` 和 `SeedDrawingNumber`:
+每个只有 ~9 行,只声明 `DrawingType`:
 
 ```csharp
 internal sealed class C04Handler : DrawingTypeHandlerBase<C04>
 {
     public override string DrawingType => "C04";
-    public override int SeedDrawingNumber => 17000;
 }
 ```
 

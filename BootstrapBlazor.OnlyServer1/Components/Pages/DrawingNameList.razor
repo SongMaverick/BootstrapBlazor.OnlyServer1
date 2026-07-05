@@ -1,20 +1,20 @@
 @page "/drawing-names"
 @attribute [TabItemOption(Text = "图名列表")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator)]
 @using BootstrapBlazor.OnlyServer1.Services
 @using BootstrapBlazor.OnlyServer1.Models
 @using BootstrapBlazor.OnlyServer1.Services.Identity
-@inject DrawingNumberService? DrawingNumberService
+@inject DrawingNameService? DrawingNameService
 @inject CurrentUserAccessor CurrentUser
 @inject Microsoft.Extensions.Logging.ILogger<DrawingNameList> Logger
-@inject BootstrapBlazor.Components.ToastService ToastService
+@inject ToastService ToastService
 
 <PageTitle>图名列表</PageTitle>
 
 <div class="container-fluid mt-4">
     <div class="d-flex align-items-center mb-3">
         <h3 class="mb-0">图名列表</h3>
-        @if (CurrentUser.HasPermission("DrawingName.Create"))
+        @if (CurrentUser.HasPermission(PermissionCodes.DrawingNameCreate))
         {
             <button class="btn btn-primary ms-auto" @onclick="OpenAddModal">
                 <i class="fa-solid fa-plus me-1"></i>
@@ -51,7 +51,7 @@
                 </thead>
                 <tbody>
                     @foreach (var item in _drawingNames) {
-                        <tr class="@(item.Isdelete ? "table-secondary text-muted text-decoration-line-through" : "")">
+                        <tr class="@(item.IsDeleted ? "table-secondary text-muted text-decoration-line-through" : "")">
                             <td>@item.Id</td>
                             <td>@item.ComponentName</td>
                             <td>@item.Part</td>
@@ -60,14 +60,14 @@
                             <td>@item.UpdatedBy</td>
                             <td>@item.UpdatedTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>
-                                @if (item.Isdelete) {
+                                @if (item.IsDeleted) {
                                     <span class="badge bg-secondary">已删除</span>
                                 } else {
                                     <span class="badge bg-success">可用</span>
                                 }
                             </td>
                             <td>
-                                @if (!item.Isdelete && CurrentUser.HasPermission("DrawingName.Delete")) {
+                                @if (!item.IsDeleted && CurrentUser.HasPermission(PermissionCodes.DrawingNameDelete)) {
                                     <button class="btn btn-sm btn-danger" @onclick="() => HandleDelete(item.Id, item.ComponentName)">
                                         <i class="fa-solid fa-trash"></i>
                                         <span class="ms-1">删除</span>
@@ -164,13 +164,13 @@
     /// 从 DB 加载 Part 类别下拉选项。库里有就用库里的;库里没数据时回退到 _defaultPartOptions 兜底。
     /// </summary>
     private async Task LoadPartOptionsAsync() {
-        if (DrawingNumberService == null) {
+        if (DrawingNameService == null) {
             _partOptions = new List<string>(_defaultPartOptions);
             return;
         }
 
         try {
-            var parts = await DrawingNumberService.GetDistinctPartsAsync();
+            var parts = await DrawingNameService.GetDistinctPartsAsync();
             _partOptions = parts.Count > 0 ? parts : new List<string>(_defaultPartOptions);
         }
         catch (Exception ex) {
@@ -182,11 +182,11 @@
     private async Task LoadDataAsync() {
         _isLoading = true;
         try {
-            if (DrawingNumberService == null) {
-                Logger.LogWarning("DrawingNumberService is null");
+            if (DrawingNameService == null) {
+                Logger.LogWarning("DrawingNameService is null");
                 return;
             }
-            _drawingNames = await DrawingNumberService.GetAllDrawingNamesIncludingDeletedAsync();
+            _drawingNames = await DrawingNameService.GetAllDrawingNamesIncludingDeletedAsync();
         }
         catch (Exception ex) {
             Logger.LogError(ex, "LoadDataAsync failed");
@@ -209,7 +209,7 @@
     }
 
     private async Task HandleAddConfirm() {
-        if (DrawingNumberService == null) {
+        if (DrawingNameService == null) {
             await ToastService.Error("服务不可用");
             return;
         }
@@ -233,7 +233,7 @@
         _addErrorMessage = null;
 
         try {
-            var result = await DrawingNumberService.AddDrawingNameAsync(_addModel.ComponentName, _addModel.Part);
+            var result = await DrawingNameService.AddDrawingNameAsync(_addModel.ComponentName, _addModel.Part);
 
             if (result > 0) {
                 await ToastService.Success($"图名「{_addModel.ComponentName}」添加成功");
@@ -256,7 +256,7 @@
     }
 
     private async Task HandleDelete(int id, string name) {
-        if (DrawingNumberService == null) {
+        if (DrawingNameService == null) {
             await ToastService.Error("服务不可用");
             return;
         }
@@ -268,7 +268,7 @@
         }
 
         try {
-            var ok = await DrawingNumberService.DeleteDrawingNameAsync(id);
+            var ok = await DrawingNameService.DeleteDrawingNameAsync(id);
             if (ok) {
                 await ToastService.Success($"图名「{name}」已删除");
                 await LoadDataAsync();

@@ -2,10 +2,14 @@
 using BootstrapBlazor.OnlyServer1.Components;
 using BootstrapBlazor.OnlyServer1.Data;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.BusinessRules;
 using BootstrapBlazor.OnlyServer1.Services;
+using BootstrapBlazor.OnlyServer1.Services.DrawingNames;
+using BootstrapBlazor.OnlyServer1.Services.DrawingNumbers;
 using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using NLog;
@@ -42,16 +46,8 @@ builder.Services.AddScoped<CurrentUserAccessor>();
 // ============================================================
 builder.Services.AddIdentityCore<Users>(options =>
 {
-    options.Password.RequiredLength = 6;
-    options.Password.RequireDigit = false;
-    options.Password.RequireUppercase = false;
-    options.Password.RequireLowercase = false;
-    options.Password.RequireNonAlphanumeric = false;
-    options.Lockout.MaxFailedAccessAttempts = 5;
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
-    options.Lockout.AllowedForNewUsers = true;
-    options.User.RequireUniqueEmail = false;
-    options.SignIn.RequireConfirmedAccount = false;
+    // Identity 配置从 appsettings.json "Identity" 节绑定 — 改强度/锁定策略不动代码
+    builder.Configuration.GetSection("Identity").Bind(options);
 })
 .AddUserStore<SqlSugarUserStore>()
 .AddRoles<Roles>()
@@ -60,6 +56,17 @@ builder.Services.AddIdentityCore<Users>(options =>
 .AddSignInManager()
 .AddDefaultTokenProviders()
 .AddClaimsPrincipalFactory<DisplayNameClaimsFactory>();
+
+// 持久化 DataProtection 密钥到应用根下 keys/ 目录,避免 IIS 应用池回收 / 服务器
+// 重启后所有用户 cookie 失效 → 全员被强制重新登录。路径可在 appsettings 用
+// "DataProtection:KeyDirectory" 覆盖指向独立持久盘。
+var keyDir = builder.Configuration["DataProtection:KeyDirectory"];
+if (string.IsNullOrWhiteSpace(keyDir))
+    keyDir = Path.Combine(builder.Environment.ContentRootPath, "keys");
+
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keyDir))
+    .SetApplicationName("BootstrapBlazor.OnlyServer1");
 
 builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme)
     .AddIdentityCookies();
@@ -70,7 +77,9 @@ builder.Services.AddCascadingAuthenticationState();
 // ============================================================
 // 业务 Service
 // ============================================================
-builder.Services.AddScoped<DrawingNumberService>();
+builder.Services.AddScoped<C0XQueryService>();
+builder.Services.AddScoped<C0XWriteService>();
+builder.Services.AddScoped<DrawingNameService>();
 builder.Services.AddScoped<IDrawingNumberAllocator, DrawingNumberAllocator>();
 builder.Services.AddScoped<OrdersService>();
 builder.Services.AddScoped<UsersService>();
@@ -80,6 +89,10 @@ builder.Services.AddScoped<RolesService>();
 
 builder.Services.AddSingleton<IDrawingTypeRegistry, DrawingTypeRegistry>();
 builder.Services.AddSingleton<OrderLockProvider>();
+
+// 业务规则:DrawingTypeOptions(Power → C0X 映射、电抗器类型、种子值)从 appsettings 绑定
+builder.Services.Configure<BootstrapBlazor.OnlyServer1.Models.BusinessRules.DrawingTypeOptions>(
+    builder.Configuration.GetSection("BusinessRules:DrawingType"));
 
 builder.Services.Configure<HubOptions>(option => option.MaximumReceiveMessageSize = 64 * 1024);
 

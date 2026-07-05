@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
-using BootstrapBlazor.Components;
+using System.Linq.Expressions;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Services.DrawingNumbers;
 using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
+using BootstrapBlazor.OnlyServer1.Services.Queries;
 using SqlSugar;
 
 namespace BootstrapBlazor.OnlyServer1.Services
@@ -10,10 +12,10 @@ namespace BootstrapBlazor.OnlyServer1.Services
     /// 订单 Service:封装 Orders.razor 的全部数据访问 + SERIALIZABLE 事务去重 + 缓存。
     /// Scoped 生命周期,每个 circuit 一份独立 cache。
     /// </summary>
-    public class OrdersService
+    public class OrdersService : BaseQueryService<Orders>
     {
         private readonly ISqlSugarClient _db;
-        private readonly DrawingNumberService _drawingNumberService;
+        private readonly C0XQueryService _c0xQuery;
         private readonly IDrawingTypeRegistry _registry;
         private readonly ILogger<OrdersService> _logger;
 
@@ -22,59 +24,27 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
         public OrdersService(
             ISqlSugarClient db,
-            DrawingNumberService drawingNumberService,
+            C0XQueryService c0xQuery,
             IDrawingTypeRegistry registry,
             ILogger<OrdersService> logger)
+            : base(db, logger)
         {
             _db = db;
-            _drawingNumberService = drawingNumberService;
+            _c0xQuery = c0xQuery;
             _registry = registry;
             _logger = logger;
         }
 
+        // BaseQueryService 配置
+        protected override Expression<Func<Orders, bool>> NotDeletedPredicate()
+            => o => !o.IsDeleted;
+
+        protected override Expression<Func<Orders, bool>>? BuildSearchPredicate(string keyword)
+            => o => o.OrderNumber.ToString().Contains(keyword) || o.CreatedBy.Contains(keyword);
+
+        protected override string DefaultSortField() => "CreatedTime";
+
         // ===== 查询 =====
-
-        public async Task<QueryData<Orders>> QueryAsync(QueryPageOptions options)
-        {
-            try
-            {
-                var query = _db.Queryable<Orders>().Where(o => !o.IsDeleted);
-
-                if (!string.IsNullOrEmpty(options.SearchText))
-                {
-                    query = query.Where(o => o.OrderNumber.ToString().Contains(options.SearchText)
-                                          || o.CreatedBy.Contains(options.SearchText));
-                }
-
-                if (!string.IsNullOrEmpty(options.SortName))
-                {
-                    query = options.SortOrder == SortOrder.Asc
-                        ? query.OrderBy($"{options.SortName} asc")
-                        : query.OrderBy($"{options.SortName} desc");
-                }
-                else
-                {
-                    query = query.OrderByDescending(o => o.CreatedTime);
-                }
-
-                var total = query.Count();
-                var items = query.Skip((options.PageIndex - 1) * options.PageItems).Take(options.PageItems).ToList();
-
-                return new QueryData<Orders>
-                {
-                    Items = items,
-                    TotalCount = total,
-                    IsFiltered = options.Filters.Any(),
-                    IsSorted = !string.IsNullOrEmpty(options.SortName),
-                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.SearchModel != null
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error querying orders");
-                return new QueryData<Orders>();
-            }
-        }
 
         public async Task<Orders?> GetByIdAsync(int orderId)
         {
@@ -90,11 +60,11 @@ namespace BootstrapBlazor.OnlyServer1.Services
         }
 
         /// <summary>
-        /// 带过滤条件的查询(用于 AddDrawingNumbersSelect 页的 OrderNumber / CreatedBy / IsReactor 筛选)。
+        /// 带过滤条件的订单查询(按 OrderNumber / CreatedBy / IsReactor 三字段筛选)。
         /// 三个 filter 参数均可为 null/空,表示不过滤该字段。
         /// </summary>
-        public async Task<QueryData<Orders>> SearchAsync(
-            QueryPageOptions options,
+        public async Task<PagedResult<Orders>> SearchAsync(
+            PagedQuery options,
             string? orderNumberKeyword,
             string? createdByKeyword,
             string? reactorFilter)
@@ -120,7 +90,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 if (!string.IsNullOrEmpty(options.SortName))
                 {
-                    query = options.SortOrder == SortOrder.Asc
+                    query = options.SortOrder == SortDirection.Asc
                         ? query.OrderBy($"{options.SortName} asc")
                         : query.OrderBy($"{options.SortName} desc");
                 }
@@ -132,23 +102,23 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 var total = query.Count();
                 var items = query.Skip((options.PageIndex - 1) * options.PageItems).Take(options.PageItems).ToList();
 
-                return new QueryData<Orders>
+                return new PagedResult<Orders>
                 {
                     Items = items,
                     TotalCount = total,
-                    IsFiltered = options.Filters.Any(),
+                    IsFiltered = options.FilterCount > 0,
                     IsSorted = !string.IsNullOrEmpty(options.SortName),
-                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.SearchModel != null
+                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.HasSearchModel
                 };
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error searching orders");
-                return new QueryData<Orders>();
+                return new PagedResult<Orders>();
             }
         }
 
-        // ===== 保存(SERIALIZABLE 事务去重) =====
+        // ===== 保存(默认隔离级 + UNIQUE INDEX 去重) =====
 
         /// <summary>
         /// 保存订单。返回 (ok, error):
@@ -157,8 +127,14 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// 内部:
         ///   1. 验证 OrderNumber > 0
         ///   2. 兜底:已存在图号时不允许修改(Update 分支)
-        ///   3. SERIALIZABLE 事务内重查 + 写入,防止 OrderNumber 并发重复
-        ///   4. 死锁/超时返回友好提示,让用户重试
+        ///   3. 默认隔离级(READ COMMITTED)事务内写入,OrderNumber 唯一性靠
+        ///      DbMigrator 创建的 filtered unique index(IX_Orders_OrderNumber)约束
+        ///   4. INSERT/UPDATE 触发唯一冲突时 catch SqlException 2627/2601,
+        ///      翻译成"订单号已存在"友好提示
+        ///
+        /// 早期版本曾用 SERIALIZABLE 事务 + 应用层重名预检,实测 SERIALIZABLE 的
+        /// 范围锁会导致同一 OrderNumber 范围的并发 SELECT 被阻塞,lock_timeout 默认
+        /// -1(无限等待),用户体感为"点了保存 1-2 分钟没反应"。
         /// </summary>
         public async Task<(bool ok, string? error)> SaveAsync(Orders order, ItemChangedType changedType)
         {
@@ -170,7 +146,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
             // 兜底:编辑订单时,如果该订单下已存在图号则不允许修改
             if (changedType == ItemChangedType.Update)
             {
-                var drawings = await _drawingNumberService.GetAddedDrawingNumbersByOrderIdAsync(order.Id);
+                var drawings = await _c0xQuery.GetAddedDrawingNumbersByOrderIdAsync(order.Id);
                 if (drawings != null && drawings.Count > 0)
                 {
                     _logger.LogWarning("Order {OrderNumber} (Id={Id}) has {Count} drawing numbers, modification not allowed",
@@ -181,42 +157,41 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
             try
             {
-                _db.Ado.BeginTran(System.Data.IsolationLevel.Serializable);
+                _db.Ado.BeginTran();
                 try
                 {
                     if (changedType == ItemChangedType.Add)
                     {
-                        var isDuplicate = await _db.Queryable<Orders>()
-                            .Where(o => o.OrderNumber == order.OrderNumber && !o.IsDeleted)
-                            .AnyAsync();
-                        if (isDuplicate)
-                        {
-                            _db.Ado.RollbackTran();
-                            _logger.LogWarning("Duplicate OrderNumber: {OrderNumber}", order.OrderNumber);
-                            return (false, $"订单号 {order.OrderNumber} 已存在,请使用其他订单号");
-                        }
-
                         _logger.LogInformation("Adding new order: {OrderNumber}", order.OrderNumber);
                         order.CreatedTime = DateTime.Now;
                         order.UpdatedTime = DateTime.Now;
                         order.IsDeleted = false;
                         order.UpdatedBy = order.CreatedBy;
-                        await _db.Insertable(order).ExecuteReturnIdentityAsync();
+                        try
+                        {
+                            await _db.Insertable(order).ExecuteReturnIdentityAsync();
+                        }
+                        catch (Exception ex) when (IsDuplicateOrderNumberError(ex))
+                        {
+                            _db.Ado.RollbackTran();
+                            _logger.LogWarning("Duplicate OrderNumber on INSERT: {OrderNumber}", order.OrderNumber);
+                            return (false, $"订单号 {order.OrderNumber} 已存在,请使用其他订单号");
+                        }
                     }
                     else
                     {
-                        var isDuplicate = await _db.Queryable<Orders>()
-                            .Where(o => o.OrderNumber == order.OrderNumber && !o.IsDeleted && o.Id != order.Id)
-                            .AnyAsync();
-                        if (isDuplicate)
-                        {
-                            _db.Ado.RollbackTran();
-                            return (false, $"订单号 {order.OrderNumber} 已被其他订单占用");
-                        }
-
                         _logger.LogInformation("Updating order: {OrderNumber}", order.OrderNumber);
                         order.UpdatedTime = DateTime.Now;
-                        await _db.Updateable(order).ExecuteCommandAsync();
+                        try
+                        {
+                            await _db.Updateable(order).ExecuteCommandAsync();
+                        }
+                        catch (Exception ex) when (IsDuplicateOrderNumberError(ex))
+                        {
+                            _db.Ado.RollbackTran();
+                            _logger.LogWarning("Duplicate OrderNumber on UPDATE: {OrderNumber}", order.OrderNumber);
+                            return (false, $"订单号 {order.OrderNumber} 已被其他订单占用");
+                        }
                     }
 
                     _db.Ado.CommitTran();
@@ -230,25 +205,28 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 InvalidateDrawingNumberCache();
                 return (true, null);
             }
-            catch (SqlSugarException ex) when (IsDeadlockOrTimeout(ex))
-            {
-                _logger.LogWarning(ex, "Save order deadlock/timeout, OrderNumber={N}", order.OrderNumber);
-                return (false, "系统繁忙,请稍后重试");
-            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error saving order");
+                _logger.LogError(ex, "Error saving order: OrderNumber={N}", order.OrderNumber);
                 return (false, "保存失败,请重试");
             }
         }
 
-        private static bool IsDeadlockOrTimeout(SqlSugarException ex)
+        /// <summary>
+        /// SQL Server 唯一索引冲突检测。SQL Server 错误号:
+        ///   2627 — %ls 约束 '%.*ls' 违反 %ls 约束。不能在对象 '%.*ls' 中插入重复键。
+        ///   2601 — 不能在具有唯一索引 '%.*ls' 的对象 '%.*ls' 中插入重复键的行。
+        /// 这里再附加 IX_Orders_OrderNumber / "unique"/"duplicate"/"duplicate key" 字符串兜底,
+        /// 防止错误消息被本地化后错误号匹配失效。
+        /// </summary>
+        private static bool IsDuplicateOrderNumberError(Exception ex)
         {
             var msg = ex.Message ?? string.Empty;
-            return msg.Contains("1205")
-                || msg.Contains("-2")
-                || msg.Contains("deadlock", StringComparison.OrdinalIgnoreCase)
-                || msg.Contains("timeout", StringComparison.OrdinalIgnoreCase);
+            if (msg.Contains("2627") || msg.Contains("2601")) return true;
+            if (msg.Contains("IX_Orders_OrderNumber", StringComparison.OrdinalIgnoreCase)) return true;
+            if (msg.Contains("unique key", StringComparison.OrdinalIgnoreCase)) return true;
+            if (msg.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         // ===== 软删除 =====
@@ -280,7 +258,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         {
             try
             {
-                var list = await _drawingNumberService.GetAddedDrawingNumbersByOrderIdAsync(orderId);
+                var list = await _c0xQuery.GetAddedDrawingNumbersByOrderIdAsync(orderId);
                 return list != null && list.Count > 0;
             }
             catch (Exception ex)

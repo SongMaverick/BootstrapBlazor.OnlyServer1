@@ -1,10 +1,11 @@
 @page "/order-drawing-numbers/{orderId:int}"
 @attribute [TabItemOption(Text = "订单图号列表")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator)]
 @using BootstrapBlazor.OnlyServer1.Services
 @using BootstrapBlazor.OnlyServer1.Models
 @using BootstrapBlazor.OnlyServer1.Services.Identity
-@inject DrawingNumberService? DrawingNumberService
+@inject C0XQueryService? DrawingNumberQuery
+@inject C0XWriteService? DrawingNumberWrite
 @inject OrdersService OrdersService
 @inject NavigationManager NavigationManager
 @inject Microsoft.Extensions.Logging.ILogger<OrderDrawingNumbers> Logger
@@ -207,9 +208,9 @@
     {
         Logger.LogInformation("OrderDrawingNumbers: LoadData starting for OrderId = {OrderId}", OrderId);
 
-        if (DrawingNumberService == null)
+        if (DrawingNumberQuery == null)
         {
-            Logger.LogWarning("OrderDrawingNumbers: DrawingNumberService is null");
+            Logger.LogWarning("OrderDrawingNumbers: DrawingNumberQuery is null");
             return;
         }
 
@@ -225,7 +226,7 @@
 
             ct.ThrowIfCancellationRequested();
             Logger.LogInformation("OrderDrawingNumbers: Loaded order successfully");
-            _drawingNumbers = await DrawingNumberService.GetAddedDrawingNumberViewModelsByOrderIdAsync(OrderId);
+            _drawingNumbers = await DrawingNumberQuery!.GetAddedDrawingNumberViewModelsByOrderIdAsync(OrderId);
             ct.ThrowIfCancellationRequested();
             Logger.LogInformation("OrderDrawingNumbers: Loaded {Count} drawing numbers", _drawingNumbers.Count);
         }
@@ -246,7 +247,7 @@
 
     private async Task OpenEditModal(DrawingNumberViewModel item)
     {
-        if (DrawingNumberService == null)
+        if (DrawingNumberQuery == null)
         {
             if (ToastService != null) await ToastService.Error("服务不可用");
             return;
@@ -260,7 +261,7 @@
 
         try
         {
-            _editingC0x = await DrawingNumberService.FindDrawingNumberByIdAsync(item.Id, item.DrawingType);
+            _editingC0x = await DrawingNumberQuery!.FindDrawingNumberByIdAsync(item.Id, item.DrawingType);
             if (_editingC0x == null)
             {
                 if (ToastService != null) await ToastService.Error("图号不存在");
@@ -295,7 +296,7 @@
 
     private async Task HandleEditConfirm()
     {
-        if (DrawingNumberService == null || CurrentUser == null || _editingC0x == null || _editingViewModel == null)
+        if (DrawingNumberWrite == null || CurrentUser == null || _editingC0x == null || _editingViewModel == null)
         {
             if (ToastService != null) await ToastService.Error("服务不可用");
             return;
@@ -328,7 +329,7 @@
             Logger.LogInformation("User {UserName} updating drawing number {DrawingTypeNumber}, from '{OldName}' to '{NewName}'",
                 currentUserName, _editingViewModel.DrawingTypeNumber, oldDrawingName, _editingC0x.DrawName);
 
-            int result = await DrawingNumberService.UpdateCX0DrawingNumberByIdAsync(_editingC0x, _editingViewModel.DrawingType);
+            int result = await DrawingNumberWrite!.UpdateCX0DrawingNumberByIdAsync(_editingC0x, _editingViewModel.DrawingType);
 
             if (result > 0)
             {

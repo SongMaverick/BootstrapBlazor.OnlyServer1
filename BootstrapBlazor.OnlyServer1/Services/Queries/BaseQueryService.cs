@@ -1,0 +1,89 @@
+using System.Linq.Expressions;
+using BootstrapBlazor.OnlyServer1.Models;
+using SqlSugar;
+
+namespace BootstrapBlazor.OnlyServer1.Services.Queries;
+
+/// <summary>
+/// 通用列表查询基类。
+/// 4 个业务 Service 的 QueryAsync 之前各写一份,这里抽公共逻辑:
+///   - 软删过滤谓词(子类声明)
+///   - 搜索谓词(子类可选 override)
+///   - 排序(根据 PagedQuery.SortName + SortDirection,无则按 DefaultSortField desc)
+///   - Count + Skip/Take 分页
+///   - PagedResult 封装
+///
+/// 每个子类只需重写 2-3 个小方法即可,全部公共代码集中此处。
+/// </summary>
+public abstract class BaseQueryService<TEntity> where TEntity : class, new()
+{
+    protected ISqlSugarClient Db { get; }
+    protected ILogger Logger { get; }
+
+    protected BaseQueryService(ISqlSugarClient db, ILogger logger)
+    {
+        Db = db;
+        Logger = logger;
+    }
+
+    /// <summary>软删过滤谓词。子类声明该实体如何"未删除"。</summary>
+    protected abstract Expression<Func<TEntity, bool>> NotDeletedPredicate();
+
+    /// <summary>
+    /// 自定义搜索谓词(子类可 override)。
+    /// 默认返回 null —— 某些 Service(如 Roles)不需要支持关键字搜索。
+    /// </summary>
+    protected virtual Expression<Func<TEntity, bool>>? BuildSearchPredicate(string keyword) => null;
+
+    /// <summary>默认排序字段名(SortName 为空时使用)。</summary>
+    protected abstract string DefaultSortField();
+
+    public virtual Task<PagedResult<TEntity>> QueryAsync(PagedQuery options, CancellationToken ct = default)
+    {
+        try
+        {
+            var query = Db.Queryable<TEntity>().Where(NotDeletedPredicate());
+
+            var kw = options.SearchText;
+            if (!string.IsNullOrEmpty(kw))
+            {
+                var searchPredicate = BuildSearchPredicate(kw);
+                if (searchPredicate != null)
+                {
+                    query = query.Where(searchPredicate);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(options.SortName))
+            {
+                query = options.SortOrder == SortDirection.Asc
+                    ? query.OrderBy($"{options.SortName} asc")
+                    : query.OrderBy($"{options.SortName} desc");
+            }
+            else
+            {
+                query = query.OrderBy($"{DefaultSortField()} desc");
+            }
+
+            var total = query.Count();
+            var items = query
+                .Skip((options.PageIndex - 1) * options.PageItems)
+                .Take(options.PageItems)
+                .ToList();
+
+            return Task.FromResult(new PagedResult<TEntity>
+            {
+                Items = items,
+                TotalCount = total,
+                IsFiltered = options.FilterCount > 0,
+                IsSorted = !string.IsNullOrEmpty(options.SortName),
+                IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.HasSearchModel
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error querying {Entity}", typeof(TEntity).Name);
+            return Task.FromResult(new PagedResult<TEntity>());
+        }
+    }
+}

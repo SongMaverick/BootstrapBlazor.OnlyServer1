@@ -1,10 +1,10 @@
 @page "/roles"
 @attribute [TabItemOption(Text = "角色权限")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin)]
 @using BootstrapBlazor.OnlyServer1.Services.Identity
 @inject BootstrapBlazor.OnlyServer1.Services.RolesService RolesService
 @inject BootstrapBlazor.OnlyServer1.Services.PermissionsService PermissionsService
-@inject BootstrapBlazor.Components.ToastService ToastService
+@inject ToastService ToastService
 
 <PageTitle>角色权限</PageTitle>
 
@@ -164,15 +164,31 @@
         try
         {
             // 基础角色数据(RolesService.QueryAsync 返回的 Items 是 Roles 列表)
-            var baseQuery = await RolesService.QueryAsync(options);
-            var rows = new List<RoleRowViewModel>();
-            foreach (var r in baseQuery.Items)
+            var baseQuery = await RolesService.QueryAsync(options.ToPagedQuery());
+            if (baseQuery.Items.Count == 0)
             {
-                var vm = new RoleRowViewModel { Role = r };
-                vm.UserCount = await RolesService.CountUsersInRoleAsync(r.Id);
-                vm.PermissionCount = await RolesService.CountPermissionsInRoleAsync(r.Id);
-                rows.Add(vm);
+                return new QueryData<RoleRowViewModel>
+                {
+                    Items = new List<RoleRowViewModel>(),
+                    TotalCount = baseQuery.TotalCount,
+                    IsFiltered = baseQuery.IsFiltered,
+                    IsSorted = baseQuery.IsSorted,
+                    IsSearch = baseQuery.IsSearch
+                };
             }
+
+            // 批量取本页所有角色的用户数 + 权限数(消除 N+1)
+            var roleIds = baseQuery.Items.Select(r => r.Id).ToList();
+            var userCounts = await RolesService.GetUserCountsByRoleIdsAsync(roleIds);
+            var permCounts = await RolesService.GetPermissionCountsByRoleIdsAsync(roleIds);
+
+            var rows = baseQuery.Items.Select(r => new RoleRowViewModel
+            {
+                Role = r,
+                UserCount = userCounts.TryGetValue(r.Id, out var uc) ? uc : 0,
+                PermissionCount = permCounts.TryGetValue(r.Id, out var pc) ? pc : 0
+            }).ToList();
+
             return new QueryData<RoleRowViewModel>
             {
                 Items = rows,
@@ -184,7 +200,7 @@
         }
         catch (Exception ex)
         {
-            await ShowToast("查询失败:" + ex.Message, BootstrapBlazor.Components.ToastCategory.Error);
+            await ShowToast("查询失败:" + ex.Message, ToastCategory.Error);
             return new QueryData<RoleRowViewModel>();
         }
     }
@@ -194,13 +210,13 @@
 
     private async Task<bool> OnSaveAsync(RoleRowViewModel row, ItemChangedType changedType)
     {
-        var (ok, error) = await RolesService.SaveAsync(row.Role, Array.Empty<int>(), changedType);
+        var (ok, error) = await RolesService.SaveAsync(row.Role, Array.Empty<int>(), changedType.ToDomain());
         if (!ok)
         {
-            await ShowToast(error ?? "保存失败", BootstrapBlazor.Components.ToastCategory.Error);
+            await ShowToast(error ?? "保存失败", ToastCategory.Error);
             return false;
         }
-        await ShowToast("已保存。点击「权限」按钮可分配权限码", BootstrapBlazor.Components.ToastCategory.Success);
+        await ShowToast("已保存。点击「权限」按钮可分配权限码", ToastCategory.Success);
         return true;
     }
 
@@ -210,11 +226,11 @@
         var (ok, error) = await RolesService.DeleteAsync(roles);
         if (!ok)
         {
-            await ShowToast(error ?? "删除失败", BootstrapBlazor.Components.ToastCategory.Error);
+            await ShowToast(error ?? "删除失败", ToastCategory.Error);
         }
         else
         {
-            await ShowToast("已删除", BootstrapBlazor.Components.ToastCategory.Success);
+            await ShowToast("已删除", ToastCategory.Success);
         }
         return ok;
     }
@@ -271,12 +287,12 @@
         try
         {
             await PermissionsService.SetRolePermissionsAsync(_editingRoleId, _selectedPermIds);
-            await ShowToast($"已保存 {_selectedPermIds.Count} 个权限,相关用户需重新登录生效", BootstrapBlazor.Components.ToastCategory.Success);
+            await ShowToast($"已保存 {_selectedPermIds.Count} 个权限,相关用户需重新登录生效", ToastCategory.Success);
             _permDialogVisible = false;
         }
         catch (Exception ex)
         {
-            await ShowToast($"保存失败:{ex.Message}", BootstrapBlazor.Components.ToastCategory.Error);
+            await ShowToast($"保存失败:{ex.Message}", ToastCategory.Error);
         }
         finally
         {
@@ -301,9 +317,9 @@
         _membersDialogVisible = false;
     }
 
-    private async Task ShowToast(string content, BootstrapBlazor.Components.ToastCategory category)
+    private async Task ShowToast(string content, ToastCategory category)
     {
-        await ToastService.Show(new BootstrapBlazor.Components.ToastOption
+        await ToastService.Show(new ToastOption
         {
             Category = category,
             Content = content,

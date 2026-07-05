@@ -1,11 +1,11 @@
 @page "/orders"
 @attribute [TabItemOption(Text = "订单列表")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator,Viewer")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Viewer)]
 @inject BootstrapBlazor.OnlyServer1.Services.OrdersService OrdersService
-@inject BootstrapBlazor.OnlyServer1.Services.DrawingNumberService? DrawingNumberService
+@inject C0XQueryService? DrawingNumberQuery
 @inject Microsoft.Extensions.Logging.ILogger<Orders> Logger
 @inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
-@inject BootstrapBlazor.Components.ToastService ToastService
+@inject ToastService ToastService
 @inject NavigationManager NavigationManager
 
 <PageTitle>订单列表</PageTitle>
@@ -33,10 +33,10 @@
            ShowSkeleton="true"
            IsMultipleSelect="true"
            Height="600"
-           ShowAddButton="@CurrentUser.HasPermission("Order.Create")"
-  ShowExtendEditButtonCallback="@((Models.Orders item) => CurrentUser.HasPermission("Order.Edit"))"
+           ShowAddButton="@CurrentUser.HasPermission(PermissionCodes.OrderCreate)"
+  ShowExtendEditButtonCallback="@((Models.Orders item) => CurrentUser.HasPermission(PermissionCodes.OrderEdit))"
             DisableExtendEditButtonCallback="@((Models.Orders item) => HasDrawingNumber(item))"
-            DisableExtendDeleteButtonCallback="@((Models.Orders item) => !CurrentUser.HasPermission("Order.Delete") || HasDrawingNumber(item))"
+            DisableExtendDeleteButtonCallback="@((Models.Orders item) => !CurrentUser.HasPermission(PermissionCodes.OrderDelete) || HasDrawingNumber(item))"
             @ref="OrdersTable">
         <TableColumns>
             <TableColumn @bind-Field="@context.Id" Text="编号" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" IsVisibleWhenAdd="false" />
@@ -69,14 +69,14 @@
             </TableColumn>
         </TableColumns>
         <TableToolbarTemplate>
-            @if (CurrentUser.HasPermission("DrawingNumber.Allocate"))
+            @if (CurrentUser.HasPermission(PermissionCodes.DrawingNumberAllocate))
             {
                 <Button Color="Color.Primary" Icon="fa-solid fa-plus"
                         OnClick="OnToolbarAddDrawingNumberClick">
                     添加图号
                 </Button>
             }
-            @if (CurrentUser.HasPermission("DrawingNumber.Read"))
+            @if (CurrentUser.HasPermission(PermissionCodes.DrawingNumberRead))
             {
                 <Button Color="Color.Primary" Icon="fa-solid fa-list"
                         OnClick="OnToolbarViewDrawingNumberClick">
@@ -142,10 +142,10 @@
 
     private async Task<QueryData<Models.Orders>> OnQueryAsync(QueryPageOptions options)
     {
-        var result = await OrdersService.QueryAsync(options);
+        var result = await OrdersService.QueryAsync(options.ToPagedQuery());
         // 预热本页订单的"是否有图号"缓存(由 OrdersService 内部按 drawingType 分组批量查)
         await OrdersService.PreloadHasDrawingNumberCacheAsync(result.Items);
-        return result;
+        return result.ToQueryData();
     }
 
     private Task<Models.Orders> OnAddAsync()
@@ -166,7 +166,7 @@
 
     private async Task<bool> OnSaveAsync(Models.Orders order, ItemChangedType changedType)
     {
-        var (ok, error) = await OrdersService.SaveAsync(order, changedType);
+        var (ok, error) = await OrdersService.SaveAsync(order, changedType.ToDomain());
         if (!ok && !string.IsNullOrEmpty(error))
         {
             await ToastService.Error(error);
