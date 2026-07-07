@@ -1,4 +1,4 @@
-using SqlSugar;
+﻿using SqlSugar;
 using BootstrapBlazor.OnlyServer1.Models;
 
 namespace BootstrapBlazor.OnlyServer1.Data
@@ -17,8 +17,8 @@ namespace BootstrapBlazor.OnlyServer1.Data
 
         public SqlSugarSetup(IConfiguration configuration, ILogger<SqlSugarSetup> logger)
         {
-            //var connectionString = configuration.GetConnectionString("sqlServerConnectionStringOffice");
-            var connectionString = configuration.GetConnectionString("sqlServerConnectionStringHomeSA");
+            var connectionString = configuration.GetConnectionString("sqlServerConnectionStringOffice");
+            //var connectionString = configuration.GetConnectionString("sqlServerConnectionStringHomeSA");
 
             var config = new ConnectionConfig
             {

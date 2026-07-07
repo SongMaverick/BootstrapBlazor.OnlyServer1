@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.RegularExpressions;
 using BootstrapBlazor.DbMigrator.Sql;
 using BootstrapBlazor.OnlyServer1.Models;
@@ -68,8 +68,8 @@ public class Program
             .AddJsonFile("appsettings.json", optional: false)
             .Build();
 
-        //var connStr = config.GetConnectionString("SqlServer");
-        var connStr = config.GetConnectionString("sqlServerConnectionStringHomeSA");
+        var connStr = config.GetConnectionString("SqlServer");
+        //var connStr = config.GetConnectionString("sqlServerConnectionStringHomeSA");
         if (string.IsNullOrWhiteSpace(connStr))
         {
             Console.Error.WriteLine("错误:appsettings.json 中未配置 ConnectionStrings.SqlServer");
