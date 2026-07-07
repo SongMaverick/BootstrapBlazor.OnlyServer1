@@ -1,4 +1,6 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using SqlSugar;
@@ -14,17 +16,32 @@ namespace BootstrapBlazor.OnlyServer1.Services
         private readonly ISqlSugarClient _db;
         private readonly UserManager<Users> _userManager;
         private readonly IdentityOptions _identityOptions;
+        private readonly CurrentUserAccessor _currentUser;
         private readonly ILogger<UsersService> _logger;
+
+        // (2026-07-07 Review #H3) OrderBy(string) 字符串拼接 SortName 防注入
+        private static readonly HashSet<string> _usersAllowedSortCols =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                nameof(Users.Id),
+                nameof(Users.Name),
+                nameof(Users.WorkerNumber),
+                nameof(Users.GID),
+                nameof(Users.DepartmentId),
+                nameof(Users.CreatedTime),
+            };
 
         public UsersService(
             ISqlSugarClient db,
             UserManager<Users> userManager,
             IOptions<IdentityOptions> identityOptions,
+            CurrentUserAccessor currentUser,
             ILogger<UsersService> logger)
         {
             _db = db;
             _userManager = userManager;
             _identityOptions = identityOptions.Value;
+            _currentUser = currentUser;
             _logger = logger;
         }
 
@@ -44,7 +61,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     query = query.Where(u => u.Name.Contains(options.SearchText) || u.GID.Contains(options.SearchText));
                 }
 
-                if (!string.IsNullOrEmpty(options.SortName))
+                if (!string.IsNullOrEmpty(options.SortName) && _usersAllowedSortCols.Contains(options.SortName))
                 {
                     query = options.SortOrder == SortDirection.Asc
                         ? query.OrderBy($"{options.SortName} asc")
@@ -213,15 +230,35 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// <summary>
         /// 改密码:由 UserManager.ChangePasswordAsync 处理(PBKDF2 校验旧密码 + 哈希新密码)。
         /// 长度下限从 IdentityOptions.Password.RequiredLength 读取(配置项)。
+        /// 授权规则(纵深防御):调用者必须是 userId 本人,或具备 Admin 角色。
+        /// 仅依赖调用方 Razor 的 [Authorize] 不够 — 任何能注入 Service 的代码都会绕过。
         /// </summary>
         public async Task<(bool ok, string? error)> ChangePasswordAsync(int userId, string oldPassword, string newPassword)
         {
+            // 1) 授权:必须本人,或 Admin
+            var callerId = _currentUser.GetUserId();
+            var isSelf = callerId > 0 && callerId == userId;
+            var isAdmin = _currentUser.IsInAnyRole(RoleNames.Admin);
+            if (!isSelf && !isAdmin)
+            {
+                _logger.LogWarning(
+                    "ChangePasswordAsync denied (unauthorized): callerId={Caller} targetId={Target} isAdmin={IsAdmin}",
+                    callerId, userId, isAdmin);
+                return (false, "无权修改此用户的密码");
+            }
+
             if (string.IsNullOrEmpty(oldPassword) || string.IsNullOrEmpty(newPassword))
             {
+                _logger.LogWarning(
+                    "ChangePasswordAsync rejected (empty input): callerId={Caller} targetId={Target}",
+                    callerId, userId);
                 return (false, "旧密码和新密码均不能为空");
             }
             if (newPassword.Length < _identityOptions.Password.RequiredLength)
             {
+                _logger.LogWarning(
+                    "ChangePasswordAsync rejected (new-password too short, len={Len}, required={Required}): callerId={Caller} targetId={Target}",
+                    newPassword.Length, _identityOptions.Password.RequiredLength, callerId, userId);
                 return (false, $"新密码长度至少 {_identityOptions.Password.RequiredLength} 位");
             }
 
@@ -230,6 +267,9 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 var user = await _userManager.FindByIdAsync(userId.ToString());
                 if (user == null)
                 {
+                    _logger.LogWarning(
+                        "ChangePasswordAsync target not found: callerId={Caller} targetId={Target}",
+                        callerId, userId);
                     return (false, "用户不存在");
                 }
 
@@ -237,18 +277,25 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 if (!result.Succeeded)
                 {
                     var error = result.Errors.FirstOrDefault()?.Description ?? "修改失败";
-                    var friendlyError = error.Contains("password") || error.Contains("Password")
-                        ? "旧密码不正确"
-                        : error;
+                    var isPasswordIssue = error.Contains("password") || error.Contains("Password");
+                    // 旧密码错误很可能是用户真的记错,但高频出现于同一账户可能是撞库
+                    _logger.LogWarning(
+                        "ChangePasswordAsync failed (identity rejection, passwordIssue={IsPasswordIssue}): callerId={Caller} targetId={Target} errors={Errors}",
+                        isPasswordIssue, callerId, userId, string.Join("; ", result.Errors.Select(e => e.Code)));
+                    var friendlyError = isPasswordIssue ? "旧密码不正确" : error;
                     return (false, friendlyError);
                 }
 
+                // 审计:成功事件留痕(以后排查"是谁何时改了谁的密码")
+                _logger.LogInformation(
+                    "ChangePasswordAsync succeeded: callerId={Caller} targetId={Target} isSelf={IsSelf} isAdminReset={IsAdminReset}",
+                    callerId, userId, isSelf, isAdmin && !isSelf);
                 return (true, null);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "ChangePasswordAsync failed: userId={Id}", userId);
-                return (false, $"密码修改出错:{ex.Message}");
+                return (false, "密码修改失败,请重试");
             }
         }
     }

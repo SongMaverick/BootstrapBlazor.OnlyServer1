@@ -38,6 +38,15 @@ public abstract class BaseQueryService<TEntity> where TEntity : class, new()
     /// <summary>默认排序字段名(SortName 为空时使用)。</summary>
     protected abstract string DefaultSortField();
 
+    /// <summary>
+    /// (2026-07-07 Review #H3):
+    /// SqlSugar.OrderBy(string) 是字符串拼接,SortName 来自前端表格列头。
+    /// BootstrapBlazor Table 写法上 SortName 是写死的,但任何绕过 Blazor 的入口
+    /// (手机 App / Web API / 任务 / 测试代码)都可能注入恶意 SortName。
+    /// 子类 override 声明自己允许的字段;不在白名单 → 静默回退 DefaultSortField。
+    /// </summary>
+    protected virtual IReadOnlyCollection<string> AllowedSortCols => Array.Empty<string>();
+
     public virtual Task<PagedResult<TEntity>> QueryAsync(PagedQuery options, CancellationToken ct = default)
     {
         try
@@ -54,7 +63,11 @@ public abstract class BaseQueryService<TEntity> where TEntity : class, new()
                 }
             }
 
-            if (!string.IsNullOrEmpty(options.SortName))
+            // H3 白名单:不在 AllowedSortCols 的 SortName 一律忽略,回退默认排序
+            var allowed = AllowedSortCols;
+            var isSortAllowed = !string.IsNullOrEmpty(options.SortName)
+                && allowed.Contains(options.SortName);
+            if (isSortAllowed)
             {
                 query = options.SortOrder == SortDirection.Asc
                     ? query.OrderBy($"{options.SortName} asc")

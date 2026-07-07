@@ -19,8 +19,10 @@ using SqlSugar;
 var builder = WebApplication.CreateBuilder(args);
 
 // NLog 接管 ASP.NET Core 的 ILogger 系统
+// 2026-07-07 Review #M4:Trace 级别在生产也输出,会泄漏敏感信息进 SQL `Logs` 表。
+// 生产建议 Information(默认);开发期可临时改 Trace 排查。
 builder.Logging.ClearProviders();
-builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Information);
 builder.Host.UseNLog();
 
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);

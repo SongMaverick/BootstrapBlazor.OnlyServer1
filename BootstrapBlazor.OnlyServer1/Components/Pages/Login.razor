@@ -11,6 +11,7 @@
         </div>
         <div class="card-body p-4">
             <form method="post" action="/Account/Login">
+                <AntiforgeryToken />
                 <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
 
                 <div class="mb-3">

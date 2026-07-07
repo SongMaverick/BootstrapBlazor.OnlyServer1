@@ -34,6 +34,10 @@
                     <button class="btn btn-success ms-2" @onclick="HandleChangeSequence" disabled="@isAdding">
                         更改顺序添加图号
                     </button>
+                    <button class="btn btn-outline-secondary ms-2" @onclick="ToggleAllCollapse" disabled="@(_partGroups.Count == 0)">
+                        <i class="fa-solid @(AllCollapsed ? "fa-angles-down" : "fa-angles-up") me-1"></i>
+                        @(AllCollapsed ? "全部展开" : "全部折叠")
+                    </button>
                     <button class="btn btn-info ms-2" @onclick="GoBack">
                         返回图号列表
                     </button>
@@ -52,55 +56,89 @@
                 }
 
                 @*
-                    动态分组渲染:
+                    动态分组渲染(2026-07-07 UX 调优):
                       - _partGroups 是 Dictionary<string, List<CheckboxItem>>,key = Part 名(ESL-01 / TItU / ...)
-                      - 一行两个 col-md-6,Part 多时自动换行
-                      - 颜色按 Part 名字 hash 选,保证同一 Part 颜色稳定
+                      - 响应式列数(解决"两列内容太多要滚动"的问题):
+                          手机(<576px)        :1 列  col-12
+                          平板竖屏(576-768)  :2 列  col-sm-6
+                          笔记本(768-1200)   :3 列  col-lg-4
+                          大屏显示器(≥1200)  :4 列  col-xl-3
+                      - h-100 让 grid 卡片等高
+                      - g-2 把列之间间距缩小,适合多卡片密集布局
+                      - 颜色:Part 名字 hash 选,同 Part 颜色稳定
                 *@
                 @if (_partGroups.Count == 0) {
-                    <p class="text-muted">库里还没有任何图名,无法添加。请先在"图名列表"添加图名。</p>
+                    <div class="alert alert-info" role="alert">
+                        <i class="fa-solid fa-circle-info me-2"></i>
+                        库里还没有任何图名,无法添加。
+                        请先去 <a href="/drawing-names" class="alert-link">图名列表</a> 添加图名后,再回到这里添加图号。
+                    </div>
                 }
                 else {
-                    <div class="row">
-                        @for (int i = 0; i < _orderedParts.Count; i++) {
-                            var part = _orderedParts[i];
+                    <div class="row g-2">
+                        @foreach (var part in _orderedParts) {
                             var items = _partGroups[part];
                             var style = GetPartCardStyle(part);
+                            var isCollapsed = IsCollapsed(part);
+                            var selectedCount = GetSelectedCountForPart(items);
 
-                            // 每两个 Part 凑一行:偶数下标开 row,奇数下标关 row
-                            if (i % 2 == 0) {
-                                @:<div class="row">
-                            }
-
-                            <div class="col-md-6">
-                                <div class="card mb-3">
-                                    <div class="card-header @style.HeaderClass @style.HeaderTextClass">
-                                        <h5 class="mb-0">@GetPartTitle(part)</h5>
+                            @* (2026-07-07 UX 调优第 2 轮) 改为"每行 1 个 Part"的列表式布局。
+                               单列下 h-100 会强行撑满视口,反而丑,所以删了。 *@
+                            <div class="col-12">
+                                <div class="card mb-3 shadow-sm">
+                                    <div class="card-header @style.HeaderClass @style.HeaderTextClass user-select-none"
+                                         role="button"
+                                         @onclick="() => ToggleCollapse(part)"
+                                         style="cursor: pointer;">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <h5 class="mb-0">@GetPartTitle(part)</h5>
+                                            <div class="d-flex align-items-center small">
+                                                <span class="badge @(selectedCount > 0 ? "bg-warning text-dark" : "bg-light text-dark") me-2"
+                                                      style="font-size: 0.75em;">
+                                                    @if (selectedCount > 0) {
+                                                        <i class="fa-solid fa-check me-1"></i>
+                                                    }
+                                                    已选 @selectedCount
+                                                </span>
+                                                <i class="fa-solid @(isCollapsed ? "fa-chevron-right" : "fa-chevron-down")"></i>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="card-body">
-                                        @if (items.Count == 0) {
-                                            <p class="text-muted">没有可添加的 @part 图号</p>
-                                        }
-                                        else {
-                                            @foreach (var item in items) {
-                                                <div class="form-check mb-2">
-                                                    <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
-                                                    <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
-                                                        @item.drawingName.ComponentName
-                                                        @if (item.IsAdded) {
-                                                            <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
-                                                        }
-                                                    </label>
+                                    @if (!isCollapsed) {
+                                        <div class="card-body" style="background-color: @style.BodyBg;">
+                                            @if (items.Count == 0) {
+                                                <p class="text-muted small mb-0">没有可添加的 @part 图号</p>
+                                            }
+                                            else {
+                                                @* (2026-07-07 UX 调优第 3 轮) 图名水平多列 —
+                                                   响应式:
+                                                     手机(<576px)        :1 列  col-12
+                                                     平板(576-768)      :2 列  col-sm-6
+                                                     中屏(768-992)      :3 列  col-md-4
+                                                     标准笔记本(992-1200):4 列  col-lg-3
+                                                     大显示器(≥1200)    :6 列  col-xl-2
+                                                   行内多列后多数图名能在一行内显示完整,
+                                                   减少"展开 Part 后还要滚动"的二次问题。 *@
+                                                <div class="row g-2">
+                                                    @foreach (var item in items) {
+                                                        <div class="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                                                            <div class="form-check mb-2">
+                                                                <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
+                                                                <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
+                                                                    @item.drawingName.ComponentName
+                                                                    @if (item.IsAdded) {
+                                                                        <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
+                                                                    }
+                                                                </label>
+                                                            </div>
+                                                        </div>
+                                                    }
                                                 </div>
                                             }
-                                        }
-                                    </div>
+                                        </div>
+                                    }
                                 </div>
                             </div>
-
-                            if (i % 2 == 1 || i == _orderedParts.Count - 1) {
-                                @:</div>
-                            }
                         }
                     </div>
                 }
@@ -204,6 +242,9 @@
     private Dictionary<string, List<CheckboxItem>> _partGroups = new();
     private List<string> _orderedParts = new();  // 稳定排序(ESL-01/02/03/Core 在前,新 Part 字典序追加)
 
+    // (2026-07-07 UX 折叠功能) 默认全折叠;用户点 header 展开/收起
+    private HashSet<string> _collapsedParts = new(StringComparer.OrdinalIgnoreCase);
+
     public class CheckboxItem {
         public int Id { get; set; }
         public BootstrapBlazor.OnlyServer1.Models.DrawingNames drawingName { get; set; } = new();
@@ -212,7 +253,8 @@
     }
 
     // 卡片样式:用 Part 名字 hash 选 Bootstrap 配色,同一 Part 颜色稳定
-    private record CardStyle(string HeaderClass, string HeaderTextClass);
+    // (2026-07-07 UX) BodyBg 是 header 同色系的浅色,让图名区域背景"延续"header 的色感
+    private record CardStyle(string HeaderClass, string HeaderTextClass, string BodyBg);
 
     private static readonly string[] _bgClasses = new[] {
         "bg-warning", "bg-success", "bg-info", "bg-secondary",
@@ -220,15 +262,33 @@
     };
     private static readonly string[] _lightText = new[] { "text-dark", "text-white" };
 
+    /// <summary>
+    /// Header bg class → 同色系浅色 hex(用于 card-body 背景)。
+    /// 用 Bootstrap 5.3 subtle 配色思路的近似 hex,不依赖具体 Bootstrap 类名,
+    /// 任何版本都能用。
+    /// </summary>
+    private static string LightBgFor(string bg) => bg switch
+    {
+        "bg-warning"   => "#fff3cd",   // 淡黄
+        "bg-success"   => "#d1e7dd",   // 淡绿
+        "bg-info"      => "#cff4fc",   // 淡青
+        "bg-secondary" => "#e2e3e5",   // 淡灰
+        "bg-primary"   => "#cfe2ff",   // 淡蓝
+        "bg-danger"    => "#f8d7da",   // 淡红
+        "bg-dark"      => "#d3d3d4",   // 浅深灰
+        "bg-light"     => "#fefefe",   // 近白
+        _              => "#f8f9fa"
+    };
+
     private CardStyle GetPartCardStyle(string part) {
-        if (string.IsNullOrEmpty(part)) return new CardStyle("bg-secondary", "text-white");
+        if (string.IsNullOrEmpty(part)) return new CardStyle("bg-secondary", "text-white", LightBgFor("bg-secondary"));
 
         // 优先复用原来的 4 个固定配色,保持视觉一致
         var known = part.ToUpperInvariant() switch {
-            "ESL-01" => new CardStyle("bg-warning", "text-dark"),
-            "ESL-02" => new CardStyle("bg-success", "text-white"),
-            "ESL-03" => new CardStyle("bg-info", "text-white"),
-            "ESL-CORE" => new CardStyle("bg-secondary", "text-white"),
+            "ESL-01" => new CardStyle("bg-warning", "text-dark", LightBgFor("bg-warning")),
+            "ESL-02" => new CardStyle("bg-success", "text-white", LightBgFor("bg-success")),
+            "ESL-03" => new CardStyle("bg-info", "text-white", LightBgFor("bg-info")),
+            "ESL-CORE" => new CardStyle("bg-secondary", "text-white", LightBgFor("bg-secondary")),
             _ => null
         };
         if (known != null) return known;
@@ -237,7 +297,7 @@
         int hash = Math.Abs(part.GetHashCode());
         var bg = _bgClasses[hash % _bgClasses.Length];
         var text = bg is "bg-warning" or "bg-light" ? "text-dark" : "text-white";
-        return new CardStyle(bg, text);
+        return new CardStyle(bg, text, LightBgFor(bg));
     }
 
     private string GetPartTitle(string part) {
@@ -298,6 +358,9 @@
                 })
                 .ThenBy(p => p, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
+            // (2026-07-07 UX 折叠功能) 默认全折叠 — 把所有 Part 加进 collapsed 集合
+            _collapsedParts = new HashSet<string>(_orderedParts, StringComparer.OrdinalIgnoreCase);
         }
         catch (Exception ex) {
             Logger.LogError(ex, "Error initializing page");
@@ -313,6 +376,34 @@
             .Select(item => item.drawingName.ComponentName)
             .ToList();
     }
+
+    // ===== 折叠/展开逻辑(2026-07-07 UX) =====
+
+    private bool IsCollapsed(string part) => _collapsedParts.Contains(part);
+
+    private void ToggleCollapse(string part)
+    {
+        if (_collapsedParts.Contains(part))
+            _collapsedParts.Remove(part);
+        else
+            _collapsedParts.Add(part);
+    }
+
+    /// <summary>全部展开 vs 全部折叠:根据当前状态二选一。</summary>
+    private bool AllCollapsed => _orderedParts.Count > 0
+                                  && _collapsedParts.Count >= _orderedParts.Count;
+
+    private void ToggleAllCollapse()
+    {
+        if (AllCollapsed)
+            _collapsedParts.Clear();        // 全部展开
+        else
+            _collapsedParts = new HashSet<string>(_orderedParts, StringComparer.OrdinalIgnoreCase);  // 全部折叠
+    }
+
+    /// <summary>该 Part 下"已勾但未加"的图号数(用于标题栏 badge)。</summary>
+    private static int GetSelectedCountForPart(List<CheckboxItem> items)
+        => items.Count(i => i.IsChecked && !i.IsAdded);
 
     private Task HandleChangeSequence() {
         var checkedItems = GetCheckedItems();

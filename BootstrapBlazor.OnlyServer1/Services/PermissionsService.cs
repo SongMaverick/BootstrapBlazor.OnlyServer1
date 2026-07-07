@@ -1,4 +1,6 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
+using Microsoft.Extensions.Logging;
 using SqlSugar;
 
 namespace BootstrapBlazor.OnlyServer1.Services
@@ -12,10 +14,14 @@ namespace BootstrapBlazor.OnlyServer1.Services
     public class PermissionsService
     {
         private readonly ISqlSugarClient _db;
+        private readonly CurrentUserAccessor _currentUser;
+        private readonly ILogger<PermissionsService> _logger;
 
-        public PermissionsService(ISqlSugarClient db)
+        public PermissionsService(ISqlSugarClient db, CurrentUserAccessor currentUser, ILogger<PermissionsService> logger)
         {
             _db = db;
+            _currentUser = currentUser;
+            _logger = logger;
         }
 
         /// <summary>所有启用的权限码,按 Category / SortOrder 排序。</summary>
@@ -65,6 +71,20 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// <summary>给指定角色一次性替换权限关联(全删后全插)。</summary>
         public async Task SetRolePermissionsAsync(int roleId, IEnumerable<int> permissionIds)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 覆盖角色权限是高权限操作:仅 Admin。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(Models.Identity.RoleNames.Admin);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "PermissionsService.SetRolePermissionsAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), err);
+                return;
+            }
+
             var ids = permissionIds.Distinct().ToList();
             await _db.Deleteable<RolePermissions>().Where(rp => rp.RoleId == roleId).ExecuteCommandAsync();
             if (ids.Count == 0) return;

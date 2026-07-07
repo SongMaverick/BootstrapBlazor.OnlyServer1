@@ -1,4 +1,5 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
 using Microsoft.Extensions.Logging;
 using SqlSugar;
 
@@ -11,11 +12,24 @@ namespace BootstrapBlazor.OnlyServer1.Services
     public class DepartmentsService
     {
         private readonly ISqlSugarClient _db;
+        private readonly CurrentUserAccessor _currentUser;
         private readonly ILogger<DepartmentsService> _logger;
 
-        public DepartmentsService(ISqlSugarClient db, ILogger<DepartmentsService> logger)
+        // (2026-07-07 Review #H3) OrderBy(string) 字符串拼接 SortName 防注入
+        private static readonly HashSet<string> _deptsAllowedSortCols =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                nameof(Departments.Id),
+                nameof(Departments.Name),
+                nameof(Departments.Code),
+                nameof(Departments.IsActive),
+                nameof(Departments.CreatedTime),
+            };
+
+        public DepartmentsService(ISqlSugarClient db, CurrentUserAccessor currentUser, ILogger<DepartmentsService> logger)
         {
             _db = db;
+            _currentUser = currentUser;
             _logger = logger;
         }
 
@@ -41,7 +55,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                                            || (d.Code != null && d.Code.Contains(options.SearchText)));
                 }
 
-                if (!string.IsNullOrEmpty(options.SortName))
+                if (!string.IsNullOrEmpty(options.SortName) && _deptsAllowedSortCols.Contains(options.SortName))
                 {
                     query = options.SortOrder == SortDirection.Asc
                         ? query.OrderBy($"{options.SortName} asc")
@@ -74,6 +88,20 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// <summary>保存(Id==0 新增,否则 更新)。返回 (ok, error)。</summary>
         public async Task<(bool ok, string? error)> SaveAsync(Departments d)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 部门 CRUD 是高权限操作:仅 Admin。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(Models.Identity.RoleNames.Admin);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "DepartmentsService.SaveAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), err);
+                return (false, err);
+            }
+
             if (string.IsNullOrWhiteSpace(d.Name))
             {
                 return (false, "部门名称不能为空");
@@ -120,6 +148,20 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// <summary>软删:置 IsDeleted=true,IsActive=false。下拉不再出现。</summary>
         public async Task<bool> SoftDeleteAsync(IEnumerable<Departments> depts)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 软删部门是高权限操作:仅 Admin。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(Models.Identity.RoleNames.Admin);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "DepartmentsService.SoftDeleteAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), err);
+                return false;
+            }
+
             var list = depts.ToList();
             try
             {

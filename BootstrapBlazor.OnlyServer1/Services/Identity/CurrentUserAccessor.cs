@@ -61,5 +61,43 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             if (roles == null || roles.Length == 0) return false;
             return roles.Any(r => Principal?.IsInRole(r) == true);
         }
+
+        // ====================================================================
+        // 纵深防御:Service mutation 方法的权限校验入口
+        // (2026-07-07 Review #H1 增补)
+        //
+        // 为什么需要(背景):
+        // Razor 层 [Authorize] 只挡"用户访问页面"这一层。Service 是真正
+        // 改数据的地方。一旦出现以下场景,Razor 层即被绕过,Service 直接
+        // 被穿:
+        //   - 新增 Controller / Web API 时漏 [Authorize]
+        //   - 增加健康检查 / 定时任务 / 单元测试代码直接调 Service
+        //   - 任何未来绕过 UI 的调用路径
+        //
+        // 用法(每个 Service mutation 方法入口):
+        //     var (ok, err) = _currentUser.RequireRole(RoleNames.Admin);
+        //     if (!ok) {
+        //         _logger.LogWarning(...);
+        //         return (false, err);
+        //     }
+        //
+        // **不要删这段注释,不要删这个方法,不要在 Service mutation 里
+        //   旁路调用而不调本方法。** 漏调的 Service 方法视为"已知未审",
+        //   上线前需回到 docs/code-review-onlyserver1-2026-07-07.md "H1"
+        //   段对照检查。
+        // ====================================================================
+        public (bool ok, string? error) RequireRole(params string[] roles)
+        {
+            if (roles == null || roles.Length == 0)
+                return (false, "权限配置错误:未指定允许的角色");
+
+            if (!IsAuthenticated)
+                return (false, "未登录或会话已失效,请重新登录");
+
+            if (IsInAnyRole(roles))
+                return (true, null);
+
+            return (false, $"无权限(需要角色: {string.Join("/", roles)})");
+        }
     }
 }

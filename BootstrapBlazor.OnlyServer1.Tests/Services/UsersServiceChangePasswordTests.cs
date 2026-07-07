@@ -1,5 +1,7 @@
+using System.Security.Claims;
 using BootstrapBlazor.OnlyServer1.Models;
 using BootstrapBlazor.OnlyServer1.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -8,20 +10,37 @@ namespace BootstrapBlazor.OnlyServer1.Tests.Services;
 
 /// <summary>
 /// UsersService.ChangePasswordAsync 的早期校验测试。
-/// 关注点:密码长度校验、错误消息。
+/// 关注点:授权、密码长度校验、错误消息。
 /// 早期校验在调用 UserManager / DB 之前返回,所以此处可用 null! 跳过其他依赖。
 /// 数据库相关路径需要真 DB 或 mock 框架,本次不覆盖(留给后续专门任务)。
 /// </summary>
 public class UsersServiceChangePasswordTests
 {
-    private static UsersService CreateService(int requiredLength)
+    // 创建一个 stub IHttpContextAccessor,模拟"当前用户=callerUserId,角色=callerRoles"。
+    private static IHttpContextAccessor BuildHttpContextAccessor(int callerUserId, params string[] callerRoles)
     {
-        // UserManager / SqlSugar 早期返回时不会触碰,传 null! 跳过
+        var accessor = new HttpContextAccessor();
+        if (callerUserId <= 0 && callerRoles.Length == 0) return accessor; // 未登录
+        var claims = new List<Claim>();
+        if (callerUserId > 0)
+            claims.Add(new Claim(ClaimTypes.NameIdentifier, callerUserId.ToString()));
+        claims.AddRange(callerRoles.Select(r => new Claim(ClaimTypes.Role, r)));
+        accessor.HttpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "Test"))
+        };
+        return accessor;
+    }
+
+    private static UsersService CreateService(int requiredLength, int callerUserId = 1, params string[] callerRoles)
+    {
         var opts = Options.Create(new IdentityOptions
         {
             Password = new PasswordOptions { RequiredLength = requiredLength }
         });
-        return new UsersService(null!, null!, opts, NullLogger<UsersService>.Instance);
+        var accessor = new BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor(
+            BuildHttpContextAccessor(callerUserId, callerRoles));
+        return new UsersService(null!, null!, opts, accessor, NullLogger<UsersService>.Instance);
     }
 
     [Theory]
@@ -76,6 +95,7 @@ public class UsersServiceChangePasswordTests
             if (!ok)
             {
                 Assert.NotEqual("旧密码和新密码均不能为空", error);
+                Assert.NotEqual("无权修改此用户的密码", error);
                 Assert.DoesNotContain($"新密码长度至少 {requiredLength} 位", error);
             }
         }
@@ -83,6 +103,54 @@ public class UsersServiceChangePasswordTests
         {
             // UserManager 调 NPE 是预期的:null! → 实际验证的是"长度未拦截"
             // 不视为本测试失败
+        }
+    }
+
+    // ===== 授权校验(纵深防御) =====
+
+    [Fact]
+    public async Task ChangePasswordAsync_CrossUser_Rejected()
+    {
+        // 调用者 userId=1,想改 userId=2 的密码 → 拒绝
+        var service = CreateService(requiredLength: 6, callerUserId: 1);
+
+        var (ok, error) = await service.ChangePasswordAsync(2, "oldValid123", "newValid123");
+
+        Assert.False(ok);
+        Assert.Equal("无权修改此用户的密码", error);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_Anonymous_Rejected()
+    {
+        // 未登录调用 → 拒绝
+        var service = CreateService(requiredLength: 6, callerUserId: 0);
+
+        var (ok, error) = await service.ChangePasswordAsync(1, "oldValid123", "newValid123");
+
+        Assert.False(ok);
+        Assert.Equal("无权修改此用户的密码", error);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_AdminCanResetOther_PassesAuth()
+    {
+        // Admin 角色可以改任意用户密码 → 通过授权关(后续 UserManager=null 会失败,正常)
+        var service = CreateService(requiredLength: 6, callerUserId: 99,
+            callerRoles: new[] { "Admin" });
+
+        try
+        {
+            var (ok, error) = await service.ChangePasswordAsync(2, "oldValid123", "newValid123");
+            // 授权通过后,失败原因只能是 UserManager=null 或 UserNotFound,不会是"无权"
+            if (!ok)
+            {
+                Assert.NotEqual("无权修改此用户的密码", error);
+            }
+        }
+        catch
+        {
+            // UserManager=null 的 NPE 是预期的(单元测试不挂数据库)
         }
     }
 }

@@ -45,7 +45,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             }
             catch (Exception ex)
             {
-                return IdentityResult.Failed(new IdentityError { Description = ex.Message });
+                return IdentityResult.Failed(new IdentityError { Description = "操作失败,请查看日志" });
             }
         }
 
@@ -62,7 +62,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             }
             catch (Exception ex)
             {
-                return IdentityResult.Failed(new IdentityError { Description = ex.Message });
+                return IdentityResult.Failed(new IdentityError { Description = "操作失败,请查看日志" });
             }
         }
 
@@ -78,7 +78,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             }
             catch (Exception ex)
             {
-                return IdentityResult.Failed(new IdentityError { Description = ex.Message });
+                return IdentityResult.Failed(new IdentityError { Description = "操作失败,请查看日志" });
             }
         }
 

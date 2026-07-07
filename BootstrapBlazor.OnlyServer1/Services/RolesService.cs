@@ -1,4 +1,5 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
 using Microsoft.AspNetCore.Identity;
 using SqlSugar;
 
@@ -15,17 +16,29 @@ namespace BootstrapBlazor.OnlyServer1.Services
     {
         private readonly ISqlSugarClient _db;
         private readonly UserManager<Users> _userManager;
+        private readonly CurrentUserAccessor _currentUser;
         private readonly ILogger<RolesService> _logger;
 
         public const string AdminRoleName = Models.Identity.RoleNames.Admin;
 
+        // (2026-07-07 Review #H3) OrderBy(string) 字符串拼接 SortName 防注入
+        private static readonly HashSet<string> _rolesAllowedSortCols =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                nameof(Roles.Id),
+                nameof(Roles.Name),
+                nameof(Roles.NormalizedName),
+            };
+
         public RolesService(
             ISqlSugarClient db,
             UserManager<Users> userManager,
+            CurrentUserAccessor currentUser,
             ILogger<RolesService> logger)
         {
             _db = db;
             _userManager = userManager;
+            _currentUser = currentUser;
             _logger = logger;
         }
 
@@ -45,7 +58,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     query = query.Where(r => r.Name.Contains(options.SearchText));
                 }
 
-                if (!string.IsNullOrEmpty(options.SortName))
+                if (!string.IsNullOrEmpty(options.SortName) && _rolesAllowedSortCols.Contains(options.SortName))
                 {
                     query = options.SortOrder == SortDirection.Asc
                         ? query.OrderBy($"{options.SortName} asc")
@@ -223,6 +236,20 @@ namespace BootstrapBlazor.OnlyServer1.Services
             IEnumerable<int> permissionIds,
             ItemChangedType changedType)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 角色 CRUD 是高权限操作:仅 Admin。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(Models.Identity.RoleNames.Admin);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "RolesService.SaveAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), err);
+                return (false, err);
+            }
+
             if (string.IsNullOrWhiteSpace(role.Name))
             {
                 return (false, "角色名称不能为空");
@@ -233,7 +260,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
             try
             {
-                // 同名冲突
+                // 同名冲突 — 在事务外做(只读)
                 var dup = await _db.Queryable<Roles>()
                     .Where(r => r.NormalizedName == role.NormalizedName && r.Id != role.Id)
                     .FirstAsync();
@@ -242,50 +269,69 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     return (false, $"角色名 '{role.Name}' 已存在(Id={dup.Id})");
                 }
 
-                if (changedType == ItemChangedType.Add)
+                // ====================================================================
+                // (2026-07-07 Review #M6):
+                // "保存角色 + 同步权限码" 必须事务,否则 INSERT 失败 → 角色被 DELETE
+                // 旧权限、INSERT 又失败 → 角色权限永久丢失。
+                // 老代码是 DELETE → INSERT 两步独立,失败后无人值守;
+                // 现在 BeginTran() → CommitTran()/RollbackTran()。
+                // ====================================================================
+                _db.Ado.BeginTran();
+                try
                 {
-                    role.ConcurrencyStamp = Guid.NewGuid().ToString();
-                    var newId = await _db.Insertable(role).ExecuteReturnIdentityAsync();
-                    role.Id = newId;
-                    _logger.LogInformation("新增角色: {Name}(Id={Id})", role.Name, newId);
-                }
-                else
-                {
-                    // 拒绝改 ADMIN 角色名(防误改)
-                    var existing = await _db.Queryable<Roles>().Where(r => r.Id == role.Id).FirstAsync();
-                    if (existing == null)
+                    if (changedType == ItemChangedType.Add)
                     {
-                        return (false, "角色不存在");
-                    }
-                    if (existing.NormalizedName == AdminRoleName.ToUpperInvariant())
-                    {
-                        // ADMIN 只更新 ConcurrencyStamp,不允许改 Name
-                        existing.ConcurrencyStamp = Guid.NewGuid().ToString();
-                        await _db.Updateable(existing)
-                            .UpdateColumns(r => r.ConcurrencyStamp)
-                            .ExecuteCommandAsync();
-                        role.Name = existing.Name;
-                        role.NormalizedName = existing.NormalizedName;
+                        role.ConcurrencyStamp = Guid.NewGuid().ToString();
+                        var newId = await _db.Insertable(role).ExecuteReturnIdentityAsync();
+                        role.Id = newId;
+                        _logger.LogInformation("新增角色: {Name}(Id={Id})", role.Name, newId);
                     }
                     else
                     {
-                        existing.Name = role.Name;
-                        existing.NormalizedName = role.NormalizedName;
-                        existing.ConcurrencyStamp = Guid.NewGuid().ToString();
-                        await _db.Updateable(existing)
-                            .UpdateColumns(r => new { r.Name, r.NormalizedName, r.ConcurrencyStamp })
-                            .ExecuteCommandAsync();
+                        // 拒绝改 ADMIN 角色名(防误改)
+                        var existing = await _db.Queryable<Roles>().Where(r => r.Id == role.Id).FirstAsync();
+                        if (existing == null)
+                        {
+                            _db.Ado.RollbackTran();
+                            return (false, "角色不存在");
+                        }
+                        if (existing.NormalizedName == AdminRoleName.ToUpperInvariant())
+                        {
+                            // ADMIN 只更新 ConcurrencyStamp,不允许改 Name
+                            existing.ConcurrencyStamp = Guid.NewGuid().ToString();
+                            await _db.Updateable(existing)
+                                .UpdateColumns(r => r.ConcurrencyStamp)
+                                .ExecuteCommandAsync();
+                            role.Name = existing.Name;
+                            role.NormalizedName = existing.NormalizedName;
+                        }
+                        else
+                        {
+                            existing.Name = role.Name;
+                            existing.NormalizedName = role.NormalizedName;
+                            existing.ConcurrencyStamp = Guid.NewGuid().ToString();
+                            await _db.Updateable(existing)
+                                .UpdateColumns(r => new { r.Name, r.NormalizedName, r.ConcurrencyStamp })
+                                .ExecuteCommandAsync();
+                        }
+                        _logger.LogInformation("更新角色: {Name}(Id={Id})", role.Name, role.Id);
                     }
-                    _logger.LogInformation("更新角色: {Name}(Id={Id})", role.Name, role.Id);
-                }
 
-                // 同步权限码
-                var ids = (permissionIds ?? Enumerable.Empty<int>()).Distinct().ToList();
-                await _db.Deleteable<RolePermissions>().Where(rp => rp.RoleId == role.Id).ExecuteCommandAsync();
-                if (ids.Count > 0)
+                    // 同步权限码(在事务内 — 任一失败则全部回滚)
+                    var ids = (permissionIds ?? Enumerable.Empty<int>()).Distinct().ToList();
+                    await _db.Deleteable<RolePermissions>().Where(rp => rp.RoleId == role.Id).ExecuteCommandAsync();
+                    if (ids.Count > 0)
+                    {
+                        var rows = ids.Select(pid => new RolePermissions { RoleId = role.Id, PermissionId = pid }).ToList();
+                        await _db.Insertable(rows).ExecuteCommandAsync();
+                    }
+
+                    _db.Ado.CommitTran();
+                }
+                catch
                 {
-                    var rows = ids.Select(pid => new RolePermissions { RoleId = role.Id, PermissionId = pid }).ToList();
-                    await _db.Insertable(rows).ExecuteCommandAsync();
+                    _db.Ado.RollbackTran();
+                    throw;
                 }
 
                 return (true, null);
@@ -305,6 +351,20 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// </summary>
         public async Task<(bool ok, string? error)> DeleteAsync(IEnumerable<Roles> roles)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 删除角色是高权限操作:仅 Admin。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(Models.Identity.RoleNames.Admin);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "RolesService.DeleteAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), err);
+                return (false, err);
+            }
+
             var list = roles.ToList();
             try
             {
@@ -333,7 +393,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "删除角色失败");
-                return (false, $"删除失败:{ex.Message}");
+                return (false, "删除失败,请重试");
             }
         }
 
@@ -344,6 +404,20 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// <summary>用 _userManager.AddToRoleAsync(走 Identity 标准管道,SqlSugarUserStore 实现)。</summary>
         public async Task<(bool ok, string? error)> AddUserToRoleAsync(int userId, int roleId)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 给用户加角色是高权限操作:仅 Admin。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(Models.Identity.RoleNames.Admin);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "RolesService.AddUserToRoleAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), err);
+                return (false, err);
+            }
+
             try
             {
                 var user = await _userManager.FindByIdAsync(userId.ToString());
@@ -361,12 +435,26 @@ namespace BootstrapBlazor.OnlyServer1.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "AddUserToRoleAsync failed: userId={Uid}, roleId={Rid}", userId, roleId);
-                return (false, ex.Message);
+                return (false, "操作失败,请查看日志");
             }
         }
 
         public async Task<(bool ok, string? error)> RemoveUserFromRoleAsync(int userId, int roleId)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 解除角色是高权限操作:仅 Admin(已有的"唯一 ADMIN 保护"在业务层)。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(Models.Identity.RoleNames.Admin);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "RolesService.RemoveUserFromRoleAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), err);
+                return (false, err);
+            }
+
             try
             {
                 var user = await _userManager.FindByIdAsync(userId.ToString());
@@ -397,13 +485,27 @@ namespace BootstrapBlazor.OnlyServer1.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "RemoveUserFromRoleAsync failed: userId={Uid}, roleId={Rid}", userId, roleId);
-                return (false, ex.Message);
+                return (false, "操作失败,请查看日志");
             }
         }
 
         /// <summary>覆盖式设置用户的全部角色:先 RemoveFromRolesAsync 清空再 AddToRolesAsync。</summary>
         public async Task<(bool ok, string? error)> SetUserRolesAsync(int userId, IEnumerable<int> roleIds)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 覆盖式设角色是高权限操作:仅 Admin(已有"唯一 ADMIN 保护"在业务层)。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(Models.Identity.RoleNames.Admin);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "RolesService.SetUserRolesAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), err);
+                return (false, err);
+            }
+
             try
             {
                 var user = await _userManager.FindByIdAsync(userId.ToString());
@@ -451,7 +553,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "SetUserRolesAsync failed: userId={Uid}", userId);
-                return (false, ex.Message);
+                return (false, "操作失败,请查看日志");
             }
         }
     }

@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Services.DrawingNumbers;
 using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
 using BootstrapBlazor.OnlyServer1.Services.Queries;
 using SqlSugar;
 
@@ -18,20 +20,37 @@ namespace BootstrapBlazor.OnlyServer1.Services
         private readonly C0XQueryService _c0xQuery;
         private readonly IDrawingTypeRegistry _registry;
         private readonly ILogger<OrdersService> _logger;
+        private readonly CurrentUserAccessor _currentUser;
 
         // 缓存:key = OrderId,value = 是否存在未删除的图号
         private readonly ConcurrentDictionary<int, bool> _hasDrawingNumberCache = new();
+
+        // (2026-07-07 Review #H3)
+        // OrderBy(string) 字符串拼接 SortName 防注入;不在此集合的 SortName 静默忽略,回退默认排序。
+        private static readonly HashSet<string> _ordersAllowedSortCols =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                nameof(Orders.Id),
+                nameof(Orders.OrderNumber),
+                nameof(Orders.Power),
+                nameof(Orders.RatedVoltage),
+                nameof(Orders.IsReactor),
+                nameof(Orders.CreatedBy),
+                nameof(Orders.CreatedTime),
+            };
 
         public OrdersService(
             ISqlSugarClient db,
             C0XQueryService c0xQuery,
             IDrawingTypeRegistry registry,
+            CurrentUserAccessor currentUser,
             ILogger<OrdersService> logger)
             : base(db, logger)
         {
             _db = db;
             _c0xQuery = c0xQuery;
             _registry = registry;
+            _currentUser = currentUser;
             _logger = logger;
         }
 
@@ -88,7 +107,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     query = query.Where(o => o.IsReactor == isReactor);
                 }
 
-                if (!string.IsNullOrEmpty(options.SortName))
+                if (!string.IsNullOrEmpty(options.SortName) && _ordersAllowedSortCols.Contains(options.SortName))
                 {
                     query = options.SortOrder == SortDirection.Asc
                         ? query.OrderBy($"{options.SortName} asc")
@@ -138,6 +157,38 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// </summary>
         public async Task<(bool ok, string? error)> SaveAsync(Orders order, ItemChangedType changedType)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // Razor 层 [Authorize] 只挡外面;Service 必须自己也挡。
+            // 防:新 Controller / 任务调度 / 测试代码直接调 Service 绕过 Razor。
+            // 不删这段校验、不删这个注释。
+            // 规则:Add=Admin/Operator;Update=Admin 或 该订单的 CreatedBy。
+            // ====================================================================
+            if (changedType == ItemChangedType.Update)
+            {
+                var isAdmin = _currentUser.IsInAnyRole(RoleNames.Admin);
+                var currentName = _currentUser.GetDisplayName() ?? "";
+                var isOwner = !string.IsNullOrEmpty(order.CreatedBy) && order.CreatedBy == currentName;
+                if (!isAdmin && !isOwner)
+                {
+                    _logger.LogWarning(
+                        "OrdersService.SaveAsync denied (Update not by creator): callerId={CallerId} callerName={CallerName} orderId={OrderId} orderCreatedBy={CreatedBy}",
+                        _currentUser.GetUserId(), currentName, order.Id, order.CreatedBy);
+                    return (false, "只有管理员或该订单的创建者才能修改订单");
+                }
+            }
+            else
+            {
+                var (ok, err) = _currentUser.RequireRole(RoleNames.Admin, RoleNames.Operator);
+                if (!ok)
+                {
+                    _logger.LogWarning(
+                        "OrdersService.SaveAsync denied (Add): callerId={CallerId} reason={Reason}",
+                        _currentUser.GetUserId(), err);
+                    return (false, err);
+                }
+            }
+
             if (order.OrderNumber <= 0)
             {
                 return (false, "订单号不能为空");
@@ -233,6 +284,20 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
         public async Task<bool> SoftDeleteAsync(IEnumerable<Orders> orders)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 软删订单是高权限操作:仅 Admin。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(RoleNames.Admin);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "OrdersService.SoftDeleteAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), err);
+                return false;
+            }
+
             var orderList = orders.ToList();
             try
             {

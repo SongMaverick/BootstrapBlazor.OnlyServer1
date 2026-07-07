@@ -69,6 +69,21 @@ public class DrawingNameService
     /// </summary>
     public async Task<int> AddDrawingNameAsync(string componentName, string part)
     {
+        // ====================================================================
+        // 纵深防御(2026-07-07 Review #H1):
+        // 加图名是业务操作:Admin/Operator。
+        // 不删这段校验、不删这个注释。
+        // ====================================================================
+        var (ok, err) = _currentUser.RequireRole(BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin,
+                                                BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator);
+        if (!ok)
+        {
+            _logger.LogWarning(
+                "DrawingNameService.AddDrawingNameAsync denied: callerId={CallerId} reason={Reason}",
+                _currentUser.GetUserId(), err);
+            return 0;
+        }
+
         if (string.IsNullOrWhiteSpace(componentName) || string.IsNullOrWhiteSpace(part))
         {
             _logger.LogWarning("AddDrawingNameAsync: invalid input, ComponentName='{Name}', Part='{Part}'", componentName, part);
@@ -106,6 +121,21 @@ public class DrawingNameService
     /// </summary>
     public async Task<bool> DeleteDrawingNameAsync(int id)
     {
+        // ====================================================================
+        // 纵深防御(2026-07-07 Review #H1):
+        // 删图名:Admin/Operator。
+        // 不删这段校验、不删这个注释。
+        // ====================================================================
+        var (ok, err) = _currentUser.RequireRole(BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin,
+                                                BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator);
+        if (!ok)
+        {
+            _logger.LogWarning(
+                "DrawingNameService.DeleteDrawingNameAsync denied: callerId={CallerId} reason={Reason}",
+                _currentUser.GetUserId(), err);
+            return false;
+        }
+
         try
         {
             string userName = _currentUser.GetDisplayName() ?? "System";

@@ -72,6 +72,11 @@ DrawingName.sql
 
 > 注意：本项目暂未把密码从 appsettings.json 迁出（见"待办"）。正式部署前应改用环境变量注入，详情见仓库单独的"密码清理"任务。
 
+> ⚠️ **(2026-07-07 Review #M7)** `ASPNETCORE_ENVIRONMENT` **必须** = `Production`。
+> 误设为 `Development` 会启用 `appsettings.Development.json:DetailedErrors=true`,
+> 所有 500 错误会向客户端回显完整堆栈(包含文件路径、配置键、SQL 错误细节)。
+> 第 7.x 节 "部署后必查清单" 列了上线必查项。
+
 ## 6. 文件夹权限
 
 部署后首次启动前，运维执行（替换 `<app-root>` 为实际路径）：
@@ -110,6 +115,44 @@ Invoke-WebRequest http://localhost/ -UseBasicParsing | Select StatusCode, Status
 1. 先查 stdout 日志 `<app-root>\logs\stdout_*.log`
 2. 再查 Windows Application Event Log（来源 = `IIS AspNetCore Module V2`）
 3. 确认 .NET 8 Hosting Bundle 已装
+
+## 7.x 部署后必查清单(2026-07-07 Review #M7 / 安全基线)
+
+部署完毕后**逐项人工核查**,全部 ✅ 才算上线就绪:
+
+### 安全配置核查
+
+- [ ] **ASPNETCORE_ENVIRONMENT = Production** ⚠️
+      IIS AppPool → Advanced Settings → Environment Variables → `ASPNETCORE_ENVIRONMENT=Production`
+      *误设为 Development 会启用 `DetailedErrors`,500 错误会向客户端回显完整堆栈*
+- [ ] **`/error` 页面验证**
+      ```powershell
+      # 触发一个 500(临时把 webconfig 里 stdoutLogFile 路径改成根目录只读路径),然后访问 http://服务器/error
+      # 不应看到 "An unhandled exception has occurred" 之外的内
+      ```
+- [ ] **HTTPS 已部署** — 站点至少一个 HTTPS 绑定,`web.config:27-30` 的 HSTS 才能生效
+- [ ] **生产密码** 不在 `appsettings.json` 里,只走 IIS AppPool 环境变量(`ConnectionStrings__xxxOffice`)
+
+### 权限审计
+
+- [ ] **操作类 Server 全部走 CurrentUserAccessor 校验**(看 `Services/Identity/CurrentUserAccessor.cs:RequireRole` 注释段)
+- [ ] **Login 表单含 antiforgery 字段** — 浏览器 DevTools → Elements → 搜 `__RequestVerificationToken`
+- [ ] **DataProtection 密钥不丢** — `keys/` 已存在且 IIS_IUSRS 有读权限;跨服务器迁移时拷过去
+
+### 上线前的最后扫描
+
+```powershell
+# 1. 确认无 Trace 级日志泄漏
+Get-WebConfigFile "$env:HOMEDRIVE\inetpub\wwwroot\DrawingNumber\web.config" |
+  Select-String "stdoutLogEnabled"   # 应为 true
+# 2. 确认 appsettings.Production.json 已建(或变量已设)
+Test-Path "$env:HOMEDRIVE\inetpub\wwwroot\DrawingNumber\appsettings.Production.json"
+# 3. 确认连接串不再含密码
+Select-String -Path "$env:HOMEDRIVE\inetpub\wwwroot\DrawingNumber\appsettings.json" -Pattern "password="
+#    不应有输出;或者输出仅占位符
+```
+
+---
 
 ## 8. Blazor Server + SignalR 特别注意
 

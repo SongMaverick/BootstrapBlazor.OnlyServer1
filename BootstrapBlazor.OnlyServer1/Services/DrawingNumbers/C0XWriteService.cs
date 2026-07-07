@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using BootstrapBlazor.OnlyServer1.Models;
 using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
@@ -41,8 +42,34 @@ public class C0XWriteService
     public async Task<DrawingNumberInsertResult> AddDrawingNumbersAsync(
         int orderId, string[] drawingNames, CancellationToken ct = default)
     {
+        // ====================================================================
+        // 纵深防御(2026-07-07 Review #H1):
+        // 加图号是业务操作:Admin/Operator。
+        // 不删这段校验、不删这个注释。
+        // ====================================================================
+        var (permOk, permErr) = _currentUser.RequireRole(BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin,
+                                                         BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator);
+        if (!permOk)
+        {
+            _logger.LogWarning(
+                "C0XWriteService.AddDrawingNumbersAsync denied: callerId={CallerId} orderId={OrderId} reason={Reason}",
+                _currentUser.GetUserId(), orderId, permErr);
+            var deniedResult = new DrawingNumberInsertResult();
+            foreach (var n in drawingNames?.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.Ordinal) ?? Enumerable.Empty<string>())
+                deniedResult.Failures.Add(new(n, "无权操作"));
+            return deniedResult;
+        }
+
         var result = new DrawingNumberInsertResult();
-        if (drawingNames == null || drawingNames.Length == 0) return result;
+        var sw = Stopwatch.StartNew();
+        if (drawingNames == null || drawingNames.Length == 0)
+        {
+            sw.Stop();
+            _logger.LogInformation(
+                "AddDrawingNumbersAsync 跳过(无输入): callerId={CallerId} orderId={OrderId} elapsedMs={ElapsedMs}",
+                _currentUser.GetUserId(), orderId, sw.ElapsedMilliseconds);
+            return result;
+        }
 
         var order = await _db.Queryable<Orders>().InSingleAsync(orderId);
         if (order == null)
@@ -76,6 +103,7 @@ public class C0XWriteService
         {
             // 锁内重新查询最新已存在集合,确保看到锁释放前的真实状态
             var existingNames = await GetExistingDrawingNamesAsync(orderId, drawingType, ct);
+
 
             foreach (var drawingName in drawingNames
                 .Where(s => !string.IsNullOrWhiteSpace(s))
@@ -112,15 +140,31 @@ public class C0XWriteService
             }
         }
 
+        sw.Stop();
         _logger.LogInformation(
-            "AddDrawingNumbersAsync: order={Order} type={Type} success={S} fail={F}",
-            orderId, drawingType, result.Success.Count, result.Failures.Count);
+            "AddDrawingNumbersAsync 完成: callerId={CallerId} orderId={OrderId} type={Type} success={Success} fail={Fail} elapsedMs={ElapsedMs}",
+            _currentUser.GetUserId(), orderId, drawingType, result.Success.Count, result.Failures.Count, sw.ElapsedMilliseconds);
 
         return result;
     }
 
     public async Task<int> UpdateCX0DrawingNumberByIdAsync(C0XBase c0x, string drawingType)
     {
+        // ====================================================================
+        // 纵深防御(2026-07-07 Review #H1):
+        // 改图号:Admin/Operator。
+        // 不删这段校验、不删这个注释。
+        // ====================================================================
+        var (ok, err) = _currentUser.RequireRole(BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin,
+                                                BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator);
+        if (!ok)
+        {
+            _logger.LogWarning(
+                "C0XWriteService.UpdateCX0DrawingNumberByIdAsync denied: callerId={CallerId} c0xId={Id} reason={Reason}",
+                _currentUser.GetUserId(), c0x?.Id, err);
+            return 0;
+        }
+
         var handler = _registry.Resolve(drawingType);
         if (handler == null) return 0;
         return await handler.UpdateDrawNameAsync(

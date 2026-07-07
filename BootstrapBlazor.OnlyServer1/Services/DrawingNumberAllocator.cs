@@ -1,5 +1,7 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
 using SqlSugar;
 
 namespace BootstrapBlazor.OnlyServer1.Services
@@ -20,20 +22,40 @@ namespace BootstrapBlazor.OnlyServer1.Services
     {
         private readonly ISqlSugarClient _db;
         private readonly IDrawingTypeRegistry _registry;
+        private readonly CurrentUserAccessor _currentUser;
         private readonly ILogger<DrawingNumberAllocator> _logger;
 
         public DrawingNumberAllocator(
             ISqlSugarClient db,
             IDrawingTypeRegistry registry,
+            CurrentUserAccessor currentUser,
             ILogger<DrawingNumberAllocator> logger)
         {
             _db = db;
             _registry = registry;
+            _currentUser = currentUser;
             _logger = logger;
         }
 
         public async Task<int> AllocateAsync(string drawingType, CancellationToken ct = default)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-07 Review #H1):
+            // 图号分配是一个"修改关键资源"的操作:仅 Admin/Operator。
+            // Razor 层调用链是 C0XWriteService.AddDrawingNumbersAsync → 这里,
+            // 因此正常路径是已经被 Razor 层校验过的;
+            // 但若有任何任务 / 测试 / 未来新入口直接调,Service 自己挡。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (ok, err) = _currentUser.RequireRole(RoleNames.Admin, RoleNames.Operator);
+            if (!ok)
+            {
+                _logger.LogWarning(
+                    "DrawingNumberAllocator.AllocateAsync denied: callerId={CallerId} drawingType={Type} reason={Reason}",
+                    _currentUser.GetUserId(), drawingType, err);
+                throw new UnauthorizedAccessException(err);
+            }
+
             if (string.IsNullOrEmpty(drawingType))
                 throw new ArgumentException("drawingType 不能为空", nameof(drawingType));
 
