@@ -2,6 +2,7 @@
 using System.Text.RegularExpressions;
 using BootstrapBlazor.DbMigrator.Sql;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -13,13 +14,18 @@ namespace BootstrapBlazor.DbMigrator;
 /// 数据库迁移工具主程序。
 ///
 /// 模式:
-///   --schema             建表(Code First)
-///   --seed               灌 Identity 角色 + 默认管理员
-///   --migrate            从 SQL 文件读旧数据并迁移
-///   --source &lt;dir&gt;     旧数据目录(包含 Users.sql / Order.sql / ReactorOrder.sql / C0X.sql / DrawingNames.sql)
-///   --drop               先删所有业务表再重建(危险)
-///   --admin-password p   自定义默认管理员密码(默认 Admin@123)
-///   --production         生产模式(强制要求交互确认 + 写迁移日志)
+///   --schema                    建表(Code First)
+///   --seed                      灌 Identity 角色 + 默认管理员
+///   --migrate                   从 SQL 文件读旧数据并迁移
+///   --source &lt;dir&gt;            旧数据目录(包含 Users.sql / Order.sql / ReactorOrder.sql / C0X.sql / DrawingNames.sql)
+///   --drop                      先删所有业务表再重建(危险)
+///   --admin-password p          自定义默认管理员密码(默认 Admin@123)
+///   --production                生产模式(强制要求交互确认 + 写迁移日志)
+///
+/// (2026-07-08 Review #L-7) C0X 列重命名专用 3 模式(独立运行,不与其他模式组合):
+///   --rename-c0x-drawingname    9 张 C0X 表 DrawName/DrawNumber → DrawingName/DrawingNumber
+///   --rollback-c0x-drawingname  回滚上述重命名
+///   --check-c0x-state           只读检查当前 C0X 列/索引状态
 ///
 /// 典型用法:
 ///   # 测试环境 — 完整重置:删表 + 建表 + 灌种子 + 读旧 SQL 迁移
@@ -30,6 +36,13 @@ namespace BootstrapBlazor.DbMigrator;
 ///
 ///   # 生产部署 — 空数据库,一次性建表 + 灌种子 + 迁移(要求输入 YES 确认)
 ///   dotnet run --project DbMigrator -- --schema --seed --migrate --source /data/old --production
+///
+///   # L-7 协调迁移 — C0X 列重命名(独立模式)
+///   dotnet run --project DbMigrator -- --check-c0x-state
+///   dotnet run --project DbMigrator -- --rename-c0x-drawingname
+///   dotnet run --project DbMigrator -- --check-c0x-state
+///   dotnet run --project DbMigrator -- --rollback-c0x-drawingname  # 失败时回滚
+///   详见 docs/deploy/l7-rename-deploy.md
 /// </summary>
 public class Program
 {
@@ -40,6 +53,11 @@ public class Program
         bool doMigrate = args.Contains("--migrate");
         bool doDrop = args.Contains("--drop");
         bool doProduction = args.Contains("--production");
+
+        // (2026-07-08 Review #L-7) C0X 列重命名专用 3 模式,与其他模式互斥(只跑这一个)
+        bool doRenameC0X = args.Contains("--rename-c0x-drawingname");
+        bool doRollbackC0X = args.Contains("--rollback-c0x-drawingname");
+        bool doCheckC0X = args.Contains("--check-c0x-state");
 
         string? sourceDir = null;
         var srcIdx = Array.IndexOf(args, "--source");
@@ -52,7 +70,9 @@ public class Program
             customAdminPwd = args[pwdIdx + 1];
 
         // 默认 --schema --seed(若用户没指定任何模式,执行基础建表+种子)
-        if (!doSchema && !doSeed && !doMigrate && !doDrop)
+        // (2026-07-08 Review #L-7) C0X rename/check 模式独立运行,不进入默认流程
+        if (!doSchema && !doSeed && !doMigrate && !doDrop
+            && !doRenameC0X && !doRollbackC0X && !doCheckC0X)
         {
             doSchema = true;
             doSeed = true;
@@ -78,6 +98,10 @@ public class Program
 
         Console.WriteLine($" 连接字符串: {MaskConnectionString(connStr)}");
         Console.WriteLine($" 模式: schema={doSchema}, seed={doSeed}, migrate={doMigrate}, drop={doDrop}, production={doProduction}");
+        if (doRenameC0X || doRollbackC0X || doCheckC0X)
+        {
+            Console.WriteLine($" L-7 专用: renameC0X={doRenameC0X}, rollbackC0X={doRollbackC0X}, checkC0X={doCheckC0X}");
+        }
         if (doMigrate)
         {
             if (string.IsNullOrEmpty(sourceDir))
@@ -204,6 +228,29 @@ public class Program
             await BackfillUserDepartmentsAsync(db);
         }
 
+        // ============================================================
+        // (2026-07-08 Review #L-7) C0X 列重命名专用 3 模式
+        // 这 3 个模式独立运行,不与 schema/seed/migrate 混用。
+        // ============================================================
+        if (doCheckC0X)
+        {
+            Console.WriteLine();
+            Console.WriteLine(">>> 检查 C0X 列/索引状态(L-7)");
+            await CheckC0XStateAsync(db);
+        }
+        if (doRenameC0X)
+        {
+            Console.WriteLine();
+            Console.WriteLine(">>> C0X 列重命名 DrawName/DrawNumber → DrawingName/DrawingNumber (L-7)");
+            await RenameC0XColumnsAsync(db, rollback: false);
+        }
+        if (doRollbackC0X)
+        {
+            Console.WriteLine();
+            Console.WriteLine(">>> C0X 列重命名回滚 DrawingName/DrawingNumber → DrawName/DrawNumber (L-7)");
+            await RenameC0XColumnsAsync(db, rollback: true);
+        }
+
         Console.WriteLine();
         Console.WriteLine("============================================================");
         Console.WriteLine(" 完成");
@@ -250,38 +297,42 @@ public class Program
     }
 
     /// <summary>
-    /// 演进式 schema 调整:给已存在的 C0X 表加 DrawNumber 列(若不存在),
-    /// 并用 Seed + Id 公式回填已有行的 DrawNumber,最后把列改为 NOT NULL。
+    /// 演进式 schema 调整:给已存在的 C0X 表加 DrawingNumber 列(若不存在),
+    /// 并用 Seed + Id 公式回填已有行的 DrawingNumber,最后把列改为 NOT NULL。
+    ///
+    /// (2026-07-08 Review #L-7):列名 DrawNumber → DrawingNumber。
+    /// 适用范围:已经过 --rename-c0x-drawingname 迁移的库;新库(Code First)直接建新名列。
+    /// ⚠️ 在已迁移库上跑本方法,期望看到"列已存在,跳过"+"索引已就绪",不应有任何 ALTER。
     /// </summary>
     private static async Task EvolveSchemaAsync(ISqlSugarClient db)
     {
-        foreach (var table in new[] { "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09" })
+        foreach (var table in _c0xTables)
         {
             var exists = await db.Ado.GetIntAsync(
-                $"SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('{table}') AND name = 'DrawNumber'");
+                $"SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('{table}') AND name = 'DrawingNumber'");
             if (exists == 0)
             {
-                await db.Ado.ExecuteCommandAsync($"ALTER TABLE [{table}] ADD [DrawNumber] INT NULL");
-                Console.WriteLine($"  ✓ {table}:新增 DrawNumber 列");
+                await db.Ado.ExecuteCommandAsync($"ALTER TABLE [{table}] ADD [DrawingNumber] INT NULL");
+                Console.WriteLine($"  ✓ {table}:新增 DrawingNumber 列");
             }
 
-            // 回填已有行:DrawNumber = Seed + Id,与运行时公式等价
+            // 回填已有行:DrawingNumber = Seed + Id,与运行时公式等价
             var seed = GetSeedDrawingNumber(table);
             var updated = await db.Ado.ExecuteCommandAsync(
-                $"UPDATE [{table}] SET [DrawNumber] = {seed} + [Id] WHERE [DrawNumber] IS NULL");
+                $"UPDATE [{table}] SET [DrawingNumber] = {seed} + [Id] WHERE [DrawingNumber] IS NULL");
             if (updated > 0)
-                Console.WriteLine($"  ✓ {table}:回填 DrawNumber {updated} 行 (seed={seed})");
+                Console.WriteLine($"  ✓ {table}:回填 DrawingNumber {updated} 行 (seed={seed})");
 
             // 列改为 NOT NULL(只在确实有数据或已是 NOT NULL 时跳过)
             // 必须先 DROP UNIQUE 索引,否则 SQL Server 拒绝 ALTER COLUMN(索引依赖该列)
             var isNullable = await db.Ado.GetIntAsync(
-                $"SELECT CAST(is_nullable AS INT) FROM sys.columns WHERE object_id = OBJECT_ID('{table}') AND name = 'DrawNumber'");
+                $"SELECT CAST(is_nullable AS INT) FROM sys.columns WHERE object_id = OBJECT_ID('{table}') AND name = 'DrawingNumber'");
             if (isNullable == 1)
             {
-                var indexName = $"IX_{table}_DrawNumber";
+                var indexName = $"IX_{table}_DrawingNumber";
                 await db.Ado.ExecuteCommandAsync($"IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{indexName}' AND object_id = OBJECT_ID('{table}')) DROP INDEX [{indexName}] ON [{table}]");
-                await db.Ado.ExecuteCommandAsync($"ALTER TABLE [{table}] ALTER COLUMN [DrawNumber] INT NOT NULL");
-                Console.WriteLine($"  ✓ {table}:DrawNumber 改为 NOT NULL(临时 DROP 索引后重建)");
+                await db.Ado.ExecuteCommandAsync($"ALTER TABLE [{table}] ALTER COLUMN [DrawingNumber] INT NOT NULL");
+                Console.WriteLine($"  ✓ {table}:DrawingNumber 改为 NOT NULL(临时 DROP 索引后重建)");
             }
 
             // 冗余列 DrawingType:每个表的行必然等于表名本身,删除
@@ -324,7 +375,8 @@ public class Program
         }
     }
 
-    /// <summary>所有 UNIQUE 索引(C0X DrawNumber / Users / Roles),依赖 EvolveSchemaAsync 已补列</summary>
+    /// <summary>所有 UNIQUE 索引(C0X DrawingNumber / Users / Roles),依赖 EvolveSchemaAsync 已补列
+    /// (2026-07-08 Review #L-7):C0X 索引名 DrawNumber → DrawingNumber。</summary>
     private static async Task EnsureAllIndexes(ISqlSugarClient db)
     {
         await EnsureUniqueIndex(db, "Users", "IX_Users_NormalizedUserName", "NormalizedUserName");
@@ -337,9 +389,9 @@ public class Program
         //   新建订单可以重新使用已软删的订单号,不会因历史数据阻塞业务。
         await EnsureFilteredUniqueIndex(db, "Orders", "IX_Orders_OrderNumber", "OrderNumber", "IsDeleted = 0");
 
-        foreach (var table in new[] { "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09" })
+        foreach (var table in _c0xTables)
         {
-            await EnsureUniqueIndex(db, table, $"IX_{table}_DrawNumber", "DrawNumber");
+            await EnsureUniqueIndex(db, table, $"IX_{table}_DrawingNumber", "DrawingNumber");
         }
 
         // Permissions.Code:SQL Server 不支持表达式 UNIQUE 索引,改用普通非唯一索引(25 个静态值,不会冲突)
@@ -465,6 +517,136 @@ END";
             {
                 Console.WriteLine($"  ! {t}:删除失败 - {ex.Message}");
             }
+        }
+    }
+
+    // ============================================================
+    // (2026-07-08 Review #L-7) C0X 列重命名专用 3 模式
+    // ============================================================
+
+    private static readonly string[] _c0xTables =
+        new[] { "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09" };
+
+    private static async Task<bool> ColumnExists(ISqlSugarClient db, string table, string column)
+    {
+        var count = await db.Ado.GetIntAsync(
+            $"SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('{table}') AND name = '{column}'");
+        return count > 0;
+    }
+
+    private static async Task<bool> IndexExists(ISqlSugarClient db, string table, string indexName)
+    {
+        var count = await db.Ado.GetIntAsync(
+            $"SELECT COUNT(*) FROM sys.indexes WHERE name = '{indexName}' AND object_id = OBJECT_ID('{table}')");
+        return count > 0;
+    }
+
+    /// <summary>
+    /// (2026-07-08 Review #L-7) 检查 C0X 9 张表的 DrawName/DrawNumber vs DrawingName/DrawingNumber 状态。
+    /// 退出码:0 = 已是新名(可跳过迁移),1 = 异常状态(需人工介入),2 = 旧名(可跑 --rename)。
+    /// </summary>
+    private static async Task CheckC0XStateAsync(ISqlSugarClient db)
+    {
+        bool anyOld = false, anyNew = false, anyMixed = false;
+        foreach (var table in _c0xTables)
+        {
+            var hasOldNum = await ColumnExists(db, table, "DrawNumber");
+            var hasNewNum = await ColumnExists(db, table, "DrawingNumber");
+            var hasOldName = await ColumnExists(db, table, "DrawName");
+            var hasNewName = await ColumnExists(db, table, "DrawingName");
+
+            if (hasNewNum && hasNewName && !hasOldNum && !hasOldName) { anyNew = true; Console.WriteLine($"  ✓ {table}:新名(已迁移)"); }
+            else if (hasOldNum && hasOldName && !hasNewNum && !hasNewName) { anyOld = true; Console.WriteLine($"  · {table}:旧名(待迁移)"); }
+            else { anyMixed = true; Console.WriteLine($"  ! {table}:异常 — old=({hasOldNum},{hasOldName}) new=({hasNewNum},{hasNewName})"); }
+        }
+
+        Console.WriteLine();
+        if (anyMixed) { Console.WriteLine(">>> 状态:异常,需人工介入"); }
+        else if (anyNew && !anyOld) { Console.WriteLine(">>> 状态:已迁移,无需操作"); }
+        else if (anyOld && !anyNew) { Console.WriteLine(">>> 状态:旧名,可跑 --rename-c0x-drawingname"); }
+        else { Console.WriteLine(">>> 状态:9 张表混合(部分旧部分新),需人工介入"); }
+    }
+
+    /// <summary>
+    /// (2026-07-08 Review #L-7) 把 9 张 C0X 表的 DrawName/DrawNumber 重命名为 DrawingName/DrawingNumber。
+    /// 同时 drop 旧唯一索引 IX_C0X_DrawNumber,重建为 IX_C0X_DrawingNumber。
+    /// rollback=true 时反向操作。
+    /// 全部在一个事务内,失败自动回滚。
+    /// </summary>
+    private static async Task RenameC0XColumnsAsync(ISqlSugarClient db, bool rollback)
+    {
+        var oldNum = rollback ? "DrawingNumber" : "DrawNumber";
+        var newNum = rollback ? "DrawNumber" : "DrawingNumber";
+        var oldName = rollback ? "DrawingName" : "DrawName";
+        var newName = rollback ? "DrawName" : "DrawingName";
+        var oldIdxSuffix = rollback ? "DrawingNumber" : "DrawNumber";
+        var newIdxSuffix = rollback ? "DrawNumber" : "DrawingNumber";
+        var direction = rollback ? "回滚" : "重命名";
+
+        // 1. 前置检查:全表一致才执行,任一异常立即报错
+        foreach (var table in _c0xTables)
+        {
+            var hasOldNum = await ColumnExists(db, table, oldNum);
+            var hasNewNum = await ColumnExists(db, table, newNum);
+            var hasOldName = await ColumnExists(db, table, oldName);
+            var hasNewName = await ColumnExists(db, table, newName);
+            if (hasNewNum && hasNewName && !hasOldNum && !hasOldName)
+            {
+                Console.WriteLine($"  - {table}:已是目标状态,跳过");
+                continue;
+            }
+            if (!hasOldNum || !hasOldName)
+            {
+                throw new InvalidOperationException(
+                    $"{table} 状态异常:既无旧列 {oldNum}/{oldName},也无新列 {newNum}/{newName}。需要人工介入。");
+            }
+            if (hasNewNum || hasNewName)
+            {
+                throw new InvalidOperationException(
+                    $"{table} 状态异常:同时存在旧列 {oldNum}/{oldName} 和新列 {newNum}/{newName}。需要人工介入。");
+            }
+        }
+
+        // 2. 原子事务:18 列 sp_rename + 9 索引 drop+recreate
+        db.Ado.BeginTran();
+        try
+        {
+            foreach (var table in _c0xTables)
+            {
+                var oldIdx = $"IX_{table}_{oldIdxSuffix}";
+                var newIdx = $"IX_{table}_{newIdxSuffix}";
+
+                // 索引先 drop(sp_rename 列后索引的列定义会自动更新,但索引名仍带旧名)
+                if (await IndexExists(db, table, oldIdx))
+                {
+                    await db.Ado.ExecuteCommandAsync($"DROP INDEX [{oldIdx}] ON [{table}]");
+                }
+
+                // 重命名列
+                await db.Ado.ExecuteCommandAsync(
+                    $"EXEC sp_rename 'dbo.{table}.{oldNum}', '{newNum}', 'COLUMN'");
+                await db.Ado.ExecuteCommandAsync(
+                    $"EXEC sp_rename 'dbo.{table}.{oldName}', '{newName}', 'COLUMN'");
+
+                // 重建唯一索引(如果不存在,常见于已迁移后再 rollback 一次的情况)
+                if (!await IndexExists(db, table, newIdx))
+                {
+                    await db.Ado.ExecuteCommandAsync(
+                        $"CREATE UNIQUE INDEX [{newIdx}] ON [{table}]([{newNum}])");
+                }
+
+                Console.WriteLine($"  ✓ {table}:{direction}完成 ({oldNum}→{newNum}, {oldName}→{newName})");
+            }
+            db.Ado.CommitTran();
+            Console.WriteLine();
+            Console.WriteLine($">>> 所有 9 张表 {direction}已提交");
+        }
+        catch (Exception ex)
+        {
+            db.Ado.RollbackTran();
+            Console.Error.WriteLine();
+            Console.Error.WriteLine($"✗ 失败,已回滚:{ex.Message}");
+            throw;
         }
     }
 
@@ -932,18 +1114,20 @@ END";
     }
 
     /// <summary>
-    /// 把每张 C0X 表当前 MAX(DrawNumber) 写入 DrawingNumberSequence,
+    /// 把每张 C0X 表当前 MAX(DrawingNumber) 写入 DrawingNumberSequence,
     /// 保证迁移完成后 Web 端首次分配 = MAX + 1,与旧库"最后一张图号 + 1"语义一致。
+    ///
+    /// (2026-07-08 Review #L-7):列名 DrawNumber → DrawingNumber。
     /// </summary>
     private static async Task InitDrawingNumberSequenceAsync(ISqlSugarClient db)
     {
         Console.WriteLine();
         Console.WriteLine(">>> 初始化图号序列表");
-        foreach (var table in new[] { "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09" })
+        foreach (var table in _c0xTables)
         {
             try
             {
-                var max = await db.Ado.GetIntAsync($"SELECT ISNULL(MAX(DrawNumber), 0) FROM [{table}]");
+                var max = await db.Ado.GetIntAsync($"SELECT ISNULL(MAX(DrawingNumber), 0) FROM [{table}]");
                 await db.Insertable(new DrawingNumberSequence
                 {
                     DrawingType = table,
@@ -1132,8 +1316,8 @@ END";
                 var entity = new C0XInsertDto
                 {
                     Id = oldId,
-                    DrawNumber = GetSeedDrawingNumber(tableName) + oldId,
-                    DrawName = row["DrawName"] as string ?? "",
+                    DrawingNumber = GetSeedDrawingNumber(tableName) + oldId,
+                    DrawingName = row["DrawingName"] as string ?? "",
                     OrderId = newOrderId,
                     CreatedBy = row["CreatedBy"] as string ?? "",
                     UpdatedBy = row["UpdatedBy"] as string ?? "",
@@ -1202,8 +1386,8 @@ END";
                         var placeholder = new C0XInsertDto
                         {
                             Id = missingId,
-                            DrawNumber = GetSeedDrawingNumber(tableName) + missingId,
-                            DrawName = successor.DrawName,         // 复制"跳号之后的第一条"真实数据
+                            DrawingNumber = GetSeedDrawingNumber(tableName) + missingId,
+                            DrawingName = successor.DrawingName,   // 复制"跳号之后的第一条"真实数据
                             OrderId = successor.OrderId,            // 占位行也保留关联订单
                             CreatedBy = successor.CreatedBy,
                             UpdatedBy = successor.UpdatedBy,
@@ -1306,8 +1490,8 @@ END";
         return new T
         {
             Id = d.Id,
-            DrawNumber = d.DrawNumber,
-            DrawName = d.DrawName,
+            DrawingNumber = d.DrawingNumber,
+            DrawingName = d.DrawingName,
             OrderId = d.OrderId,
             CreatedBy = d.CreatedBy,
             UpdatedBy = d.UpdatedBy,
@@ -1396,14 +1580,8 @@ CREATE TABLE MigrationLog (
     // ============================================================
     // 轻量映射实体
     // ============================================================
-    [SugarTable("UserRoles")]
-    private class UserRolesRow
-    {
-        [SugarColumn(IsPrimaryKey = true)]
-        public int UserId { get; set; }
-        [SugarColumn(IsPrimaryKey = true)]
-        public int RoleId { get; set; }
-    }
+    // UserRolesRow 已迁至 BootstrapBlazor.OnlyServer1.Models.Identity(2026-07-08 命名审查 L-2 合并)
+    // DbMigrator 通过 ProjectReference 直接复用同名 public 类,避免三处重复。
 
     [SugarTable("UserClaims")]
     private class UserClaimRow
@@ -1425,14 +1603,15 @@ CREATE TABLE MigrationLog (
         public string? ClaimValue { get; set; }
     }
 
-    /// <summary>C0X 迁移用的数据传输对象(避免创建 9 个空 DTO)</summary>
+    /// <summary>C0X 迁移用的数据传输对象(避免创建 9 个空 DTO)
+    /// (2026-07-08 Review #L-7) DrawNumber/DrawName → DrawingNumber/DrawingName</summary>
     private class C0XInsertDto
     {
         /// <summary>显式指定 Id — 保持旧库 Id;占位行也是显式 Id</summary>
         public int Id { get; set; }
         /// <summary>业务图号 — 由 SeedDrawingNumber + Id 计算,保证与旧库 MinDrawingNumber + Id 等价</summary>
-        public int DrawNumber { get; set; }
-        public string DrawName { get; set; } = "";
+        public int DrawingNumber { get; set; }
+        public string DrawingName { get; set; } = "";
         public int OrderId { get; set; }
         public string CreatedBy { get; set; } = "";
         public string UpdatedBy { get; set; } = "";

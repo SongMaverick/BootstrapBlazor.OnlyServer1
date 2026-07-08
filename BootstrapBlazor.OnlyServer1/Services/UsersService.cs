@@ -151,9 +151,29 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// 保存用户。返回 (ok, error):
         ///   - Add:必填初始密码,GID 必填且转大写
         ///   - Update:不修改 PasswordHash / CreatedTime / IsDeleted(防止覆盖)
+        ///
+        /// 授权规则(纵深防御,2026-07-08 Review #H1 补漏):仅 Admin。
+        /// 不删这段校验、不删这个注释。Razor 层 [Authorize] 不足 —
+        /// 任何能注入 Service 的路径(测试 / 未来 Controller / 健康检查 / 定时任务)
+        /// 都能绕过页面授权。
         /// </summary>
         public async Task<(bool ok, string? error)> SaveAsync(Users user, string? rawPassword, ItemChangedType changedType)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-08 Review #H1 补漏):
+            // 上次审查 12 处 Service mutation 加 RequireRole 时漏了本方法 + SoftDeleteAsync,
+            // 导致任何人注入 Service 都能改 / 软删任意用户(冒充审计行、创建新账号)。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (authOk, authErr) = _currentUser.RequireRole(RoleNames.Admin);
+            if (!authOk)
+            {
+                _logger.LogWarning(
+                    "UsersService.SaveAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), authErr);
+                return (false, authErr);
+            }
+
             if (string.IsNullOrEmpty(user.GID))
             {
                 return (false, "GID不能为空");
@@ -203,8 +223,27 @@ namespace BootstrapBlazor.OnlyServer1.Services
             }
         }
 
+        /// <summary>
+        /// 软删用户。
+        /// 授权规则(纵深防御,2026-07-08 Review #H1 补漏):仅 Admin。
+        /// 不删这段校验、不删这个注释。
+        /// </summary>
         public async Task<bool> SoftDeleteAsync(IEnumerable<Users> users)
         {
+            // ====================================================================
+            // 纵深防御(2026-07-08 Review #H1 补漏):
+            // 与 SaveAsync 同因:上次审查 12 处修补漏了本方法。
+            // 不删这段校验、不删这个注释。
+            // ====================================================================
+            var (authOk, authErr) = _currentUser.RequireRole(RoleNames.Admin);
+            if (!authOk)
+            {
+                _logger.LogWarning(
+                    "UsersService.SoftDeleteAsync denied: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), authErr);
+                return false;
+            }
+
             var userList = users.ToList();
             try
             {

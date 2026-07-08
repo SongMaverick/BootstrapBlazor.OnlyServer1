@@ -47,7 +47,7 @@ public class RolesServiceAuthTests
         var service = CreateService(callerUserId: 0);
 
         var (ok, error) = await service.SaveAsync(
-            new Roles { Name = "X" }, Array.Empty<int>(), ItemChangedType.Add);
+            new Roles { Name = "X" }, addPermissionIds: null, removePermissionIds: null, ItemChangedType.Add);
 
         Assert.False(ok);
         Assert.Contains("未登录", error);
@@ -59,7 +59,7 @@ public class RolesServiceAuthTests
         var service = CreateService(callerUserId: 5, callerRoles: new[] { "Operator" });
 
         var (ok, error) = await service.SaveAsync(
-            new Roles { Name = "X" }, Array.Empty<int>(), ItemChangedType.Add);
+            new Roles { Name = "X" }, addPermissionIds: null, removePermissionIds: null, ItemChangedType.Add);
 
         Assert.False(ok);
         Assert.Contains("无权限", error);
@@ -73,7 +73,7 @@ public class RolesServiceAuthTests
         // 校验通过后会落到 _db=null! → catch 吞 → 返回 (false, "保存失败,请重试")
         // 关键:不是"无权"路径
         var (ok, error) = await service.SaveAsync(
-            new Roles { Name = "X" }, Array.Empty<int>(), ItemChangedType.Add);
+            new Roles { Name = "X" }, addPermissionIds: null, removePermissionIds: null, ItemChangedType.Add);
         Assert.False(ok);
         Assert.DoesNotContain("未登录", error);
         Assert.DoesNotContain("无权限", error);

@@ -96,7 +96,7 @@ public class C0XWriteServiceAuthTests
         var service = CreateService(callerUserId: 0);
 
         var count = await service.UpdateCX0DrawingNumberByIdAsync(
-            new C01 { Id = 1, DrawName = "X" }, "C01");
+            new C01 { Id = 1, DrawingName = "X" }, "C01");
 
         Assert.Equal(0, count);
     }
@@ -107,7 +107,7 @@ public class C0XWriteServiceAuthTests
         var service = CreateService(callerUserId: 5, callerRoles: new[] { "Viewer" });
 
         var count = await service.UpdateCX0DrawingNumberByIdAsync(
-            new C01 { Id = 1, DrawName = "X" }, "C01");
+            new C01 { Id = 1, DrawingName = "X" }, "C01");
 
         Assert.Equal(0, count);
     }
@@ -121,6 +121,6 @@ public class C0XWriteServiceAuthTests
         // (此方法外面没有 try-catch 包裹)
         await Assert.ThrowsAnyAsync<Exception>(
             async () => await service.UpdateCX0DrawingNumberByIdAsync(
-                new C01 { Id = 1, DrawName = "X" }, "C01"));
+                new C01 { Id = 1, DrawingName = "X" }, "C01"));
     }
 }

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using Microsoft.AspNetCore.Identity;
 using SqlSugar;
 
@@ -469,12 +470,12 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             if (role == null)
                 throw new InvalidOperationException($"Role '{roleName}' not found");
 
-            var exists = await _db.Queryable<UserRoleRow>()
+            var exists = await _db.Queryable<UserRolesRow>()
                 .Where(ur => ur.UserId == user.Id && ur.RoleId == role.Id)
                 .AnyAsync(cancellationToken);
             if (exists) return;
 
-            await _db.Insertable(new UserRoleRow { UserId = user.Id, RoleId = role.Id })
+            await _db.Insertable(new UserRolesRow { UserId = user.Id, RoleId = role.Id })
                 .ExecuteCommandAsync(cancellationToken);
         }
 
@@ -487,7 +488,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
                 .FirstAsync(cancellationToken);
             if (role == null) return;
 
-            await _db.Deleteable<UserRoleRow>()
+            await _db.Deleteable<UserRolesRow>()
                 .Where(ur => ur.UserId == user.Id && ur.RoleId == role.Id)
                 .ExecuteCommandAsync(cancellationToken);
         }
@@ -495,7 +496,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         public async Task<IList<string>> GetRolesAsync(Users user, CancellationToken cancellationToken)
         {
             ThrowIfDisposed();
-            return await _db.Queryable<UserRoleRow>()
+            return await _db.Queryable<UserRolesRow>()
                 .InnerJoin<Roles>((ur, r) => ur.RoleId == r.Id)
                 .Where((ur, r) => ur.UserId == user.Id)
                 .Select((ur, r) => r.Name)
@@ -506,7 +507,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         {
             ThrowIfDisposed();
             var normalized = roleName.ToUpperInvariant();
-            return await _db.Queryable<UserRoleRow>()
+            return await _db.Queryable<UserRolesRow>()
                 .InnerJoin<Roles>((ur, r) => ur.RoleId == r.Id)
                 .Where((ur, r) => ur.UserId == user.Id && r.NormalizedName == normalized)
                 .AnyAsync(cancellationToken);
@@ -516,7 +517,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         {
             ThrowIfDisposed();
             var normalized = roleName.ToUpperInvariant();
-            var userIds = await _db.Queryable<UserRoleRow>()
+            var userIds = await _db.Queryable<UserRolesRow>()
                 .InnerJoin<Roles>((ur, r) => ur.RoleId == r.Id)
                 .Where((ur, r) => r.NormalizedName == normalized)
                 .Select((ur, r) => ur.UserId)
@@ -538,15 +539,6 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             public int UserId { get; set; }
             public string? ClaimType { get; set; }
             public string? ClaimValue { get; set; }
-        }
-
-        [SugarTable("UserRoles")]
-        private class UserRoleRow
-        {
-            [SugarColumn(IsPrimaryKey = true)]
-            public int UserId { get; set; }
-            [SugarColumn(IsPrimaryKey = true)]
-            public int RoleId { get; set; }
         }
     }
 }

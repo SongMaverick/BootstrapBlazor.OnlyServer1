@@ -1,4 +1,5 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using Microsoft.AspNetCore.Identity;
 using SqlSugar;
@@ -98,7 +99,13 @@ namespace BootstrapBlazor.OnlyServer1.Services
             }
         }
 
-        /// <summary>所有角色(供 /user-roles 下拉)。</summary>
+        /// <summary>
+        /// 所有角色(供 /user-roles 下拉)。
+        /// (2026-07-08 Review #L-5):与 GetAllActiveAsync 命名差异说明——
+        /// Roles 模型没有 IsDeleted/IsActive 列,IdentityRole&lt;int&gt; 也没有。
+        /// 所以"All"就是字面意义的"全部",而 DepartmentsService.GetAllActiveAsync 是"活跃+未删"。
+        /// 不要因为对齐命名而改名,会让方法看起来像有过滤实际没有。
+        /// </summary>
         public Task<List<Roles>> GetAllAsync()
         {
             return _db.Queryable<Roles>().OrderBy(r => r.Id).ToListAsync();
@@ -227,13 +234,21 @@ namespace BootstrapBlazor.OnlyServer1.Services
         // ============================================================
 
         /// <summary>
-        /// 保存角色 + 权限码集合。返回 (ok, error)。
-        ///   - Add:Id==0,NormalizedName 必填且唯一
+        /// 保存角色。权限码通过 add/remove 的 delta 模式应用,不接收全替换。
+        /// 返回 (ok, error)。
+        ///   - Add:Id==0,NormalizedName 必填且唯一。removePermissionIds 被忽略(尚无现有权限)
         ///   - Update:拒绝改 ADMIN(业务约束:ADMIN 名字固定,通过 /roles 内置 25 个权限)
+        ///
+        /// (2026-07-08 Review #M9 修复):
+        /// 旧签名 `IEnumerable<int> permissionIds` 是"全替换"语义,Razor 编辑角色名时
+        /// 传 Array.Empty<int>() → DELETE RolePermissions + INSERT 空集合 → 改名丢全部权限。
+        /// 新签名要求调用方显式表达"加哪些 / 删哪些",Service 不再清空任何调用方未声明的权限。
+        /// Razor 编辑角色名的场景下,只需传 (null, null),权限完全保留。
         /// </summary>
         public async Task<(bool ok, string? error)> SaveAsync(
             Roles role,
-            IEnumerable<int> permissionIds,
+            IEnumerable<int>? addPermissionIds,
+            IEnumerable<int>? removePermissionIds,
             ItemChangedType changedType)
         {
             // ====================================================================
@@ -318,13 +333,9 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     }
 
                     // 同步权限码(在事务内 — 任一失败则全部回滚)
-                    var ids = (permissionIds ?? Enumerable.Empty<int>()).Distinct().ToList();
-                    await _db.Deleteable<RolePermissions>().Where(rp => rp.RoleId == role.Id).ExecuteCommandAsync();
-                    if (ids.Count > 0)
-                    {
-                        var rows = ids.Select(pid => new RolePermissions { RoleId = role.Id, PermissionId = pid }).ToList();
-                        await _db.Insertable(rows).ExecuteCommandAsync();
-                    }
+                    // (2026-07-08 Review #M9):只应用调用方显式声明的 delta,
+                    // 不再做"全删 + 全插",避免改名等无关操作误清空权限。
+                    await ApplyPermissionDeltaAsync(role.Id, addPermissionIds, removePermissionIds);
 
                     _db.Ado.CommitTran();
                 }
@@ -340,6 +351,51 @@ namespace BootstrapBlazor.OnlyServer1.Services
             {
                 _logger.LogError(ex, "保存角色失败: {Name}", role.Name);
                 return (false, "保存失败,请重试");
+            }
+        }
+
+        // ====================================================================
+        // (2026-07-08 Review #M9) 私有 helper:
+        // 把"全替换"语义改成"应用 delta" — 调用方显式表达加/删,Service 不擅自清空。
+        // 幂等:同一 delta 重复执行结果相同。
+        // 必须由 SaveAsync 在事务内调用(不自己开事务 — 沿用调用方的事务边界)。
+        // ====================================================================
+        private async Task ApplyPermissionDeltaAsync(
+            int roleId,
+            IEnumerable<int>? addIds,
+            IEnumerable<int>? removeIds)
+        {
+            var add = (addIds ?? Enumerable.Empty<int>()).Distinct().ToList();
+            var remove = (removeIds ?? Enumerable.Empty<int>()).Distinct().ToList();
+            if (add.Count == 0 && remove.Count == 0) return;
+
+            // 查当前已存在的权限 Id 集合(用于去重和有效性校验)
+            var existing = (await _db.Queryable<RolePermissions>()
+                .Where(rp => rp.RoleId == roleId)
+                .Select(rp => rp.PermissionId)
+                .ToListAsync()).ToHashSet();
+
+            // Add:只插入"当前不存在"的,避免主键冲突
+            var toInsert = add.Where(id => !existing.Contains(id)).ToList();
+            if (toInsert.Count > 0)
+            {
+                var rows = toInsert.Select(pid => new RolePermissions { RoleId = roleId, PermissionId = pid }).ToList();
+                await _db.Insertable(rows).ExecuteCommandAsync();
+                _logger.LogInformation(
+                    "角色权限新增(增量): roleId={RoleId} addCount={Count} addedIds={Ids}",
+                    roleId, toInsert.Count, string.Join(",", toInsert));
+            }
+
+            // Remove:只删除"当前存在"的(避免对不存在的 id 产生空操作噪音日志)
+            var toDelete = remove.Where(id => existing.Contains(id)).ToList();
+            if (toDelete.Count > 0)
+            {
+                await _db.Deleteable<RolePermissions>()
+                    .Where(rp => rp.RoleId == roleId && toDelete.Contains(rp.PermissionId))
+                    .ExecuteCommandAsync();
+                _logger.LogInformation(
+                    "角色权限移除(增量): roleId={RoleId} removeCount={Count} removedIds={Ids}",
+                    roleId, toDelete.Count, string.Join(",", toDelete));
             }
         }
 

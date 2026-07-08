@@ -110,8 +110,37 @@ dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.
 | `--drop` | 先删所有业务表(**不可逆**,生产禁用,需配合 `--schema`) |
 | `--admin-password <pwd>` | 自定义默认管理员密码(默认 `Admin@123`) |
 | `--production` | 生产模式(需 `YES` 确认 + 写 `MigrationLog` 审计) |
+| `--rename-c0x-drawingname` | **(2026-07-08 Review #L-7)** 9 张 C0X 表 `DrawName` / `DrawNumber` 列重命名为 `DrawingName` / `DrawingNumber`,含 9 个唯一索引 drop+recreate。**原子事务,失败自动回滚** |
+| `--rollback-c0x-drawingname` | **(2026-07-08 Review #L-7)** `--rename-c0x-drawingname` 的反向操作,用于部署后回滚 |
+| `--check-c0x-state` | **(2026-07-08 Review #L-7)** 只读检查 9 张 C0X 表的列/索引当前状态(新名/旧名/异常),不修改任何数据 |
 
 不传任何模式 = `--schema --seed`
+
+### L-7 协调迁移(2026-07-08 Review #L-7)
+
+C0X 9 张表的 `DrawName` / `DrawNumber` 列改名为 `DrawingName` / `DrawingNumber`(详见 `docs/naming-consistency-2026-07-08.md` L-7)。
+
+**3 个 mode 独立运行**(不与 `--schema` / `--seed` / `--migrate` 组合):
+- `--check-c0x-state`:只读检查当前状态(部署前后必跑)
+- `--rename-c0x-drawingname`:执行迁移(原子事务,18 列 + 9 索引一次提交)
+- `--rollback-c0x-drawingname`:回滚(再 sp_rename 回去,索引同步重建)
+
+**典型用法**:
+```bash
+# 1. 部署前:检查当前状态
+dotnet run --project BootstrapBlazor.DbMigrator -- --check-c0x-state
+
+# 2. 协调部署窗口(停 web → 跑迁移 → 启新 web):
+dotnet run --project BootstrapBlazor.DbMigrator -- --rename-c0x-drawingname
+
+# 3. 部署后:验证
+dotnet run --project BootstrapBlazor.DbMigrator -- --check-c0x-state
+
+# 4. 失败回滚:
+dotnet run --project BootstrapBlazor.DbMigrator -- --rollback-c0x-drawingname
+```
+
+**部署手册**:`docs/deploy/l7-rename-deploy.md`(含备份、回滚、round-trip 验证、烟测清单)
 
 ---
 

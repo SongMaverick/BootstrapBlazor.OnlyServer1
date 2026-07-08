@@ -173,6 +173,62 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 ```
 
+## 2026-07-07 审查后的运维变更
+
+### 用户可见行为变化(用户问起时回复)
+
+| 变更 | 用户看到什么 | 运维/开发后台 |
+|---|---|---|
+| **M5 Login antiforgery** | 用户从别的页面 POST 提交到 `/Account/Login`,会看到 400 / "无效请求,请刷新重试" | 之前会被登录(CSRF),现在被挡;**不是 bug,是有意设计** |
+| **M2 错误信息收敛** | 用户看到通用的 "操作失败,请重试",**看不到 SQL 错误细节** | `Logs` 表 / NLog 文件仍记完整堆栈(`Logger.LogError(ex, ...)`) |
+| **H1 Service 纵深防御** | 无 Admin / Operator 角色调 mutation 方法时,看到 "无权限" / "未登录" | `Logs` 表记 `Service mutation rejected: method=... callerId=... reason=...` |
+| **M6 角色事务** | RolesService.SaveAsync 部分失败 → 角色**当前权限完全保留** | 不再"突然丢失"。`Logs` 表记 SqlException 详情 |
+
+### Logs 表关键字(2026-07-07 审计点)
+
+| 业务动作 | Logs 关键字 | 来源 |
+|---|---|---|
+| 登录成功 | `登录成功: userId=... workerNumber=... ip=...` | AccountController.Login |
+| 登录失败(密码错) | `登录失败(密码错): userId=... ip=...` | AccountController.Login |
+| 登录被拒(账号未激活) | `登录被拒(账户未激活/未验证): ...` | AccountController.Login |
+| 登录锁定 | `登录锁定(超过 5 次失败): ...` | AccountController.Login |
+| 登出 | `用户登出: userId=... ip=...` | AccountController.Logout |
+| 改密码成功 | `ChangePasswordAsync succeeded: callerId=... targetId=...` | UsersService |
+| 改密码被拒(跨用户) | `ChangePasswordAsync denied (unauthorized): callerId=... targetId=...` | UsersService |
+| Service 权限被拒 | `*rejected*: method=... callerId=... reason=...` | Orders/Roles/Depts/Permissions/DrawingName/C0XWrite/Allocator Services |
+| OrderLock 锁等待长 | `OrderLock acquire 争用: ...` / `OrderLock hold 超时: ...` | OrderLockProvider |
+
+### 日志查询示例(2026-07-07 后)
+
+```sql
+-- 找某用户登录失败尝试(撞库信号)
+SELECT TOP 50 *
+FROM Logs
+WHERE Message LIKE '%登录失败(密码错): workerNumber=123456%'
+   AND Logged > DATEADD(HOUR, -24, GETUTCDATE())
+ORDER BY Logged DESC;
+
+-- 找谁改了某人的密码
+SELECT TOP 50 * FROM Logs
+WHERE Message LIKE '%ChangePasswordAsync succeeded: targetId=42%'
+ORDER BY Logged DESC;
+
+-- 找最近的 Service 权限拒绝(可能攻击行为)
+SELECT TOP 100 *
+FROM Logs
+WHERE Message LIKE '%rejected%'
+  AND Logged > DATEADD(HOUR, -24, GETUTCDATE())
+ORDER BY Logged DESC;
+```
+
+### 应急:用户说"改密码失败"查什么
+
+1. `Logs` 表搜 `ChangePasswordAsync`(成功 / denied / failed 都包含此关键字)
+2. ERROR 级 → 看 `Exception` 列,有完整堆栈
+3. 若失败原因是 "旧密码不正确" 而用户说密码对 → 确认 `callerId` 是用户本人(不是 userId 跨用户失败)
+
+---
+
 ## 应急操作
 
 ### 重启应用池

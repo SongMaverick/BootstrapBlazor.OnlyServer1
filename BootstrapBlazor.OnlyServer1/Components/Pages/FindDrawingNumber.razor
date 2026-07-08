@@ -79,7 +79,7 @@
                             <dd class="col-sm-9">@_result.OrderNumber</dd>
 
                             <dt class="col-sm-3">图名</dt>
-                            <dd class="col-sm-9">@_result.DrawName</dd>
+                            <dd class="col-sm-9">@_result.DrawingName</dd>
 
                             <dt class="col-sm-3">创建者</dt>
                             <dd class="col-sm-9">@_result.CreatedBy</dd>
@@ -114,24 +114,12 @@
 }
 
 @code {
-    private QueryModel _model = new();
+    private FindDrawingNumberQueryModel _model = new();
     private bool _isLoading = false;
     private bool _resultModalVisible = false;
     private DrawingNumberViewModel? _result = null;
 
-    public class QueryModel {
-        public string DrawingNumberType { get; set; } = string.Empty;
-
-        /// <summary>
-        /// 中段 2 位(对应 DrawingTypeNumber 的 "XX" 部分,例如 "34")
-        /// </summary>
-        public string MiddleDigits { get; set; } = string.Empty;
-
-        /// <summary>
-        /// 末段 3 位(对应 DrawingTypeNumber 的 "XXX" 部分,例如 "050")
-        /// </summary>
-        public string LastDigits { get; set; } = string.Empty;
-    }
+    // (2026-07-08 Review #L-9) QueryModel 已提取到 Models/ViewModels/FindDrawingNumberQueryModel.cs
 
     private async Task HandleQuery() {
         _isLoading = true;
@@ -194,7 +182,7 @@
     }
 
     private void HandleReset() {
-        _model = new QueryModel();
+        _model = new FindDrawingNumberQueryModel();
         _result = null;
         _resultModalVisible = false;
     }

@@ -28,20 +28,21 @@ public class DrawingNameService
         _logger = logger;
     }
 
-    public async Task<List<BootstrapBlazor.OnlyServer1.Models.DrawingNames>> GetAllDrawingNamesAsync()
+    /// <summary>
+    /// 查询图名列表。
+    /// (2026-07-08 Review #L-6) 统一接口:原 GetAllDrawingNamesAsync / GetAllDrawingNamesIncludingDeletedAsync
+    /// 两个长名方法合并为带 bool 参数。
+    ///   - includeDeleted = false(默认):排除已软删(下拉/添加用)
+    ///   - includeDeleted = true:含已软删(管理页"图名列表"用)
+    /// </summary>
+    public async Task<List<BootstrapBlazor.OnlyServer1.Models.DrawingNames>> GetAllAsync(bool includeDeleted = false)
     {
-        return await _db.Queryable<BootstrapBlazor.OnlyServer1.Models.DrawingNames>()
-            .Where(dn => !dn.IsDeleted)
-            .OrderBy(dn => dn.Id)
-            .ToListAsync();
-    }
-
-    /// <summary>查询所有图名(包括已删除的),用于"图名列表"管理页面</summary>
-    public async Task<List<BootstrapBlazor.OnlyServer1.Models.DrawingNames>> GetAllDrawingNamesIncludingDeletedAsync()
-    {
-        return await _db.Queryable<BootstrapBlazor.OnlyServer1.Models.DrawingNames>()
-            .OrderBy(dn => dn.Id)
-            .ToListAsync();
+        var query = _db.Queryable<BootstrapBlazor.OnlyServer1.Models.DrawingNames>();
+        if (!includeDeleted)
+        {
+            query = query.Where(dn => !dn.IsDeleted);
+        }
+        return await query.OrderBy(dn => dn.Id).ToListAsync();
     }
 
     /// <summary>

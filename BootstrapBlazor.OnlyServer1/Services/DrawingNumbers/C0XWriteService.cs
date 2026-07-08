@@ -10,9 +10,10 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingNumbers;
 /// 9 张 C0X 表(C01~C09)的写入逻辑。
 /// 包含:
 ///   - 订单级串行化(OrderLockProvider 同订单间互斥)
-///   - DrawNumber 原子分配(IDrawingNumberAllocator)
+///   - DrawingNumber 原子分配(IDrawingNumberAllocator)
 ///   - 当前用户写入鉴权(CurrentUserAccessor)
 /// Scoped 生命周期。
+/// (2026-07-08 Review #L-7) 注释 DrawNumber → DrawingNumber
 /// </summary>
 public class C0XWriteService
 {
@@ -167,17 +168,18 @@ public class C0XWriteService
 
         var handler = _registry.Resolve(drawingType);
         if (handler == null) return 0;
-        return await handler.UpdateDrawNameAsync(
-            _db, c0x.Id, c0x.DrawName, c0x.UpdatedBy, c0x.UpdatedTime);
+        return await handler.UpdateDrawingNameAsync(
+            _db, c0x.Id, c0x.DrawingName, c0x.UpdatedBy, c0x.UpdatedTime);
     }
 
-    // 锁内辅助:拉取该订单当前所有未删除的 DrawName(通过 registry handler)
+    // 锁内辅助:拉取该订单当前所有未删除的 DrawingName(通过 registry handler)
+    // (2026-07-08 Review #L-7) GetExistingDrawNamesAsync → GetExistingDrawingNamesAsync
     private async Task<HashSet<string>> GetExistingDrawingNamesAsync(
         int orderId, string drawingType, CancellationToken ct)
     {
         var handler = _registry.Resolve(drawingType);
         if (handler == null) return new HashSet<string>();
-        var names = await handler.GetExistingDrawNamesAsync(_db, orderId);
+        var names = await handler.GetExistingDrawingNamesAsync(_db, orderId);
         return new HashSet<string>(names, StringComparer.Ordinal);
     }
 
@@ -194,14 +196,14 @@ public class C0XWriteService
         var c0x = handler.CreateNewEntity(
             drawingName, drawingType, order.Id, currentUserName, now);
 
-        // 先原子分配 DrawNumber,再写入
-        c0x.DrawNumber = await _allocator.AllocateAsync(drawingType);
+        // 先原子分配 DrawingNumber,再写入
+        c0x.DrawingNumber = await _allocator.AllocateAsync(drawingType);
         int insertedId = await handler.InsertAsync(_db, c0x);
 
         if (insertedId > 0)
         {
-            _logger.LogInformation("User {UserName} added drawing number {DrawingName} (DrawNumber={DrawNumber}) to order {OrderNumber}",
-                currentUserName, drawingName, c0x.DrawNumber, order.OrderNumber);
+            _logger.LogInformation("User {UserName} added drawing number {DrawingName} (DrawingNumber={DrawingNumber}) to order {OrderNumber}",
+                currentUserName, drawingName, c0x.DrawingNumber, order.OrderNumber);
         }
 
         return insertedId;

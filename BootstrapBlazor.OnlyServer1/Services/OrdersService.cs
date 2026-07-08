@@ -25,10 +25,14 @@ namespace BootstrapBlazor.OnlyServer1.Services
         // 缓存:key = OrderId,value = 是否存在未删除的图号
         private readonly ConcurrentDictionary<int, bool> _hasDrawingNumberCache = new();
 
-        // (2026-07-07 Review #H3)
+        // (2026-07-07 Review #H3 / 2026-07-08 命名审查 L-4):
         // OrderBy(string) 字符串拼接 SortName 防注入;不在此集合的 SortName 静默忽略,回退默认排序。
-        private static readonly HashSet<string> _ordersAllowedSortCols =
-            new(StringComparer.OrdinalIgnoreCase)
+        // 之前用本地 HashSet + 自写 SearchAsync 实现,实际 Orders.razor 一直走继承自 BaseQueryService
+        // 的 QueryAsync(PagedQuery),AllowedSortCols 是空 → 永远走 "CreatedTime desc" 默认排序,
+        // 白名单其实从未生效。L-4 重构:override AllowedSortCols 让继承 QueryAsync 自动套用白名单,
+        // 同一处 base.QueryAsync 一次实现能正确用 SortName + 兜底默认。
+        private static readonly IReadOnlyCollection<string> _ordersAllowedSortCols =
+            new[]
             {
                 nameof(Orders.Id),
                 nameof(Orders.OrderNumber),
@@ -63,9 +67,12 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
         protected override string DefaultSortField() => "CreatedTime";
 
+        // 2026-07-08 命名审查 L-4:override 暴露白名单给继承的 QueryAsync,删除重复 SearchAsync。
+        protected override IReadOnlyCollection<string> AllowedSortCols => _ordersAllowedSortCols;
+
         // ===== 查询 =====
 
-        public async Task<Orders?> GetByIdAsync(int orderId)
+        public async Task<Orders?> FindByIdAsync(int orderId)
         {
             try
             {
@@ -75,65 +82,6 @@ namespace BootstrapBlazor.OnlyServer1.Services
             {
                 _logger.LogError(ex, "Error getting order {Id}", orderId);
                 return null;
-            }
-        }
-
-        /// <summary>
-        /// 带过滤条件的订单查询(按 OrderNumber / CreatedBy / IsReactor 三字段筛选)。
-        /// 三个 filter 参数均可为 null/空,表示不过滤该字段。
-        /// </summary>
-        public async Task<PagedResult<Orders>> SearchAsync(
-            PagedQuery options,
-            string? orderNumberKeyword,
-            string? createdByKeyword,
-            string? reactorFilter)
-        {
-            try
-            {
-                var query = _db.Queryable<Orders>().Where(o => !o.IsDeleted);
-
-                if (!string.IsNullOrWhiteSpace(orderNumberKeyword))
-                {
-                    var kw = orderNumberKeyword.Trim();
-                    query = query.Where(o => o.OrderNumber.ToString().Contains(kw));
-                }
-                if (!string.IsNullOrWhiteSpace(createdByKeyword))
-                {
-                    var kw = createdByKeyword.Trim();
-                    query = query.Where(o => o.CreatedBy.Contains(kw));
-                }
-                if (!string.IsNullOrWhiteSpace(reactorFilter) && bool.TryParse(reactorFilter, out var isReactor))
-                {
-                    query = query.Where(o => o.IsReactor == isReactor);
-                }
-
-                if (!string.IsNullOrEmpty(options.SortName) && _ordersAllowedSortCols.Contains(options.SortName))
-                {
-                    query = options.SortOrder == SortDirection.Asc
-                        ? query.OrderBy($"{options.SortName} asc")
-                        : query.OrderBy($"{options.SortName} desc");
-                }
-                else
-                {
-                    query = query.OrderByDescending(o => o.OrderNumber);
-                }
-
-                var total = query.Count();
-                var items = query.Skip((options.PageIndex - 1) * options.PageItems).Take(options.PageItems).ToList();
-
-                return new PagedResult<Orders>
-                {
-                    Items = items,
-                    TotalCount = total,
-                    IsFiltered = options.FilterCount > 0,
-                    IsSorted = !string.IsNullOrEmpty(options.SortName),
-                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.HasSearchModel
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error searching orders");
-                return new PagedResult<Orders>();
             }
         }
 

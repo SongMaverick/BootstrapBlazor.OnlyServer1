@@ -51,6 +51,9 @@ BootstrapBlazor.OnlyServer1.Tests/ 单元测试
 | [docs/monitoring.md](docs/monitoring.md) | 监控指标、告警阈值 |
 | [docs/disaster-recovery.md](docs/disaster-recovery.md) | 备份策略、回滚步骤 |
 | [docs/faq.md](docs/faq.md) | 常见问题 |
+| [docs/code-review-onlyserver1-2026-07-07.md](docs/code-review-onlyserver1-2026-07-07.md) | **2026-07-07 代码审查报告(仅主项目)** —— 27 项发现 + 已修/未修分类 |
+| [docs/code-review-2026-07-07.md](docs/code-review-2026-07-07.md) | 多项目审查报告(覆盖 Tests/DbMigrator) |
+| [docs/add-drawing-numbers-ux.md](docs/add-drawing-numbers-ux.md) | AddDrawingNumbers 页面 UX 决策(折叠/响应式/同色系背景) |
 
 ## 架构决策(ADR)
 

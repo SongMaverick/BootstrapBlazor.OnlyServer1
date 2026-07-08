@@ -21,13 +21,14 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
         /// SqlSugar 多态写入才能正确路由到对应表。
         /// </summary>
         C0XBase CreateNewEntity(
-            string drawName, string drawingType, int orderId,
+            string drawingName, string drawingType, int orderId,
             string createdBy, DateTime createdTime);
 
         // ===== 查询 =====
 
-        /// <summary>查询该订单当前所有未删除的 DrawName</summary>
-        Task<List<string>> GetExistingDrawNamesAsync(ISqlSugarClient db, int orderId);
+        /// <summary>查询该订单当前所有未删除的 DrawingName
+        /// (2026-07-08 Review #L-7) DrawName → DrawingName</summary>
+        Task<List<string>> GetExistingDrawingNamesAsync(ISqlSugarClient db, int orderId);
 
         /// <summary>查询该订单当前所有未删除的 C0XBase 完整记录</summary>
         Task<List<C0XBase>> GetAllByOrderIdAsync(ISqlSugarClient db, int orderId);
@@ -38,15 +39,17 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
         /// <summary>按 Id 查一条 C0XBase</summary>
         Task<C0XBase?> FindByIdAsync(ISqlSugarClient db, int id);
 
-        /// <summary>按 DrawNumber 查一条 C0XBase(图号查询页用)</summary>
-        Task<C0XBase?> FindByDrawNumberAsync(ISqlSugarClient db, int drawNumber);
+        /// <summary>按 DrawingNumber 查一条 C0XBase(图号查询页用)
+        /// (2026-07-08 Review #L-7) DrawNumber → DrawingNumber</summary>
+        Task<C0XBase?> FindByDrawingNumberAsync(ISqlSugarClient db, int drawingNumber);
 
         // ===== 写入 =====
 
-        /// <summary>插入一条新图号,返回新 Id(调用方需提前分配 DrawNumber 并填入实体)</summary>
+        /// <summary>插入一条新图号,返回新 Id(调用方需提前分配 DrawingNumber 并填入实体)</summary>
         Task<int> InsertAsync(ISqlSugarClient db, C0XBase entity);
 
-        /// <summary>更新图号名称 + UpdatedBy + UpdatedTime</summary>
-        Task<int> UpdateDrawNameAsync(ISqlSugarClient db, int id, string newDrawName, string updatedBy, DateTime updatedTime);
+        /// <summary>更新图号名称 + UpdatedBy + UpdatedTime
+        /// (2026-07-08 Review #L-7) DrawName → DrawingName</summary>
+        Task<int> UpdateDrawingNameAsync(ISqlSugarClient db, int id, string newDrawingName, string updatedBy, DateTime updatedTime);
     }
 }

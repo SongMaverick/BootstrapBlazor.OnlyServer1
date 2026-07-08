@@ -1,6 +1,7 @@
 @page "/add-drawing-numbers/{orderId:int}"
 @attribute [TabItemOption(Text = "添加图号")]
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator)]
+@using BootstrapBlazor.OnlyServer1.Models
 @using BootstrapBlazor.OnlyServer1.Services
 @inject DrawingNameService? DrawingNameService
 @inject C0XQueryService? C0XQueryService
@@ -125,7 +126,7 @@
                                                             <div class="form-check mb-2">
                                                                 <input class="form-check-input" type="checkbox" id="check-@item.Id" @bind="item.IsChecked" disabled="@item.IsAdded">
                                                                 <label class="form-check-label @(item.IsAdded ? "text-muted text-decoration-line-through" : "")" for="check-@item.Id">
-                                                                    @item.drawingName.ComponentName
+                                                                    @item.DrawingName.ComponentName
                                                                     @if (item.IsAdded) {
                                                                         <span class="badge bg-secondary ms-2" style="font-size: 0.7em;">已添加</span>
                                                                     }
@@ -245,16 +246,7 @@
     // (2026-07-07 UX 折叠功能) 默认全折叠;用户点 header 展开/收起
     private HashSet<string> _collapsedParts = new(StringComparer.OrdinalIgnoreCase);
 
-    public class CheckboxItem {
-        public int Id { get; set; }
-        public BootstrapBlazor.OnlyServer1.Models.DrawingNames drawingName { get; set; } = new();
-        public bool IsChecked { get; set; }
-        public bool IsAdded { get; set; }
-    }
-
-    // 卡片样式:用 Part 名字 hash 选 Bootstrap 配色,同一 Part 颜色稳定
-    // (2026-07-07 UX) BodyBg 是 header 同色系的浅色,让图名区域背景"延续"header 的色感
-    private record CardStyle(string HeaderClass, string HeaderTextClass, string BodyBg);
+    // (2026-07-08 Review #L-9) CheckboxItem / CardStyle 已提取到 Models/ViewModels/,通过 _Imports.razor 自动可见
 
     private static readonly string[] _bgClasses = new[] {
         "bg-warning", "bg-success", "bg-info", "bg-secondary",
@@ -321,23 +313,23 @@
         }
 
         try {
-            _order = await OrdersService.GetByIdAsync(OrderId);
+            _order = await OrdersService.FindByIdAsync(OrderId);
             if (_order == null) {
                 Logger.LogWarning("Order not found: {OrderId}", OrderId);
                 return;
             }
 
-            var allDrawingNames = await DrawingNameService!.GetAllDrawingNamesAsync();
+            var allDrawingNames = await DrawingNameService!.GetAllAsync();
             var addedDrawingNames = await C0XQueryService!.GetAddedDrawingNumbersByOrderIdAsync(OrderId);
-            var addedDrawNamesSet = new HashSet<string>(addedDrawingNames.Select(dn => dn.DrawName));
+            var addedDrawingNamesSet = new HashSet<string>(addedDrawingNames.Select(dn => dn.DrawingName));
 
             // 按 Part 分组(空 Part 走 "未分类")
             _partGroups = new Dictionary<string, List<CheckboxItem>>(StringComparer.OrdinalIgnoreCase);
             foreach (var dn in allDrawingNames) {
-                var isAdded = addedDrawNamesSet.Contains(dn.ComponentName);
+                var isAdded = addedDrawingNamesSet.Contains(dn.ComponentName);
                 var checkboxItem = new CheckboxItem {
                     Id = dn.Id,
-                    drawingName = dn,
+                    DrawingName = dn,
                     IsChecked = isAdded,
                     IsAdded = isAdded
                 };
@@ -373,7 +365,7 @@
         return _partGroups.Values
             .SelectMany(list => list)
             .Where(item => item.IsChecked && !item.IsAdded)
-            .Select(item => item.drawingName.ComponentName)
+            .Select(item => item.DrawingName.ComponentName)
             .ToList();
     }
 

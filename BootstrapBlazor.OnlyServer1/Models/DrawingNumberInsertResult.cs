@@ -1,7 +1,8 @@
-namespace BootstrapBlazor.OnlyServer1.Services
+namespace BootstrapBlazor.OnlyServer1.Models
 {
     /// <summary>
     /// 单次批量添加图号的结果。
+    /// (2026-07-08 Review #L-9) 从 Services/ 移到 Models/,它是数据载体 DTO,不是业务行为。
     /// Success 列出成功入库的图名,Failures 列出每条失败原因。
     /// </summary>
     public class DrawingNumberInsertResult

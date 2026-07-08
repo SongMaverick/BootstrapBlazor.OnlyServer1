@@ -14,6 +14,44 @@
 ### Fixed
 - **fix**:新建订单卡顿 1-2 分钟问题(根因:SERIALIZABLE 范围锁 + 默认 lock_timeout 无限等待)
 
+### Security(2026-07-07 Review #H1 / Medium 全套修复)
+- **Added** H1 纵深防御:`CurrentUserAccessor.RequireRole(...)` 入口方法;8 个 Service 文件,12 个 mutation 方法加权限门
+- **Fixed** M5 Login CSRF:`Login.razor` 加 `<AntiforgeryToken />` + `AccountController.Login` 加 `[ValidateAntiForgeryToken]`
+- **Fixed** M6 `RolesService.SaveAsync` 加 `BeginTran/CommitTran/RollbackTran`,失败回滚保角色权限不丢
+- **Fixed** M2 移除 10+ 处 `ex.Message` 直进 UI(UsersService/RolesService/SqlSugarUserStore/SqlSugarRoleStore),改为"操作失败,请查看日志"
+- **Fixed** M4 `Program.cs` `SetMinimumLevel(Trace → Information)`,生产关 Trace 输出不再泄漏堆栈到 SQL `Logs` 表
+- **Fixed** H3 `OrderBy(string)` 5 处加白名单(`_xxxAllowedSortCols`):OrdersService / UsersService / RolesService / DepartmentsService / BaseQueryService
+- **Added** M8 `web.config` 加 `Content-Security-Policy` + `Strict-Transport-Security` 响应头
+
+### UX(2026-07-07 AddDrawingNumbers UX 多轮迭代)
+- **Changed** 卡片布局:`col-md-6`(每行 2 卡)→ `col-12`(每行 1 Part 列表式)
+- **Added** Part 卡片可折叠:默认全折叠 + header 整区可点(`cursor: pointer`)
+- **Added** 标题栏 `[已选 N]` badge:0 时灰色,N > 0 时橙色 + ✓ 图标
+- **Added** Toolbar `⇕ 全部展开/折叠` 单按钮开关,文案随状态切换
+- **Changed** 图名水平多列:响应式 `col-12 / col-sm-6 / col-md-4 / col-lg-3 / col-xl-2`(手机 1 / 平板 2 / 笔记本 3 / 标准 4 / 大屏 **6** 列)
+- **Added** Card body 同色系浅背景:`LightBgFor()` 映射 8 色 Bootstrap 对应浅色 hex(`#fff3cd` 黄 / `#d1e7dd` 绿 / …)
+- **Added** 详情见 `docs/add-drawing-numbers-ux.md`
+
+### Documentation
+- **Added** `docs/code-review-onlyserver1-2026-07-07.md` 主项目审查报告(27 项发现,3 Critical / 7 High / 8 Medium / 9 Low)
+- **Added** `docs/code-review-2026-07-07.md` 多项目审查报告(覆盖 Tests/DbMigrator)
+- **Added** README.md 引用审查报告
+- **Added** `docs/add-drawing-numbers-ux.md` UX 决策文档
+- **Added** README-DEPLOY.md 第 7.x 节"部署后必查清单"(M7)
+
+### Test
+- **Added** 60+ 单元测试:7 个 Service 纵深防御 + 10 个 OrderBy 白名单 → 当前 **120/120 测试全绿**
+
+### 用户决定不修(上下文已记录,后续可重评估)
+- C-1a: `appsettings.json` 含 sa 密码(私有仓库可接受)
+- C-1b: `keys/key-*.xml` 入库(同上)
+- C-3: 弱密码策略(`RequiredLength:6` + 4 个 Require 全 false)
+- H2: Operator IDOR(部门内部信任)
+- H5: HTTPS / HSTS(等证书到位)
+- H6: `DrawingName.sql`(38KB,根目录,含真实 PII)
+- H7: SqlSugarUserStore 全表扫描(用户量未到门槛)
+- M1: 异常吞噬(改动量大,回报小)
+
 ## [2.0.0] - 2026-07-05
 
 ### Added

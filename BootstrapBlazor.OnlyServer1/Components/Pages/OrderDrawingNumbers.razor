@@ -91,7 +91,7 @@
                     {
                         <tr>
                             <td>@item.DrawingTypeNumber</td>
-                            <td>@item.DrawName</td>
+                            <td>@item.DrawingName</td>
                             <td>@item.CreatedBy</td>
                             <td>@item.CreatedTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>@item.UpdatedBy</td>
@@ -131,7 +131,7 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">图纸名称</label>
-                            <input class="form-control" type="text" @bind="_editModel.DrawName" />
+                            <input class="form-control" type="text" @bind="_editModel.DrawingName" />
                             @if (_editErrorMessage != null)
                             {
                                 <div class="text-danger mt-1">@_editErrorMessage</div>
@@ -175,13 +175,9 @@
     private string? _editErrorMessage = null;
     private DrawingNumberViewModel? _editingViewModel = null;
     private C0XBase? _editingC0x = null;
-    private EditModel _editModel = new();
+    private OrderDrawingNumberEditModel _editModel = new();
 
-    public class EditModel
-    {
-        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "图纸名称不能为空")]
-        public string DrawName { get; set; } = string.Empty;
-    }
+    // (2026-07-08 Review #L-9) EditModel 已提取到 Models/ViewModels/OrderDrawingNumberEditModel.cs
 
     protected override async Task OnInitializedAsync()
     {
@@ -257,7 +253,7 @@
         try
         {
             ct.ThrowIfCancellationRequested();
-            _order = await OrdersService.GetByIdAsync(OrderId);
+            _order = await OrdersService.FindByIdAsync(OrderId);
             if (_order == null)
             {
                 Logger.LogWarning("Order not found: {OrderId}", OrderId);
@@ -295,7 +291,7 @@
 
         _editErrorMessage = null;
         _editingViewModel = item;
-        _editModel.DrawName = item.DrawName;
+        _editModel.DrawingName = item.DrawingName;
         _editModalVisible = true;
         _editLoading = true;
 
@@ -309,7 +305,7 @@
                 return;
             }
             // 同步最新的图号名称到输入框(防止并发修改)
-            _editModel.DrawName = _editingC0x.DrawName;
+            _editModel.DrawingName = _editingC0x.DrawingName;
         }
         catch (Exception ex)
         {
@@ -328,7 +324,7 @@
         _editModalVisible = false;
         _editingViewModel = null;
         _editingC0x = null;
-        _editModel = new EditModel();
+        _editModel = new OrderDrawingNumberEditModel();
         _editErrorMessage = null;
         _editLoading = false;
         _editSaving = false;
@@ -342,7 +338,7 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_editModel.DrawName))
+        if (string.IsNullOrWhiteSpace(_editModel.DrawingName))
         {
             _editErrorMessage = "图纸名称不能为空";
             return;
@@ -361,13 +357,13 @@
                 return;
             }
 
-            string oldDrawingName = _editingC0x.DrawName;
-            _editingC0x.DrawName = _editModel.DrawName.Trim();
+            string oldDrawingName = _editingC0x.DrawingName;
+            _editingC0x.DrawingName = _editModel.DrawingName.Trim();
             _editingC0x.UpdatedBy = currentUserName;
             _editingC0x.UpdatedTime = DateTime.Now;
 
             Logger.LogInformation("User {UserName} updating drawing number {DrawingTypeNumber}, from '{OldName}' to '{NewName}'",
-                currentUserName, _editingViewModel.DrawingTypeNumber, oldDrawingName, _editingC0x.DrawName);
+                currentUserName, _editingViewModel.DrawingTypeNumber, oldDrawingName, _editingC0x.DrawingName);
 
             int result = await DrawingNumberWrite!.UpdateCX0DrawingNumberByIdAsync(_editingC0x, _editingViewModel.DrawingType);
 

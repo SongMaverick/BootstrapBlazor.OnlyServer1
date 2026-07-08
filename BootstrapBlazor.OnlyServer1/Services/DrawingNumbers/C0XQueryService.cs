@@ -1,4 +1,5 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.ViewModels;
 using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
 using SqlSugar;
 
@@ -77,14 +78,14 @@ public class C0XQueryService
     /// </summary>
     public DrawingNumberViewModel ToViewModel(C0XBase c0x, int orderNumber, string drawingType)
     {
-        // 图号直接来自持久化列 DrawNumber,不再做 MinDrawingNumber + Id 公式
-        string tempDrawingNumber = c0x.DrawNumber.ToString("D5");
+        // (2026-07-08 Review #L-7) c0x.DrawNumber/DrawName → DrawingNumber/DrawingName
+        string tempDrawingNumber = c0x.DrawingNumber.ToString("D5");
 
         return new DrawingNumberViewModel
         {
             Id = c0x.Id,
             DrawingType = drawingType,
-            DrawName = c0x.DrawName,
+            DrawingName = c0x.DrawingName,
             CreatedBy = c0x.CreatedBy,
             CreatedTime = c0x.CreatedTime,
             UpdatedBy = c0x.UpdatedBy,
@@ -119,7 +120,7 @@ public class C0XQueryService
 
         try
         {
-            var c0x = await handler.FindByDrawNumberAsync(_db, drawingNumber);
+            var c0x = await handler.FindByDrawingNumberAsync(_db, drawingNumber);
             if (c0x == null) return null;
             return await DrawingNumber2DrawingNumberViewModelAsync(c0x, drawingType);
         }

@@ -6,17 +6,20 @@ using BootstrapBlazor.OnlyServer1.Services.DrawingNames;
 namespace BootstrapBlazor.OnlyServer1.Tests.Services;
 
 /// <summary>
-/// (2026-07-07 Review #H3)
+/// (2026-07-07 Review #H3 / 2026-07-08 命名审查 L-4)
 /// OrderBy(string) 字符串拼接 SortName 防注入测试。
 /// 这些测试只验证白名单本身包含哪些列 — 不模拟 SqlSugar 执行。
 /// 真正的运行时验证需要在集成测试里跑真实 SQL。
 /// </summary>
 public class OrderByWhitelistTests
 {
-    private static HashSet<string> GetAllowedSortCols(Type serviceType, string fieldName)
+    // 2026-07-08 L-4 重构后 OrdersService 把 _ordersAllowedSortCols 暴露为
+    // IReadOnlyCollection<string>(与 BaseQueryService.AllowedSortCols 对齐),
+    // 其他 Service 仍是本地 HashSet<string>。统一用 IReadOnlyCollection 接住两边。
+    private static IReadOnlyCollection<string> GetAllowedSortCols(Type serviceType, string fieldName)
     {
         var field = serviceType.GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Static)!;
-        return (HashSet<string>)field.GetValue(null)!;
+        return (IReadOnlyCollection<string>)field.GetValue(null)!;
     }
 
     // ===== OrdersService =====

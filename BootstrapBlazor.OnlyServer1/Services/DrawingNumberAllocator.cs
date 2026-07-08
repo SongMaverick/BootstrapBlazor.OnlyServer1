@@ -7,14 +7,16 @@ using SqlSugar;
 namespace BootstrapBlazor.OnlyServer1.Services
 {
     /// <summary>
-    /// 图号分配器:为指定 drawingType 原子地分配下一个可用的 DrawNumber。
+    /// 图号分配器:为指定 drawingType 原子地分配下一个可用的 DrawingNumber。
     ///
     /// 实现:SQL Server 单条 UPDATE...OUTPUT 语句,数据库侧原子自增,无应用层锁、无显式事务。
     /// 第一次调用某 type 时按 handler 的 SeedDrawingNumber 兜底初始化。
+    ///
+    /// (2026-07-08 Review #L-7) 注释 DrawNumber → DrawingNumber,实际代码无 DrawNumber 引用。
     /// </summary>
     public interface IDrawingNumberAllocator
     {
-        /// <summary>分配一个 DrawNumber 并返回</summary>
+        /// <summary>分配一个 DrawingNumber 并返回</summary>
         Task<int> AllocateAsync(string drawingType, CancellationToken ct = default);
     }
 

@@ -19,12 +19,12 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
         /// 必须由各 handler 创建自己的具体类型,SqlSugar 才能正确写入对应表)。
         /// </summary>
         public virtual C0XBase CreateNewEntity(
-            string drawName, string drawingType, int orderId,
+            string drawingName, string drawingType, int orderId,
             string createdBy, DateTime createdTime)
         {
             return new TEntity
             {
-                DrawName = drawName,
+                DrawingName = drawingName,
                 OrderId = orderId,
                 CreatedBy = createdBy,
                 UpdatedBy = createdBy,
@@ -36,11 +36,11 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
 
         // ===== 查询 =====
 
-        public virtual async Task<List<string>> GetExistingDrawNamesAsync(ISqlSugarClient db, int orderId)
+        public virtual async Task<List<string>> GetExistingDrawingNamesAsync(ISqlSugarClient db, int orderId)
         {
             return await db.Queryable<TEntity>()
                 .Where(n => n.OrderId == orderId && !n.IsDeleted)
-                .Select(n => n.DrawName)
+                .Select(n => n.DrawingName)
                 .ToListAsync();
         }
 
@@ -71,10 +71,10 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
                 .FirstAsync();
         }
 
-        public virtual async Task<C0XBase?> FindByDrawNumberAsync(ISqlSugarClient db, int drawNumber)
+        public virtual async Task<C0XBase?> FindByDrawingNumberAsync(ISqlSugarClient db, int drawingNumber)
         {
             return await db.Queryable<TEntity>()
-                .Where(n => n.DrawNumber == drawNumber && !n.IsDeleted)
+                .Where(n => n.DrawingNumber == drawingNumber && !n.IsDeleted)
                 .FirstAsync();
         }
 
@@ -91,13 +91,13 @@ namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
             return await db.Insertable(typed).ExecuteReturnIdentityAsync();
         }
 
-        public virtual Task<int> UpdateDrawNameAsync(ISqlSugarClient db, int id, string newDrawName, string updatedBy, DateTime updatedTime)
+        public virtual Task<int> UpdateDrawingNameAsync(ISqlSugarClient db, int id, string newDrawingName, string updatedBy, DateTime updatedTime)
         {
-            // 过滤 IsDeleted=true:不允许编辑占位行(占位行的 DrawName 是占位符,编辑会污染真实数据)
+            // 过滤 IsDeleted=true:不允许编辑占位行(占位行的 DrawingName 是占位符,编辑会污染真实数据)
             return db.Updateable<TEntity>()
                 .SetColumns(it => new TEntity
                 {
-                    DrawName = newDrawName,
+                    DrawingName = newDrawingName,
                     UpdatedBy = updatedBy,
                     UpdatedTime = updatedTime
                 })

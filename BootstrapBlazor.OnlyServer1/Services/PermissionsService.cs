@@ -1,4 +1,5 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using Microsoft.Extensions.Logging;
 using SqlSugar;
@@ -105,13 +106,5 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 .Distinct()
                 .ToListAsync();
         }
-    }
-
-    /// <summary>UserRoles 表的轻量 DTO,供 SqlSugar 多表关联使用(同主项目 SqlSugarUserStore)。</summary>
-    [SugarTable("UserRoles")]
-    public class UserRolesRow
-    {
-        [SugarColumn(IsPrimaryKey = true)] public int UserId { get; set; }
-        [SugarColumn(IsPrimaryKey = true)] public int RoleId { get; set; }
     }
 }

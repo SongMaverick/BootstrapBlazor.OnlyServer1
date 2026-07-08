@@ -33,8 +33,12 @@ namespace BootstrapBlazor.OnlyServer1.Services
             _logger = logger;
         }
 
-        /// <summary>下拉用:只返回 IsActive 且未删除的部门。</summary>
-        public Task<List<Departments>> GetActiveAsync()
+        /// <summary>
+        /// 下拉用:只返回 IsActive 且未删除的部门。
+        /// (2026-07-08 Review #L-5) 改名 GetActiveAsync → GetAllActiveAsync,与
+        /// PermissionsService.GetAllActiveAsync 命名对齐(便于"全栈活跃"语义一眼可读)。
+        /// </summary>
+        public Task<List<Departments>> GetAllActiveAsync()
         {
             return _db.Queryable<Departments>()
                 .Where(d => d.IsActive && !d.IsDeleted)

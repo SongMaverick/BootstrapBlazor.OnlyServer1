@@ -135,7 +135,7 @@
     private bool _addModalVisible = false;
     private bool _addSaving = false;
     private string? _addErrorMessage = null;
-    private AddModel _addModel = new();
+    private DrawingNameAddModel _addModel = new();
 
     private List<string> _partOptions = new();
 
@@ -150,10 +150,7 @@
         "ESL-Core"
     };
 
-    public class AddModel {
-        public string ComponentName { get; set; } = string.Empty;
-        public string Part { get; set; } = string.Empty;
-    }
+    // (2026-07-08 Review #L-9) AddModel 已提取到 Models/ViewModels/DrawingNameAddModel.cs
 
     protected override async Task OnInitializedAsync() {
         await LoadDataAsync();
@@ -186,7 +183,7 @@
                 Logger.LogWarning("DrawingNameService is null");
                 return;
             }
-            _drawingNames = await DrawingNameService.GetAllDrawingNamesIncludingDeletedAsync();
+            _drawingNames = await DrawingNameService.GetAllAsync(includeDeleted: true);
         }
         catch (Exception ex) {
             Logger.LogError(ex, "LoadDataAsync failed");
@@ -198,7 +195,7 @@
     }
 
     private void OpenAddModal() {
-        _addModel = new AddModel();
+        _addModel = new DrawingNameAddModel();
         _addErrorMessage = null;
         _addModalVisible = true;
     }

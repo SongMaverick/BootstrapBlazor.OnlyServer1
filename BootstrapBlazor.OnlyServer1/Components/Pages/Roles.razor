@@ -210,13 +210,15 @@
 
     private async Task<bool> OnSaveAsync(RoleRowViewModel row, ItemChangedType changedType)
     {
-        var (ok, error) = await RolesService.SaveAsync(row.Role, Array.Empty<int>(), changedType.ToDomain());
+        // (2026-07-08 Review #M9 修复):SaveAsync 改 delta 接口后,改名保存不再带任何权限改动。
+        // 权限完全通过「权限」按钮弹窗 + PermissionsService.SetRolePermissionsAsync 管理。
+        var (ok, error) = await RolesService.SaveAsync(row.Role, addPermissionIds: null, removePermissionIds: null, changedType.ToDomain());
         if (!ok)
         {
             await ShowToast(error ?? "保存失败", ToastCategory.Error);
             return false;
         }
-        await ShowToast("已保存。点击「权限」按钮可分配权限码", ToastCategory.Success);
+        await ShowToast("已保存(权限未改动,请通过「权限」按钮分配)", ToastCategory.Success);
         return true;
     }
 
