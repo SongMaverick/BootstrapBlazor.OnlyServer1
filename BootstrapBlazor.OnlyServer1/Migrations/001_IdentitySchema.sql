@@ -21,7 +21,7 @@ CREATE TABLE Users (
     -- 业务字段
     Name                NVARCHAR(100) NOT NULL,
     WorkerNumber        INT           NOT NULL,
-    GID                 NVARCHAR(50)  NOT NULL,
+    Gid                 NVARCHAR(50)  NOT NULL,
     CreateTime          DATETIME      NOT NULL DEFAULT GETDATE(),
     IsDelete            BIT           NOT NULL DEFAULT 0,
     -- 锁定字段(为登录失败锁定用)

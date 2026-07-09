@@ -35,7 +35,7 @@ ASP.NET Core Identity 默认依赖 EF Core(`IdentityDbContext`)。本项目用 S
 
 ### 正面
 - Identity 与业务走同一 ORM,事务/连接管理一致
-- 业务字段(DisplayName / GID / Permission Claim)通过 `DisplayNameClaimsFactory` 一次写入 Cookie
+- 业务字段(DisplayName / Gid / Permission Claim)通过 `DisplayNameClaimsFactory` 一次写入 Cookie
 - 实现了完整的 Identity 管道:`UserManager<Users>` / `SignInManager<Users>` / `RoleManager<Roles>` 全部可用
 
 ### 负面 / 风险

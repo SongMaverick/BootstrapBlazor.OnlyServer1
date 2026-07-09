@@ -131,7 +131,7 @@ sequenceDiagram
     CF->>PS: GetCodesByUserIdAsync(user.Id)
     PS->>DB: SELECT Permission.Code<br/>FROM UserRoles<br/>JOIN RolePermissions<br/>JOIN Permissions<br/>WHERE UserId=?
     DB-->>PS: 权限码列表
-    CF->>CF: identity.AddClaim(<br/>  DisplayName, GID, Permission×N)
+    CF->>CF: identity.AddClaim(<br/>  DisplayName, Gid, Permission×N)
     CF-->>SM: ClaimsIdentity
     SM->>SM: SignIn(写入 Cookie)
     SM-->>C: Succeeded

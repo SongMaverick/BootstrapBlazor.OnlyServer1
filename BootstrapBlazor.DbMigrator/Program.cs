@@ -27,6 +27,11 @@ namespace BootstrapBlazor.DbMigrator;
 ///   --rollback-c0x-drawingname  回滚上述重命名
 ///   --check-c0x-state           只读检查当前 C0X 列/索引状态
 ///
+/// (2026-07-08 Review #L-8) Users.GID 列重命名专用 3 模式(独立运行):
+///   --rename-users-gid          Users.GID → Users.Gid
+///   --rollback-users-gid        回滚上述重命名
+///   --check-users-state         只读检查 Users 表 GID/Gid 列状态
+///
 /// 典型用法:
 ///   # 测试环境 — 完整重置:删表 + 建表 + 灌种子 + 读旧 SQL 迁移
 ///   dotnet run --project DbMigrator -- --drop --schema --seed --migrate --source .
@@ -43,6 +48,13 @@ namespace BootstrapBlazor.DbMigrator;
 ///   dotnet run --project DbMigrator -- --check-c0x-state
 ///   dotnet run --project DbMigrator -- --rollback-c0x-drawingname  # 失败时回滚
 ///   详见 docs/deploy/l7-rename-deploy.md
+///
+///   # L-8 协调迁移 — Users.GID 列重命名(独立模式)
+///   dotnet run --project DbMigrator -- --check-users-state
+///   dotnet run --project DbMigrator -- --rename-users-gid
+///   dotnet run --project DbMigrator -- --check-users-state
+///   dotnet run --project DbMigrator -- --rollback-users-gid  # 失败时回滚
+///   详见 docs/deploy/l8-rename-deploy.md
 /// </summary>
 public class Program
 {
@@ -59,6 +71,11 @@ public class Program
         bool doRollbackC0X = args.Contains("--rollback-c0x-drawingname");
         bool doCheckC0X = args.Contains("--check-c0x-state");
 
+        // (2026-07-08 Review #L-8) Users.GID 列重命名专用 3 模式(独立运行)
+        bool doRenameUsersGid = args.Contains("--rename-users-gid");
+        bool doRollbackUsersGid = args.Contains("--rollback-users-gid");
+        bool doCheckUsersState = args.Contains("--check-users-state");
+
         string? sourceDir = null;
         var srcIdx = Array.IndexOf(args, "--source");
         if (srcIdx >= 0 && srcIdx + 1 < args.Length)
@@ -71,8 +88,10 @@ public class Program
 
         // 默认 --schema --seed(若用户没指定任何模式,执行基础建表+种子)
         // (2026-07-08 Review #L-7) C0X rename/check 模式独立运行,不进入默认流程
+        // (2026-07-08 Review #L-8) Users.GID rename/check 模式独立运行,不进入默认流程
         if (!doSchema && !doSeed && !doMigrate && !doDrop
-            && !doRenameC0X && !doRollbackC0X && !doCheckC0X)
+            && !doRenameC0X && !doRollbackC0X && !doCheckC0X
+            && !doRenameUsersGid && !doRollbackUsersGid && !doCheckUsersState)
         {
             doSchema = true;
             doSeed = true;
@@ -249,6 +268,28 @@ public class Program
             Console.WriteLine();
             Console.WriteLine(">>> C0X 列重命名回滚 DrawingName/DrawingNumber → DrawName/DrawNumber (L-7)");
             await RenameC0XColumnsAsync(db, rollback: true);
+        }
+
+        // ============================================================
+        // (2026-07-08 Review #L-8) Users.GID 列重命名专用 3 模式
+        // ============================================================
+        if (doCheckUsersState)
+        {
+            Console.WriteLine();
+            Console.WriteLine(">>> 检查 Users 表 GID/Gid 列状态(L-8)");
+            await CheckUsersGidStateAsync(db);
+        }
+        if (doRenameUsersGid)
+        {
+            Console.WriteLine();
+            Console.WriteLine(">>> Users.GID 列重命名 GID → Gid (L-8)");
+            await RenameUsersGidColumnAsync(db, rollback: false);
+        }
+        if (doRollbackUsersGid)
+        {
+            Console.WriteLine();
+            Console.WriteLine(">>> Users.GID 列重命名回滚 Gid → GID (L-8)");
+            await RenameUsersGidColumnAsync(db, rollback: true);
         }
 
         Console.WriteLine();
@@ -650,6 +691,63 @@ END";
         }
     }
 
+    /// <summary>
+    /// (2026-07-08 Review #L-8) 检查 Users 表 GID/Gid 列状态。
+    /// 退出:标准输出,无异常退出码。
+    /// </summary>
+    private static async Task CheckUsersGidStateAsync(ISqlSugarClient db)
+    {
+        var hasOld = await ColumnExists(db, "Users", "GID");
+        var hasNew = await ColumnExists(db, "Users", "Gid");
+
+        if (hasNew && !hasOld) { Console.WriteLine("  ✓ Users:新名 Gid(已迁移)"); Console.WriteLine(">>> 状态:已迁移,无需操作"); }
+        else if (hasOld && !hasNew) { Console.WriteLine("  · Users:旧名 GID(待迁移)"); Console.WriteLine(">>> 状态:旧名,可跑 --rename-users-gid"); }
+        else if (hasNew && hasOld) { Console.WriteLine("  ! Users:异常 — 同时存在 GID 和 Gid 列"); Console.WriteLine(">>> 状态:异常,需人工介入"); }
+        else { Console.WriteLine("  ! Users:异常 — 既无 GID 也无 Gid 列"); Console.WriteLine(">>> 状态:异常,需人工介入"); }
+    }
+
+    /// <summary>
+    /// (2026-07-08 Review #L-8) Users.GID → Users.Gid 列重命名(原子 sp_rename)。
+    /// rollback=true 时反向。
+    /// </summary>
+    private static async Task RenameUsersGidColumnAsync(ISqlSugarClient db, bool rollback)
+    {
+        var oldName = rollback ? "Gid" : "GID";
+        var newName = rollback ? "GID" : "Gid";
+        var direction = rollback ? "回滚" : "重命名";
+
+        // 前置检查
+        var hasOld = await ColumnExists(db, "Users", oldName);
+        var hasNew = await ColumnExists(db, "Users", newName);
+        if (hasNew && !hasOld) { Console.WriteLine($"  - Users:已是目标状态({newName}),跳过"); return; }
+        if (!hasOld)
+        {
+            throw new InvalidOperationException(
+                $"Users 表无 {oldName} 列,异常状态。需要人工介入。");
+        }
+        if (hasNew)
+        {
+            throw new InvalidOperationException(
+                $"Users 表同时存在 {oldName} 和 {newName} 列,异常状态。需要人工介入。");
+        }
+
+        // 原子事务(虽然只有 1 个 sp_rename,套事务保持与其他 L-7 模式一致)
+        db.Ado.BeginTran();
+        try
+        {
+            await db.Ado.ExecuteCommandAsync(
+                $"EXEC sp_rename 'dbo.Users.{oldName}', '{newName}', 'COLUMN'");
+            db.Ado.CommitTran();
+            Console.WriteLine($"  ✓ Users.{oldName} → Users.{newName} ({direction}完成)");
+        }
+        catch (Exception ex)
+        {
+            db.Ado.RollbackTran();
+            Console.Error.WriteLine($"  ✗ 失败,已回滚:{ex.Message}");
+            throw;
+        }
+    }
+
     // ============================================================
     // Identity 种子
     // ============================================================
@@ -741,7 +839,7 @@ END";
                 NormalizedUserName = "1",
                 Name = "超级管理员",
                 WorkerNumber = 1,
-                GID = "ADMIN",
+                Gid = "ADMIN",
                 CreatedTime = DateTime.Now,
                 IsDeleted = false,
                 LockoutEnabled = true,
@@ -1178,7 +1276,7 @@ END";
                     NormalizedUserName = workerNumber.ToString().ToUpperInvariant(),
                     Name = row["Name"] as string ?? "",
                     WorkerNumber = workerNumber,
-                    GID = ((row["GID"] as string) ?? "").ToUpper(),
+                    Gid = ((row["GID"] as string) ?? "").ToUpper(),
                     // 从旧库 SQL 直接复制 Email 和 PhoneNumber(之前 Excel 富化已删除,这里接管)
                     Email = email,
                     NormalizedEmail = email?.ToUpperInvariant(),

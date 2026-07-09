@@ -102,7 +102,7 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
                 _displayName = user.FindFirst(ClaimsPrincipalExtensions.DisplayNameClaim)?.Value
                                 ?? user.Identity.Name
                                 ?? "";
-                _userName = user.FindFirst(ClaimsPrincipalExtensions.GIDClaim)?.Value
+                _userName = user.FindFirst(ClaimsPrincipalExtensions.GidClaim)?.Value
                             ?? user.Identity.Name
                             ?? "";
                 Menus = GetIconSideMenuItems(user);

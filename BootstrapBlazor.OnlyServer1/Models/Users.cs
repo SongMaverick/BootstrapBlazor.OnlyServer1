@@ -19,7 +19,8 @@ public class Users : IdentityUser<int>
     // ===== 业务字段 =====
     public string Name { get; set; } = "";
     public int WorkerNumber { get; set; }
-    public string GID { get; set; } = "";
+    /// <summary>员工在公司 OA 系统中的唯一标识(原 GID,2026-07-08 Review #L-8 重命名为 Gid)</summary>
+    public string Gid { get; set; } = "";
     public DateTime CreatedTime { get; set; }
     public bool IsDeleted { get; set; }
 

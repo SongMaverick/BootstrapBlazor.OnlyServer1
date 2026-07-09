@@ -54,7 +54,7 @@ public class OrderByWhitelistTests
         var allowed = GetAllowedSortCols(typeof(UsersService), "_usersAllowedSortCols");
         Assert.Contains(nameof(Users.Id), allowed);
         Assert.Contains(nameof(Users.WorkerNumber), allowed);
-        Assert.Contains(nameof(Users.GID), allowed);
+        Assert.Contains(nameof(Users.Gid), allowed);
         Assert.Contains(nameof(Users.CreatedTime), allowed);
     }
 

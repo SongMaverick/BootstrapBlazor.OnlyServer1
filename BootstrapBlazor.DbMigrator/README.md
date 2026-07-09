@@ -113,6 +113,9 @@ dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.
 | `--rename-c0x-drawingname` | **(2026-07-08 Review #L-7)** 9 张 C0X 表 `DrawName` / `DrawNumber` 列重命名为 `DrawingName` / `DrawingNumber`,含 9 个唯一索引 drop+recreate。**原子事务,失败自动回滚** |
 | `--rollback-c0x-drawingname` | **(2026-07-08 Review #L-7)** `--rename-c0x-drawingname` 的反向操作,用于部署后回滚 |
 | `--check-c0x-state` | **(2026-07-08 Review #L-7)** 只读检查 9 张 C0X 表的列/索引当前状态(新名/旧名/异常),不修改任何数据 |
+| `--rename-users-gid` | **(2026-07-08 Review #L-8)** `Users.GID` 列重命名为 `Users.Gid`(单列 sp_rename,原子事务) |
+| `--rollback-users-gid` | **(2026-07-08 Review #L-8)** `--rename-users-gid` 的反向操作,用于部署后回滚 |
+| `--check-users-state` | **(2026-07-08 Review #L-8)** 只读检查 Users 表 GID/Gid 列当前状态,不修改任何数据 |
 
 不传任何模式 = `--schema --seed`
 
@@ -141,6 +144,34 @@ dotnet run --project BootstrapBlazor.DbMigrator -- --rollback-c0x-drawingname
 ```
 
 **部署手册**:`docs/deploy/l7-rename-deploy.md`(含备份、回滚、round-trip 验证、烟测清单)
+
+### L-8 协调迁移(2026-07-08 Review #L-8)
+
+`Users.GID` 列重命名为 `Users.Gid`(详见 `docs/naming-consistency-2026-07-08.md` L-8)。
+
+**注意**:项目尚未上线,无现存用户 cookie/会话,Claim 字符串可直接改 `GidClaim = "Gid"`,无需 C.1 双 Claim 过渡阶段。
+
+**3 个 mode 独立运行**:
+- `--check-users-state`:只读检查当前状态
+- `--rename-users-gid`:执行迁移(原子 sp_rename)
+- `--rollback-users-gid`:回滚
+
+**典型用法**:
+```bash
+# 1. 部署前:检查
+dotnet run --project BootstrapBlazor.DbMigrator -- --check-users-state
+
+# 2. 协调部署窗口
+dotnet run --project BootstrapBlazor.DbMigrator -- --rename-users-gid
+
+# 3. 部署后验证
+dotnet run --project BootstrapBlazor.DbMigrator -- --check-users-state
+
+# 4. 失败回滚
+dotnet run --project BootstrapBlazor.DbMigrator -- --rollback-users-gid
+```
+
+**部署手册**:`docs/deploy/l8-rename-deploy.md`
 
 ---
 
@@ -189,7 +220,7 @@ dotnet run --project BootstrapBlazor.DbMigrator -- --rollback-c0x-drawingname
 ### Users
 - `UserName = WorkerNumber.ToString()`
 - `NormalizedUserName = UPPER(WorkerNumber)`
-- `GID` 转大写
+- `Gid` 转大写
 - `DepartmentId` 可空;若旧库 `Users.sql` 没有此列,迁移后会保持 `NULL`,`--seed` 后会自动回填到 `MD 部门`
 
 ### Orders + ReactorOrder
@@ -298,6 +329,6 @@ dotnet run --project BootstrapBlazor.DbMigrator -- --rollback-c0x-drawingname
 | 用户名 | 超级管理员 |
 | 默认密码 | `Admin@123`(可用 `--admin-password` 自定义) |
 | 角色 | Admin(自动绑定全部 25 个权限码) |
-| GID | ADMIN |
+| Gid | ADMIN |
 
 > **首次部署完成后,请立即登录改密。**

@@ -72,7 +72,7 @@
             <TableColumn @bind-Field="@context.User.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
             <TableColumn @bind-Field="@context.User.WorkerNumber" Title="员工号" Width="100" Sortable="true" Readonly="true" />
             <TableColumn @bind-Field="@context.User.Name" Width="120" Sortable="true" Readonly="true" />
-            <TableColumn @bind-Field="@context.User.GID" Width="150" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.User.Gid" Width="150" Sortable="true" Readonly="true" />
             <TableColumn @bind-Field="@context.RoleNames" Title="当前角色" Readonly="true">
                 <Template Context="value">
                     @if (string.IsNullOrEmpty(value.Value))

@@ -26,7 +26,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 nameof(Users.Id),
                 nameof(Users.Name),
                 nameof(Users.WorkerNumber),
-                nameof(Users.GID),
+                nameof(Users.Gid),
                 nameof(Users.DepartmentId),
                 nameof(Users.CreatedTime),
             };
@@ -58,7 +58,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 if (!string.IsNullOrEmpty(options.SearchText))
                 {
-                    query = query.Where(u => u.Name.Contains(options.SearchText) || u.GID.Contains(options.SearchText));
+                    query = query.Where(u => u.Name.Contains(options.SearchText) || u.Gid.Contains(options.SearchText));
                 }
 
                 if (!string.IsNullOrEmpty(options.SortName) && _usersAllowedSortCols.Contains(options.SortName))
@@ -79,7 +79,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                         Id = u.Id,
                         Name = u.Name,
                         WorkerNumber = u.WorkerNumber,
-                        GID = u.GID,
+                        Gid = u.Gid,
                         CreatedTime = u.CreatedTime,
                         IsDeleted = u.IsDeleted,
                         UserName = u.UserName,
@@ -149,7 +149,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
         /// <summary>
         /// 保存用户。返回 (ok, error):
-        ///   - Add:必填初始密码,GID 必填且转大写
+        ///   - Add:必填初始密码,Gid 必填且转大写
         ///   - Update:不修改 PasswordHash / CreatedTime / IsDeleted(防止覆盖)
         ///
         /// 授权规则(纵深防御,2026-07-08 Review #H1 补漏):仅 Admin。
@@ -174,11 +174,11 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 return (false, authErr);
             }
 
-            if (string.IsNullOrEmpty(user.GID))
+            if (string.IsNullOrEmpty(user.Gid))
             {
-                return (false, "GID不能为空");
+                return (false, "Gid不能为空");
             }
-            user.GID = user.GID.ToUpper();
+            user.Gid = user.Gid.ToUpper();
             user.NormalizedUserName = user.WorkerNumber.ToString().ToUpperInvariant();
 
             try

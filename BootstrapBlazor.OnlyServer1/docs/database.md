@@ -33,7 +33,7 @@ erDiagram
         string NormalizedUserName UK
         string Name
         int WorkerNumber UK
-        string GID
+        string Gid
         int DepartmentId FK
         string Email
         bool EmailConfirmed

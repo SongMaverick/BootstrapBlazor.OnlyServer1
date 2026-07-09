@@ -9,7 +9,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
     /// <summary>
     /// ClaimsPrincipal 工厂:在 Identity 标准 Claim 之外追加:
     ///   - 角色 claim(ClaimTypes.Role)—— 由基类 UserClaimsPrincipalFactory&lt;TUser, TRole&gt; 自动写入
-    ///   - DisplayName / GID(业务字段)
+    ///   - DisplayName / Gid(业务字段)
     ///   - Permission(用户所有角色 × 权限码的并集,供 HasPermission 按钮级判断)
     ///
     /// 注意:基类必须用带角色类型参数的重载
@@ -37,8 +37,8 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
 
             if (!string.IsNullOrEmpty(user.Name))
                 identity.AddClaim(new Claim(ClaimsPrincipalExtensions.DisplayNameClaim, user.Name));
-            if (!string.IsNullOrEmpty(user.GID))
-                identity.AddClaim(new Claim(ClaimsPrincipalExtensions.GIDClaim, user.GID));
+            if (!string.IsNullOrEmpty(user.Gid))
+                identity.AddClaim(new Claim(ClaimsPrincipalExtensions.GidClaim, user.Gid));
 
             // 权限码(从 UserRoles × RolePermissions × Permissions 联合查)。
             // 失败时直接抛回 SignInManager — 登录整体失败,避免"幽灵登录"产生

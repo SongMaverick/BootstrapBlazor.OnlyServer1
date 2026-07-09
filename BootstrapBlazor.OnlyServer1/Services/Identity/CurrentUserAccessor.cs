@@ -5,7 +5,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
 {
     /// <summary>
     /// 从当前 HttpContext 的 ClaimsPrincipal 提取当前用户信息。
-    /// 用于业务 Service 中拿到"当前登录用户"的姓名 / Id / GID 等字段。
+    /// 用于业务 Service 中拿到"当前登录用户"的姓名 / Id / Gid 等字段。
     ///
     /// 依赖注入:IHttpContextAccessor。
     /// 用法:
@@ -38,9 +38,10 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         public string? GetDisplayName()
             => Principal?.FindFirstValue("DisplayName");
 
-        /// <summary>业务字段 GID,通过 UserManager 创建 SignIn 时注入。</summary>
-        public string? GetGID()
-            => Principal?.FindFirstValue("GID");
+        /// <summary>业务字段 Gid,通过 UserManager 创建 SignIn 时注入。
+        /// (2026-07-08 Review #L-8) 重命名 GetGID→GetGid,改用 GidClaim 常量(原用字面量 "GID")。</summary>
+        public string? GetGid()
+            => Principal?.FindFirstValue(ClaimsPrincipalExtensions.GidClaim);
 
         /// <summary>当前用户拥有的所有权限码(从 Claims 读取,由 DisplayNameClaimsFactory 写入)。</summary>
         public IEnumerable<string> GetPermissions()
