@@ -89,6 +89,7 @@ namespace BootstrapBlazor.OnlyServer1.Controllers
 
         [HttpPost("Logout")]
         [Authorize]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Logout()
         {
             // 注意:Identity 体系中 User.Identity.Name = 用户名(本系统=WorkerNumber);

@@ -1,0 +1,17 @@
+@page "/logout"
+@layout BootstrapBlazor.OnlyServer1.Components.Shared.LoginLayout
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        // (2026-07-09 Review #L3-NEW) 这是 /logout 的"占位重定向页":
+        //   - 用户手动访问 /logout(地址栏、书签、外链)时,重定向到 /login
+        //   - 真正登出走 MainLayout.razor:19 的 form post → /Account/Logout
+        //     (那个流程调 SignInManager.SignOutAsync 清 cookie)
+        // 不执行真正的登出 — 防止与 MainLayout 的 form post 行为不一致。
+        // 文件名原为 LogoutPage.razor,改名 LogoutRedirect.razor 是为了避免
+        // 新人误以为"这是登出页面"而错改逻辑(2026-07-09 L3 命名误导修复)。
+        Nav.NavigateTo("/login", forceLoad: true);
+    }
+}

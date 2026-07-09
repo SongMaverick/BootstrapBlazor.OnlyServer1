@@ -8,6 +8,7 @@
 - **重构**:用 `IX_Orders_OrderNumber` filtered unique index 替代 SERIALIZABLE 事务防重,保存耗时从 1-2 分钟降到 < 100ms (ADR 0005)
 - **重构**:Models 目录全部统一为 file-scoped namespace (ADR 0003)
 - **重构**:N+1 查询修复 — `RolesService` 新增批量查询方法,`Roles.razor` / `UserRoles.razor` 单页查询数从 20-80 降到 2
+- **重构**:角色/权限变更后 5 分钟内自动续 cookie — 注册 `SecurityStampValidator<Users>` + `ValidationInterval = TimeSpan.FromMinutes(5)`,用户不重登也能拿到新 Permission / DisplayName / Gid claim
 - **清理**:删除死页面 `UpdateDrawingNumber.razor` 和 `AddDrawingNumbersSelect.razor`
 - **清理**:删除导航菜单上无效入口(`/add-drawing-numbers`、`/update-drawing-number` 缺路由参数 → 404)
 
@@ -22,6 +23,15 @@
 - **Fixed** M4 `Program.cs` `SetMinimumLevel(Trace → Information)`,生产关 Trace 输出不再泄漏堆栈到 SQL `Logs` 表
 - **Fixed** H3 `OrderBy(string)` 5 处加白名单(`_xxxAllowedSortCols`):OrdersService / UsersService / RolesService / DepartmentsService / BaseQueryService
 - **Added** M8 `web.config` 加 `Content-Security-Policy` + `Strict-Transport-Security` 响应头
+
+### Security(2026-07-09 Review #H1-NEW 修复)
+- **Fixed** 角色/权限变更后用户不重登就拿不到新权限的隐患:注册 `SecurityStampValidator<Users>` + `ValidationInterval = 5min`,cookie 中 Permission / DisplayName / Gid claim 静默续期(不改用户密码时无感知,改密码时走原路径强制 SignOut)
+- **Fixed** M5-NEW Logout CSRF 漏修:`MainLayout.razor:19` form 加 `<AntiforgeryToken />` + `AccountController.Logout` 加 `[ValidateAntiForgeryToken]`
+- **Fixed** M4-NEW 静默 return:`PermissionsService.SetRolePermissionsAsync` 改 `Task<bool>`,失败返回 false 而非静默;`Roles.razor:SavePermsAsync` 处理 bool 返回
+- **Fixed** L1 `OrderLockProvider._locks` 字典无界增长:加 `MaybeCleanup()` 5 分钟节流式清理空闲 SemaphoreSlim,抢占式 CAS 保证多线程安全
+- **Added** M10 `BaseQueryService.DefaultSortField` 抽象方法 + `OrderBy(string)` 调用点加防御性注释,标明"必须返回硬编码常量"约束,防止未来误用
+- **Fixed** L4-NEW `RolesService.SetUserRolesAsync` admin 唯一性 TOCTOU 窗口:加业务规则"admin 永不降自己的权",覆盖原 adminCount 校验无法触达的"2+ admin 同时降自己 → 0 admin"场景(防系统锁死)
+- **Refactor** L3-NEW `Components/Pages/LogoutPage.razor` → `LogoutRedirect.razor`(命名误导修复:文件实际只重定向不登出,真登出走 MainLayout.razor:19 的 form post);@page "/logout" URL 保持兼容
 
 ### UX(2026-07-07 AddDrawingNumbers UX 多轮迭代)
 - **Changed** 卡片布局:`col-md-6`(每行 2 卡)→ `col-12`(每行 1 Part 列表式)
@@ -59,7 +69,7 @@
 - 9 张 C0X 图号表(C0XBase abstract + 9 个 handler 多态写入)
 - DrawingNumberAllocator 原子分配(SQL Server `UPDATE...OUTPUT`)
 - OrderLockProvider 同订单进程内互斥
-- DisplayNameClaimsFactory 写入业务 Claim(DisplayName/GID/Permission)
+- DisplayNameClaimsFactory 写入业务 Claim(DisplayName/Gid/Permission)
 - NLog DB target 写 `Logs` 表
 - 25+ 个细粒度权限码(PermissionCodes 常量)
 - 角色保护:ADMIN 唯一超管拒绝移除

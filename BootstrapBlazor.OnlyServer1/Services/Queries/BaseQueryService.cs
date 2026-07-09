@@ -35,7 +35,13 @@ public abstract class BaseQueryService<TEntity> where TEntity : class, new()
     /// </summary>
     protected virtual Expression<Func<TEntity, bool>>? BuildSearchPredicate(string keyword) => null;
 
-    /// <summary>默认排序字段名(SortName 为空时使用)。</summary>
+    /// <summary>
+    /// 默认排序字段名(SortName 为空或不在白名单时使用)。
+    /// (2026-07-09 Review #M10):子类实现 MUST 返回硬编码常量字符串(如 "CreatedTime"、"Id")。
+    /// 绝对不允许从用户输入、配置文件或数据库读到的值构造返回值 ——
+    /// BaseQueryService.QueryAsync 会直接拼到 OrderBy(string) 里传给 SQL。
+    /// 改 abstract 时若值要变,直接修改本方法的返回值,不要做成动态。
+    /// </summary>
     protected abstract string DefaultSortField();
 
     /// <summary>
@@ -75,6 +81,9 @@ public abstract class BaseQueryService<TEntity> where TEntity : class, new()
             }
             else
             {
+                // (2026-07-09 Review #M10):此处走 SqlSugar.OrderBy(string) 字符串拼接。
+                // 安全前提:DefaultSortField() 必须返回硬编码常量(见该方法注释)。
+                // 禁止改成从 options / 用户输入 / DB 读到的值。
                 query = query.OrderBy($"{DefaultSortField()} desc");
             }
 

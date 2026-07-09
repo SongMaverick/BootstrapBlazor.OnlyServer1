@@ -59,6 +59,35 @@ builder.Services.AddIdentityCore<Users>(options =>
 .AddDefaultTokenProviders()
 .AddClaimsPrincipalFactory<DisplayNameClaimsFactory>();
 
+// ============================================================
+// SecurityStamp validator(2026-07-09 Review #H1-NEW 修复):
+// 默认 ValidationInterval=30min 太慢,改成 5min,确保角色/权限变更后
+// 用户在 5 分钟内自动续上新的 Permission claim,不必主动重登。
+//
+// 原理(每 5 分钟,SignInManager 自动跑):
+//   1) 读 cookie 里的 SecurityStamp 与 DB 当前 Stamp 比对
+//   2) Stamp 一致 → 调 CreateUserPrincipalAsync → 我们的
+//      DisplayNameClaimsFactory 重新查 UserRoles × RolePermissions × Permissions
+//      → 拿到最新的权限码 → 静默续写 cookie(ReplacePrincipal + ShouldRenew)
+//   3) Stamp 不一致(改了密码/启停 2FA 等)→ 强制 SignOut,用户必须重登
+//
+// 已知行为:
+//   - 同一会话每 5 分钟触发一次(不是每次请求)
+//   - 触发时多查 3 张表(都已建索引),性能开销可忽略
+//   - 不依赖用户主动重登,适合 24/7 工业场景
+//   - 修改 Gid / DisplayName / Permission 都不需要额外操作,
+//     5 分钟内自动续期
+//
+// 不删这段配置、不删这个注释。后续如需"权限变更立即踢人"再叠一层
+// UpdateSecurityStampAsync 即可(在 RolesService.AddUserToRoleAsync 等
+// 变更后调一次,触发强制 SignOut)。
+// ============================================================
+builder.Services.Configure<SecurityStampValidatorOptions>(o =>
+{
+    o.ValidationInterval = TimeSpan.FromMinutes(5);
+});
+builder.Services.AddScoped<SecurityStampValidator<Users>>();
+
 // 持久化 DataProtection 密钥到应用根下 keys/ 目录,避免 IIS 应用池回收 / 服务器
 // 重启后所有用户 cookie 失效 → 全员被强制重新登录。路径可在 appsettings 用
 // "DataProtection:KeyDirectory" 覆盖指向独立持久盘。

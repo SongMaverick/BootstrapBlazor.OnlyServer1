@@ -69,13 +69,18 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 .ToListAsync();
         }
 
-        /// <summary>给指定角色一次性替换权限关联(全删后全插)。</summary>
-        public async Task SetRolePermissionsAsync(int roleId, IEnumerable<int> permissionIds)
+        /// <summary>
+        /// 给指定角色一次性替换权限关联(全删后全插)。
+        /// 返回 true=成功,false=被权限校验拒绝(调用方应给出错误提示)。
+        /// 改 Task&lt;bool&gt; 而非 Task 是为了不再"静默失败"(2026-07-09 Review #M4-NEW)。
+        /// </summary>
+        public async Task<bool> SetRolePermissionsAsync(int roleId, IEnumerable<int> permissionIds)
         {
             // ====================================================================
-            // 纵深防御(2026-07-07 Review #H1):
+            // 纵深防御(2026-07-07 Review #H1 / 2026-07-09 Review #M4-NEW):
             // 覆盖角色权限是高权限操作:仅 Admin。
             // 不删这段校验、不删这个注释。
+            // 失败时返回 false(不再静默 return)以便 Razor 层能区分成功 vs 拒绝。
             // ====================================================================
             var (ok, err) = _currentUser.RequireRole(Models.Identity.RoleNames.Admin);
             if (!ok)
@@ -83,15 +88,16 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 _logger.LogWarning(
                     "PermissionsService.SetRolePermissionsAsync denied: callerId={CallerId} reason={Reason}",
                     _currentUser.GetUserId(), err);
-                return;
+                return false;
             }
 
             var ids = permissionIds.Distinct().ToList();
             await _db.Deleteable<RolePermissions>().Where(rp => rp.RoleId == roleId).ExecuteCommandAsync();
-            if (ids.Count == 0) return;
+            if (ids.Count == 0) return true;
 
             var rows = ids.Select(pid => new RolePermissions { RoleId = roleId, PermissionId = pid }).ToList();
             await _db.Insertable(rows).ExecuteCommandAsync();
+            return true;
         }
 
         /// <summary>完整覆盖某个用户的所有权限码(合并其全部角色关联的权限码)。通常用于诊断/重建。</summary>

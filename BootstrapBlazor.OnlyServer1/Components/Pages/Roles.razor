@@ -141,7 +141,7 @@
                                     <TableColumn @bind-Field="@context.Id" Width="80" />
                                     <TableColumn @bind-Field="@context.Name" />
                                     <TableColumn @bind-Field="@context.WorkerNumber" Title="员工号" Width="120" />
-                                    <TableColumn @bind-Field="@context.GID" Width="150" />
+                                    <TableColumn @bind-Field="@context.Gid" Width="150" />
                                 </TableColumns>
                             </Table>
                         }
@@ -288,7 +288,13 @@
         _permSaving = true;
         try
         {
-            await PermissionsService.SetRolePermissionsAsync(_editingRoleId, _selectedPermIds);
+            // 2026-07-09 Review #M4-NEW:Service 现在返回 bool 表示是否被权限校验拒绝
+            var ok = await PermissionsService.SetRolePermissionsAsync(_editingRoleId, _selectedPermIds);
+            if (!ok)
+            {
+                await ShowToast("保存失败:无权限(此操作仅限 Admin)", ToastCategory.Error);
+                return;
+            }
             await ShowToast($"已保存 {_selectedPermIds.Count} 个权限,相关用户需重新登录生效", ToastCategory.Success);
             _permDialogVisible = false;
         }

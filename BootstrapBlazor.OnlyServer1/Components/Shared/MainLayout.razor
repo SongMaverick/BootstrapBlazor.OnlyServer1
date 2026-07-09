@@ -17,6 +17,7 @@
                     <a href="#"><i class="fa-solid fa-cog"></i>设置</a>
                     <a href="#"><i class="fa-solid fa-bell"></i>通知<span class="badge badge-pill badge-success"></span></a>
                     <form method="post" action="/Account/Logout" class="d-inline">
+                        <AntiforgeryToken />
                         <button type="submit" class="dropdown-item" style="background:none;border:none;padding:0;color:inherit;">
                             <i class="fa-solid fa-sign-out"></i>退出登录
                         </button>

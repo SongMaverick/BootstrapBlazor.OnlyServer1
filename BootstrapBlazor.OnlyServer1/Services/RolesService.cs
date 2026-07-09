@@ -141,7 +141,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     Id = u.Id,
                     Name = u.Name,
                     WorkerNumber = u.WorkerNumber,
-                    GID = u.GID
+                    Gid = u.Gid
                 })
                 .ToListAsync();
         }
@@ -570,6 +570,20 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 var targetIds = roleIds.Distinct().ToList();
                 var targetRoles = await _db.Queryable<Roles>().Where(r => targetIds.Contains(r.Id)).ToListAsync();
                 var targetNames = targetRoles.Select(r => r.Name).ToArray();
+
+                // ====================================================================
+                // (2026-07-09 Review #L4-NEW) Admin 不能降自己的权 ——
+                // 防止并发 TOCTOU 把系统锁死(同时两个 admin 都降自己 → 0 admin → 谁都进不来)。
+                // 业务约定:admin 永不主动放弃 admin 角色;如需交接,先加新 admin 再让老 admin 改密码禁用。
+                // 覆盖了原"唯一 adminCount ≤ 1"无法覆盖的"2+ admin 同时降自己"场景。
+                // ====================================================================
+                if (userId == _currentUser.GetUserId() && !targetNames.Contains(AdminRoleName))
+                {
+                    _logger.LogWarning(
+                        "SetUserRolesAsync denied (admin self-demotion): callerId={CallerId} targetId={Target} targetRoles={TargetRoles}",
+                        _currentUser.GetUserId(), userId, string.Join(",", targetNames));
+                    return (false, "不能移除自己的 ADMIN 角色(防止系统无超管被锁死)。如需交接,请联系其他 ADMIN 在 [用户角色] 页面为您分配新角色。");
+                }
 
                 // ADMIN 保护:若该用户当前唯一 ADMIN 且目标不包含 ADMIN,拒绝
                 var currentRoleNames = await _userManager.GetRolesAsync(user);
