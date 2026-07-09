@@ -17,7 +17,13 @@
       "Bash(sed -i 's/IsDelete\\\\b/IsDeleted/g' Models/*.cs Services/**/*.cs Services/*.cs)",
       "Bash(sed -i 's/Isdelete\\\\b/IsDeleted/g' Models/*.cs Services/**/*.cs Services/*.cs)",
       "Bash(iconv -f UTF-16LE -t UTF-8 Users.sql)",
-      "Bash(iconv -f UTF-16LE -t UTF-8 DrawingNames.sql)"
+      "Bash(iconv -f UTF-16LE -t UTF-8 DrawingNames.sql)",
+      "Skill(code-review)",
+      "Bash(git diff *)",
+      "Read(//tmp/**)",
+      "Bash(dir \"D:\\\\D7_codeBase\\\\BootstrapBlazor.OnlyServer1\")",
+      "Bash(git *)",
+      "Bash(iconv -f UTF-16LE -t UTF-8 \"D:/D7_codeBase/BootstrapBlazor.OnlyServer1/Users.sql\")"
     ]
   }
 }
