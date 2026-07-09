@@ -31,7 +31,13 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
 builder.Services.AddControllersWithViews();
 
-builder.Services.AddAntiforgery();
+builder.Services.AddAntiforgery(options =>
+{
+    // (2026-07-09 P0-3 HTTPS 部署)Antiforgery token Cookie 强制只在 HTTPS 连接上发送
+    // 配合 ConfigureApplicationCookie 一起,防中间人嗅探 / 降级攻击
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+});
 
 builder.Services.AddBootstrapBlazor();
 
@@ -102,6 +108,23 @@ builder.Services.AddDataProtection()
 builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme)
     .AddIdentityCookies();
 
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    // ============================================================
+    // (2026-07-09 P0-3 HTTPS 部署)Cookie 安全配置:
+    //   - SecurePolicy=Always:Cookie 只在 HTTPS 连接上发送,HTTP 下不发
+    //     (防中间人嗅探、防 HTTPS 降级到 HTTP 后被窃取登录态)
+    //   - SameSite=Strict:防 CSRF 跨站带 Cookie(配合 antiforgery)
+    //   - ExpireTimeSpan=8h:工作时段内有效,下班即失效
+    //     (工厂场景:工人上班登录,下班关电脑,8 小时够用)
+    //   - SlidingExpiration=true:活跃用户自动续期
+    // ============================================================
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.ExpireTimeSpan = TimeSpan.FromHours(8);
+    options.SlidingExpiration = true;
+});
+
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 
@@ -139,6 +162,17 @@ var app = builder.Build();
 
 if (!app.Environment.IsDevelopment()) {
     app.UseExceptionHandler("/Error");
+
+    // ============================================================
+    // (2026-07-09 P0-3 HTTPS 部署)
+    //   - UseHsts:输出 Strict-Transport-Security 响应头
+    //     告诉浏览器"未来 1 年内,即使你输入 http://... 也强制升级 https://"
+    //   - UseHttpsRedirection:HTTP 请求 302 跳 HTTPS(双保险,
+    //     即使 IIS 没配 HTTP Redirect 也能跳)
+    // 开发环境不启用(否则本地 http://localhost 会无限重定向)
+    // ============================================================
+    app.UseHsts();
+    app.UseHttpsRedirection();
 }
 
 app.UseResponseCompression();
