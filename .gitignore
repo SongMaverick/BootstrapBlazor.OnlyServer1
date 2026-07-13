@@ -361,5 +361,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# 数据库连接串/密码 — 本地保留不上传
 /BootstrapBlazor.DbMigrator/appsettings.json
 /BootstrapBlazor.OnlyServer1/appsettings.json
+
+# 自定义发布输出目录(等价于 bin/obj/publish)
+/temp_build/
