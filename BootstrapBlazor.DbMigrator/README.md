@@ -2,6 +2,26 @@
 
 数据库迁移工具 — 用 SqlSugar Code First 建表 + 从 SQL 文件迁移旧数据 + 灌入 RBAC 权限码种子。
 
+## 近期重要修复(2026-07-09)
+
+| 修复 | 影响 | 详见 |
+|------|------|------|
+| **DepartmentId 回填触发条件**从 `if (doSeed)` 改到 `if (doMigrate)` | 用户只跑 `--migrate` 不加 `--seed` 时,DepartmentId 也能回填,UI 列表不再为空 | 见命令 7 |
+| **默认部门缺失自动建** | 不再静默跳过,给清楚日志 | 见命令 7 |
+| **生产数据库 collation 不匹配** | 测试机 `Chinese_PRC_CI_AS` 支持中文 varchar,生产机 `SQL_Latin1_General_CP1_CI_AS` 不支持,导致姓名显示为 `?` | 详见 `docs/db/collation-pitfall.md`,**推荐用命令 6 (drop + 重建) 根除** |
+| **SQL 文件编码** | `Users.sql` / `DrawingNames.sql` 从 UTF-16LE 改 UTF-8 BOM(EncodingHelper 自动检测,Bash/VS 直接可读) | schema 列同步改 nvarchar |
+
+## 即将要做的(2026-07-09 上线前最后一步)
+
+```bash
+# 命令 6:drop 表 + CodeFirst 重建(NVARCHAR)+ 灌种子 + 从 SQL 文件灌数据 + DepartmentId 回填
+dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.DbMigrator --drop --schema --seed --migrate --source "D:\D7_codeBase\BootstrapBlazor.OnlyServer1" --production --admin-password "YourSecurePwd!2026"
+```
+
+详细 checklist + 执行顺序 + 跑完验证见下方**命令 6**。
+
+
+
 ## 完整命令速查(收藏夹)
 
 > ⚠ **shell 差异**:
@@ -48,9 +68,91 @@ dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.
 
 等价于 `--schema --seed`(建表 + 灌种子,无删表、无数据迁移)。
 
+### 命令 6 — 生产环境 drop + 重建 ★ (2026-07-09 ★ 当前推荐路径)
+
+> **适用场景**:项目尚未正式上线 / 生产数据可重建 / 修复了 schema 但不想 ALTER / 中文姓名显示为 `?` 要根治。**彻底绕开 collation / 字符集等历史包袱**——SqlSugar CodeFirst 自动建 NVARCHAR。
+>
+> 一句话:**删表 → 建表(全 NVARCHAR)→ 灌种子 → 从 SQL 文件灌数据 → DepartmentId 自动回填**,一气呵成。
+
+#### 6.1 跑命令前 checklist
+
+- [ ] **`appsettings.json` 里的连接字符串已指向生产 DB**(生产是 `JINWAD5A.AD101.SIEMENS-ENERGY.NET` 那个)
+- [ ] **数据可丢确认**(项目尚未正式上线,业务数据可丢即可走)
+- [ ] **备份**:`BACKUP DATABASE [stcl_md] TO DISK = N'<路径>.bak' WITH INIT, COMPRESSION;`(虽然命令本身有 `--production` 二次确认)
+- [ ] **当前目录下有完整 SQL 文件**:`Users.sql` / `Order.sql` / `ReactorOrder.sql` / `C01-C09.sql` / `DrawingNames.sql`
+- [ ] **`--admin-password` 用强密码**(默认 `Admin@123` 太弱,生产必须改)
+
+#### 6.2 命令
+
+```bash
+dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.DbMigrator --drop --schema --seed --migrate --source "D:\D7_codeBase\BootstrapBlazor.OnlyServer1" --production --admin-password "YourSecurePwd!2026"
+```
+
+> **注意**:`--source` 指向**包含 SQL 文件的目录**,不是某个具体文件。默认用项目根目录(里面有 Users.sql / C04.sql 等)。
+
+#### 6.3 执行顺序(看懂日志就知道进度)
+
+| 阶段 | 关键输出 | 状态判定 |
+|------|---------|---------|
+| 1. 测试连接 | `✓ 成功` | 连接串对了就 OK |
+| 2. `--production` 提示 | 输入 `YES` 回车 | 二次确认,输错就取消 |
+| 3. `--drop` | `✓ Users:已删除` × 22+ 行 | 看到一堆已删除日志 |
+| 4. `--schema` 建表 | `✓ Users:已创建` × 24 行 + `✓ Users:新增 DepartmentId 列` + `✓ 索引 ...` | CodeFirst 自动建,**所有 string 列都是 NVARCHAR** |
+| 5. `--seed` 5 个子步骤 | 部门 / Identity / 清理 / 25 权限码 / ADMIN 全勾 | 每步带 `✓` |
+| 6. `--migrate` 数据迁移 | `Users ← Users.sql` + `Orders ← Order.sql` + ... + 9 张 C0X + DrawingNames | 看到 `✓ 插入 N 条` 就算成功 |
+| 7. 角色整理 | `✓ 角色整理完成:为 N 名用户新增 Operator` | |
+| 8. **DepartmentId 回填(自动)** | `预期回填 N 条(非超管、DepartmentId IS NULL、未删除)` + `✓ 回填 N 条 → MD 部门(Id=X)` | **N > 0 才算正常**,N = 0 会有 `ℹ` 提示并打印当前状态 |
+| 9. 完成 | `============================================================` + ` 完成` | |
+
+#### 6.4 跑完立即验证(3 件事)
+
+```sql
+-- (1) 关键列都是 NVARCHAR(不是 varchar)
+SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLLATION_NAME
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME = 'Users'
+  AND COLUMN_NAME IN ('Name', 'GID', 'Email', 'PhoneNumber', 'UserName', 'NormalizedUserName');
+-- 预期:DATA_TYPE 全是 nvarchar
+
+-- (2) DepartmentId 都回填了(0 条 NULL 即可)
+SELECT
+    SUM(CASE WHEN DepartmentId IS NULL THEN 1 ELSE 0 END) AS NullDept,
+    COUNT(*) AS Total
+FROM Users WHERE IsDeleted = 0;
+-- 预期:NullDept = 0(超管可 NULL,看是不是 1)
+
+-- (3) 中文姓名正常显示
+SELECT TOP 5 Id, WorkerNumber, Name, Email
+FROM Users
+WHERE IsDeleted = 0
+ORDER BY Id;
+-- 预期:Name 列显示"张三"等真名,不是 "?"
+```
+
+应用端登录后:`/user-management` 看部门列都有值,姓名显示中文。
+
+#### 6.5 为什么这是当前推荐路径
+
+- 测试机 collation = `Chinese_PRC_CI_AS`,生产机 collation = `SQL_Latin1_General_CP1_CI_AS`
+- 旧 `Users.sql` / `DrawingNames.sql` 把 Name/GID 等定义为 `varchar` + 生产 Latin1 collation = NVARCHAR→VARCHAR 隐式转换时中文被替换为 `?`
+- **drop + CodeFirst 重建 = 所有 string 列直接拿 NVARCHAR,跟 collation 无关**(详见 `docs/db/collation-pitfall.md`)
+- 项目当前还没正式上线,数据可丢 → 一把搞定最干净
+
+> ⚠ 此命令**会清空所有业务数据**。生产前 checklist 1-5 全部确认后再跑。
+
+### 命令 7 — 单独跑 DepartmentId 回填(已 migrate 但忘了 backfill)
+
+```bash
+dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.DbMigrator --migrate --source "D:\D7_codeBase\BootstrapBlazor.OnlyServer1"
+```
+
+`--migrate` 现在自动触发 `BackfillUserDepartmentsAsync`(2026-07-09 修复:从 `if (doSeed)` 改到 `if (doMigrate)`)。原 bug:用户只跑 `--migrate` 时此函数根本不执行,DepartmentId 全 NULL。
+
+> 这个命令是**幂等**的:DepartmentId 已填的行不会重复处理,缺部门时会自动建一份。跑完看到 `✓ 回填 N 条` 就 OK。
+
 ---
 
-## `--seed` 阶段详细分解(4 个子步骤)
+## `--seed` 阶段详细分解(5 个子步骤)
 
 按顺序执行,任一失败会中断后续:
 
@@ -221,7 +323,9 @@ dotnet run --project BootstrapBlazor.DbMigrator -- --rollback-users-gid
 - `UserName = WorkerNumber.ToString()`
 - `NormalizedUserName = UPPER(WorkerNumber)`
 - `Gid` 转大写
-- `DepartmentId` 可空;若旧库 `Users.sql` 没有此列,迁移后会保持 `NULL`,`--seed` 后会自动回填到 `MD 部门`
+- `DepartmentId` 可空;**`--migrate` 跑完后会自动回填所有非超管用户到 `MD 部门`**(`BackfillUserDepartmentsAsync`,2026-07-09 修复后从 `if (doSeed)` 改到 `if (doMigrate)`,不再依赖 `--seed`)
+- 缺部门时自动建一份,不再静默跳过
+- 输出"预期 N 条 / 实际 N 条"用于排查 0 更新问题
 
 ### Orders + ReactorOrder
 - 合并到 `Orders` 表
@@ -316,6 +420,7 @@ dotnet run --project BootstrapBlazor.DbMigrator -- --rollback-users-gid
 | "找不到 --source" | 检查路径是否支持(支持绝对和相对) |
 | **参数没生效(如 `migrate=False`)** | **CMD 多行命令换行符写错**(应该是 `^` 不是 `` ` ``);整条命令写一行解决 |
 | 跑完种子 `Permissions` 表为空 | 旧库可能在早期跑过,Permissions 表有遗留空数据但触发不到幂等检查;手动 `DELETE FROM Permissions` 再跑 `--seed` |
+| **DepartmentId 全 NULL**(用户列表查不到这些用户) | 2026-07-09 修复:`BackfillUserDepartmentsAsync` 现在随 `--migrate` 自动跑,且部门缺失会自建;只需重跑 `--migrate --source <dir>` 即可,无需 `--seed` |
 | 用户登录后菜单没变 | Cookie Claims 缓存,需重新登录(`Account/Logout` 再 `Account/Login`) |
 | 唯一 ADMIN 无法解除关联 | 设计如此,需先创建第二个 ADMIN 角色用户,再解除旧的 |
 

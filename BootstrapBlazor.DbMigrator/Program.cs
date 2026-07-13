@@ -107,7 +107,10 @@ public class Program
             .AddJsonFile("appsettings.json", optional: false)
             .Build();
 
-        var connStr = config.GetConnectionString("SqlServer");
+        //sqlServerConnection
+        var connStr = config.GetConnectionString("sqlServerConnection");
+
+        //var connStr = config.GetConnectionString("SqlServer");
         //var connStr = config.GetConnectionString("sqlServerConnectionStringHomeSA");
         if (string.IsNullOrWhiteSpace(connStr))
         {
@@ -237,11 +240,11 @@ public class Program
             Console.WriteLine();
             Console.WriteLine(">>> 角色分配整理(仅超管保留 Admin,其他用户归位 Operator)");
             await NormalizeUserRoleAssignmentsAsync(db);
-        }
 
-        // 回填旧员工到默认部门(必须在 SeedDepartments 之后、Migrate 之后)
-        if (doSeed)
-        {
+            // (2026-07-09 Fix) DepartmentId 回填:从 if (doSeed) 改到 if (doMigrate)
+            //   原 bug:用户只跑 --migrate 不跑 --seed 时,DepartmentId 完全不回填
+            //   现在:在 Migrate 之后总是跑;默认部门若不存在则自动建(保证非空)
+            //   这步操作的是 migrate 出来的 Users,与 --seed 的"灌种子"职责分离
             Console.WriteLine();
             Console.WriteLine(">>> 回填 Users.DepartmentId(旧员工无部门 → 默认部门)");
             await BackfillUserDepartmentsAsync(db);
@@ -789,19 +792,54 @@ END";
     ///   - 旧 Users.sql 没有 DepartmentId 列,迁移后全部为 NULL
     ///   - UsersService 用 INNER JOIN Departments,NULL 直接被滤掉 → 列表为空
     ///   - 这里把所有 DepartmentId IS NULL 且非超管的员工指向默认部门('MD 部门')
-    ///   - 必须在 SeedDepartmentsAsync 之后、MigrateFromSqlFilesAsync 之后调用
+    ///   - 必须在 MigrateFromSqlFilesAsync 之后调用(操作的是 migrate 出来的 Users)
+    ///
+    /// (2026-07-09 Fix)从 if (doSeed) 改到 if (doMigrate);默认部门缺失时自动建
+    ///   原 bug:用户只跑 --migrate 不加 --seed 时,此函数根本不被调用,
+    ///   DepartmentId 全部 NULL,UI 列表查不到这些用户。
     /// </summary>
     private static async Task BackfillUserDepartmentsAsync(ISqlSugarClient db)
     {
+        // 1) 找默认部门,缺失则自动建(不再静默跳过)
         var defaultDept = await db.Queryable<Departments>()
             .Where(d => d.NormalizedName == "MD 部门" && !d.IsDeleted)
             .FirstAsync();
         if (defaultDept == null)
         {
-            Console.WriteLine("  ! 未找到 'MD 部门',跳过回填");
+            Console.WriteLine("  - 未找到 'MD 部门',自动创建");
+            var newDeptId = await db.Insertable(new Departments
+            {
+                Name = "MD 部门",
+                NormalizedName = "MD 部门",
+                Code = "MD",
+                Description = "默认种子部门(BackfillUserDepartmentsAsync 自动建)",
+                IsActive = true,
+                CreatedTime = DateTime.Now,
+                IsDeleted = false
+            }).ExecuteReturnIdentityAsync();
+            defaultDept = new Departments { Id = newDeptId, Name = "MD 部门", NormalizedName = "MD 部门" };
+            Console.WriteLine($"  ✓ 已自动建 'MD 部门'(Id={newDeptId})");
+        }
+
+        // 2) 先打印"应当回填多少行"的预估值,便于排查
+        var expected = await db.Ado.GetIntAsync(
+            @"SELECT COUNT(*) FROM [Users] u
+              LEFT JOIN [UserRoles] ur ON ur.UserId = u.Id
+              LEFT JOIN [Roles] r      ON r.Id  = ur.RoleId AND r.NormalizedName = 'ADMIN'
+              WHERE u.DepartmentId IS NULL AND u.IsDeleted = 0 AND r.Id IS NULL");
+        Console.WriteLine($"  预期回填 {expected} 条(非超管、DepartmentId IS NULL、未删除)");
+
+        if (expected == 0)
+        {
+            // 这种情况可能是:用户已经全部设过部门了,或者表里没有用户
+            // 不报错,只是提示一下
+            var totalUsers = await db.Ado.GetIntAsync("SELECT COUNT(*) FROM [Users] WHERE IsDeleted = 0");
+            var nullDept = await db.Ado.GetIntAsync("SELECT COUNT(*) FROM [Users] WHERE IsDeleted = 0 AND DepartmentId IS NULL");
+            Console.WriteLine($"  ℹ 当前 Users 共 {totalUsers} 条,其中 {nullDept} 条 DepartmentId 为 NULL");
             return;
         }
 
+        // 3) 实际 UPDATE
         var rows = await db.Ado.ExecuteCommandAsync(
             @"UPDATE u SET u.DepartmentId = @deptId
               FROM [Users] u
@@ -812,7 +850,15 @@ END";
                 AND r.Id IS NULL",
             new SugarParameter("@deptId", defaultDept.Id));
 
-        Console.WriteLine($"  ✓ 回填 {rows} 条 → {defaultDept.Name}(Id={defaultDept.Id})");
+        if (rows != expected)
+        {
+            // 预估值和实际值不一致,可能是迁移过程中有数据写入
+            Console.WriteLine($"  ⚠ 实际回填 {rows} 条(预期 {expected} 条,差 {expected - rows})");
+        }
+        else
+        {
+            Console.WriteLine($"  ✓ 回填 {rows} 条 → {defaultDept.Name}(Id={defaultDept.Id})");
+        }
     }
 
     private static async Task SeedIdentityAsync(ISqlSugarClient db, string adminPassword)
