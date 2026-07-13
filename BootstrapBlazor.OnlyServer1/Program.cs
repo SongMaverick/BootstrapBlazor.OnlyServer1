@@ -33,9 +33,15 @@ builder.Services.AddControllersWithViews();
 
 builder.Services.AddAntiforgery(options =>
 {
-    // (2026-07-09 P0-3 HTTPS 部署)Antiforgery token Cookie 强制只在 HTTPS 连接上发送
-    // 配合 ConfigureApplicationCookie 一起,防中间人嗅探 / 降级攻击
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    // (2026-07-09 P0-3 HTTPS 部署)Antiforgery token Cookie 安全配置
+    //   ⚠ SecurePolicy 按环境分流:
+    //     - Development:SameAsRequest(配合 launchSettings.json 的 http://localhost:8373)
+    //     - Production :Always(配合 IIS HTTPS binding)
+    //     写死 Always 会让本地 HTTP 下浏览器拒传 cookie → Blazor 表单/CSRF 全废
+    //   SameSite=Strict 永远生效(防 CSRF 跨站带 cookie)
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
     options.Cookie.SameSite = SameSiteMode.Strict;
 });
 
@@ -111,15 +117,19 @@ builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme)
 builder.Services.ConfigureApplicationCookie(options =>
 {
     // ============================================================
-    // (2026-07-09 P0-3 HTTPS 部署)Cookie 安全配置:
-    //   - SecurePolicy=Always:Cookie 只在 HTTPS 连接上发送,HTTP 下不发
-    //     (防中间人嗅探、防 HTTPS 降级到 HTTP 后被窃取登录态)
-    //   - SameSite=Strict:防 CSRF 跨站带 Cookie(配合 antiforgery)
-    //   - ExpireTimeSpan=8h:工作时段内有效,下班即失效
-    //     (工厂场景:工人上班登录,下班关电脑,8 小时够用)
-    //   - SlidingExpiration=true:活跃用户自动续期
+    // (2026-07-09 P0-3 HTTPS 部署)Cookie 安全配置
+    //   ⚠ SecurePolicy 按环境分流:
+    //     - Development:SameAsRequest(配合 launchSettings.json 的 http://localhost:8373)
+    //     - Production :Always(配合 IIS HTTPS binding)
+    //     写死 Always 会让本地 HTTP 下浏览器拒传 cookie → 登录态失效,表现为反复跳登录页
+    //   其他生产安全项全环境一致(改这里只动 SecurePolicy):
+    //     - SameSite=Strict:防 CSRF 跨站带 cookie(配合 antiforgery)
+    //     - ExpireTimeSpan=8h:工作时段内有效,下班即失效(工厂场景:工人上班登录,下班关电脑)
+    //     - SlidingExpiration=true:活跃用户自动续期
     // ============================================================
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
     options.Cookie.SameSite = SameSiteMode.Strict;
     options.ExpireTimeSpan = TimeSpan.FromHours(8);
     options.SlidingExpiration = true;
