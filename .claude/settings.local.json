@@ -23,7 +23,32 @@
       "Read(//tmp/**)",
       "Bash(dir \"D:\\\\D7_codeBase\\\\BootstrapBlazor.OnlyServer1\")",
       "Bash(git *)",
-      "Bash(iconv -f UTF-16LE -t UTF-8 \"D:/D7_codeBase/BootstrapBlazor.OnlyServer1/Users.sql\")"
+      "Bash(iconv -f UTF-16LE -t UTF-8 \"D:/D7_codeBase/BootstrapBlazor.OnlyServer1/Users.sql\")",
+      "Bash(netstat -ano)",
+      "Bash(timeout 10 dotnet run --no-build --launch-profile \"BootstrapBlazor.OnlyServer1\")",
+      "Bash(timeout 12 dotnet run --no-build --launch-profile \"BootstrapBlazor.OnlyServer1\")",
+      "Bash(dotnet run *)",
+      "Bash(echo \"PID=$!\")",
+      "Bash(curl -s -o /tmp/curl-body.html -w \"HTTP_CODE=%{http_code}\\\\nSIZE=%{size_download}\\\\nTIME=%{time_total}\\\\n\" --max-time 10 \"http://localhost:8373/\")",
+      "Bash(curl -s -o /tmp/curl-login.html -w \"HTTP_CODE=%{http_code}\\\\nSIZE=%{size_download}\\\\n\" --max-time 10 \"http://localhost:8373/login\")",
+      "Bash(powershell -Command \"Get-Process -Id 40836 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,StartTime | Format-Table -AutoSize\")",
+      "Bash(powershell -Command \"Stop-Process -Id 40836 -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500; Get-Process -Id 40836 -ErrorAction SilentlyContinue\")",
+      "Bash(xxd \"BootstrapBlazor.DbMigrator/appsettings.json\")",
+      "Bash(dotnet publish *)",
+      "Bash(iconv -f UTF-16LE -t UTF-8 BootstrapBlazor.OnlyServer1/DrawingName.sql)",
+      "Bash(iconv -f UTF-16LE -t UTF-8//IGNORE Users.sql)",
+      "Bash(sed -i -e 's/\\\\[Name\\\\] \\\\[varchar\\\\]/\\\\[Name\\\\] \\\\[nvarchar\\\\]/' -e 's/\\\\[GID\\\\] \\\\[varchar\\\\]/\\\\[GID\\\\] \\\\[nvarchar\\\\]/' -e 's/\\\\[UserName\\\\] \\\\[varchar\\\\]/\\\\[UserName\\\\] \\\\[nvarchar\\\\]/' -e 's/\\\\[NormalizedUserName\\\\] \\\\[varchar\\\\]/\\\\[NormalizedUserName\\\\] \\\\[nvarchar\\\\]/' -e 's/\\\\[Email\\\\] \\\\[varchar\\\\]/\\\\[Email\\\\] \\\\[nvarchar\\\\]/' -e 's/\\\\[NormalizedEmail\\\\] \\\\[varchar\\\\]/\\\\[NormalizedEmail\\\\] \\\\[nvarchar\\\\]/' -e 's/\\\\[PhoneNumber\\\\] \\\\[varchar\\\\]/\\\\[PhoneNumber\\\\] \\\\[nvarchar\\\\]/' Users_utf8.sql.tmp)",
+      "Bash(iconv -f UTF-8 -t UTF-8 Users_utf8.sql.tmp)",
+      "Bash(rm Users_utf8.sql.tmp)",
+      "Bash(iconv -f UTF-16LE -t UTF-8//IGNORE DrawingNames.sql)",
+      "Bash(sed -i -e 's/\\\\[Part\\\\] \\\\[varchar\\\\]/\\\\[Part\\\\] \\\\[nvarchar\\\\]/' -e 's/\\\\[ComponentName\\\\] \\\\[varchar\\\\]/\\\\[ComponentName\\\\] \\\\[nvarchar\\\\]/' -e 's/\\\\[CreatedBy\\\\] \\\\[varchar\\\\]/\\\\[CreatedBy\\\\] \\\\[nvarchar\\\\]/' -e 's/\\\\[UpdatedBy\\\\] \\\\[varchar\\\\]/\\\\[UpdatedBy\\\\] \\\\[nvarchar\\\\]/' DrawingNames_utf8.sql.tmp)",
+      "Bash(iconv -f UTF-8 -t UTF-8 DrawingNames_utf8.sql.tmp)",
+      "Bash(rm DrawingNames_utf8.sql.tmp)",
+      "Bash(rm BootstrapBlazor.DbMigrator/Migrations/002_ConvertChineseColumnsToNvarchar.sql)",
+      "Bash(rmdir BootstrapBlazor.DbMigrator/Migrations)",
+      "WebFetch(domain:www.blazor.zone)",
+      "WebSearch",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }
