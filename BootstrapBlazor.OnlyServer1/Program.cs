@@ -12,11 +12,36 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using NLog;
 using NLog.Web;
 using SqlSugar;
 
-var builder = WebApplication.CreateBuilder(args);
+// ============================================================
+// 服务模式 ContentRoot 锁定(2026-07-XX 服务器直接部署改造)
+// ------------------------------------------------------------
+// Windows Service 启动时 Environment.CurrentDirectory 默认是
+// C:\Windows\System32,会找不到 appsettings.json / NLog.config / keys/ / logs/。
+// AppContext.BaseDirectory 在 .NET 8 published exe 下恒为 EXE 所在目录,
+// dev(dotnet run / VS F5)下为 bin/Debug/net8.0/,两处都能找到 appsettings.json
+// (csproj 默认 CopyToOutputDirectory 对 .json 生效)。
+// 不写死 EnvironmentName:dev 走 launchSettings.json 的 Development,
+// 服务通过 sc create 注入 ASPNETCORE_ENVIRONMENT=Production,
+// appsettings.Production.json 才会被加载(承载 HTTPS/Kestrel 证书配置)。
+// ============================================================
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+});
+
+// (2026-07-23 P0-2 Kestrel 部署安全响应头)
+// 关闭 Kestrel 默认的 "Server: Kestrel" 响应头,减少指纹/版本泄漏
+// (web.config 路径下由 IIS 重写此头,无需处理)
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
+
+// 注册为 Windows Service 时启用服务名(普通进程启动此调用是 no-op,不影响 dev)
+builder.Host.UseWindowsService(o => o.ServiceName = "DrawingNumber");
 
 // NLog 接管 ASP.NET Core 的 ILogger 系统
 // 2026-07-07 Review #M4:Trace 级别在生产也输出,会泄漏敏感信息进 SQL `Logs` 表。
@@ -103,6 +128,11 @@ builder.Services.AddScoped<SecurityStampValidator<Users>>();
 // 持久化 DataProtection 密钥到应用根下 keys/ 目录,避免 IIS 应用池回收 / 服务器
 // 重启后所有用户 cookie 失效 → 全员被强制重新登录。路径可在 appsettings 用
 // "DataProtection:KeyDirectory" 覆盖指向独立持久盘。
+//
+// (2026-07-23 P0-3)keys/ 仅放 DataProtection 密钥 (ASP.NET Core 自动生成 key-<guid>.xml);
+// HTTPS 服务器证书 PFX 放在同级 certs/ 目录,与 DP 密钥物理隔离:
+//   - keys/  = DP 密钥 (本段配置)
+//   - certs/ = HTTPS PFX (appsettings.Production.json:Kestrel:Endpoints:Https:Certificate.Path)
 var keyDir = builder.Configuration["DataProtection:KeyDirectory"];
 if (string.IsNullOrWhiteSpace(keyDir))
     keyDir = Path.Combine(builder.Environment.ContentRootPath, "keys");
@@ -184,6 +214,28 @@ if (!app.Environment.IsDevelopment()) {
     app.UseHsts();
     app.UseHttpsRedirection();
 }
+
+// ============================================================
+// (2026-07-23 P0-2 Kestrel 部署安全响应头)
+//   web.config 的 <customHeaders> 只对 IIS 部署路径生效;Kestrel 直接承载
+//   (Windows Service 部署)完全不读 web.config,导致 CSP / X-Frame-Options 等
+//   全部丢失。在中间件层补齐,与 web.config 同值,让两条部署路径安全基线一致。
+//   - 全环境生效(dev 也带):dev 下也按"线上基线"测,避免本地 OK 上线裸奔
+//   - 与 web.config 双写:IIS 路径会有重复头(同值),浏览器取首个,无害;
+//     起到部署版本不一致时的防御纵深
+//   - 放在 UseExceptionHandler 之后:错误页 (/Error) 也带头
+//   - 放在 UseResponseCompression 之前:头能进压缩响应
+//   - 不重复发 HSTS:已由 app.UseHsts() 处理 (web.Release.config 仅 IIS 路径用)
+// ============================================================
+app.Use(async (ctx, next) =>
+{
+    var h = ctx.Response.Headers;
+    h["X-Frame-Options"]         = "SAMEORIGIN";
+    h["X-Content-Type-Options"]  = "nosniff";
+    h["Referrer-Policy"]         = "same-origin";
+    h["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'self';";
+    await next();
+});
 
 app.UseResponseCompression();
 
