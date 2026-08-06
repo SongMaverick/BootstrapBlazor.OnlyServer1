@@ -1,4 +1,14 @@
-# DrawingNumber 部署手册 — Windows Service + Kestrel HTTPS
+> ⚠️ **本文档已废弃(2026-08-03)**
+>
+> 项目已迁移到 **IIS + ASP.NET Core Module V2** 部署,Kestrel 自承载 + Windows Service 形态(本文)不再使用。
+>
+> 新的 IT 部署手册请看 **[deploy-it-runbook.md](deploy-it-runbook.md)**。
+>
+> 本文件保留作为历史参考,**不要按本文操作**,所有相关脚本(install-windows-service.ps1 / uninstall-windows-service.ps1 / generate-cert.ps1)已从 `scripts/` 删除。
+
+---
+
+# DrawingNumber 部署手册 — Windows Service + Kestrel HTTPS【已废弃,仅留历史】
 
 > **目标读者**:项目负责人(发布)+ IT 部署工程师(安装)
 > **目标环境**:Windows Server 2016 或更新,内网用户访问

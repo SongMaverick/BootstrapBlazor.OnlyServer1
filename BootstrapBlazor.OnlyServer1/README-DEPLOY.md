@@ -1,9 +1,12 @@
 # 部署指南 / IIS
 
-> 项目：编号本（内部系统）  
-> 目标环境：IIS 10（Windows Server）  
-> 数据库：SQL Server（已配置）  
-> 应用托管：ASP.NET Core 8 in-process hosting
+> 项目：编号本（内部系统）
+> 目标环境：IIS 10（Windows Server 2016+）
+> 数据库：SQL Server（已配置）
+> 应用托管：ASP.NET Core 8 in-process hosting (ANCM V2)
+> 部署工具：`scripts/publish-iis.ps1`（开发机）+ `scripts/create-iis-site.ps1`（服务器）
+>
+> **(2026-08-03 IIS 迁移)** 给 IT 的**完整操作手册**已重写到 [docs/deploy-it-runbook.md](docs/deploy-it-runbook.md),本文是开发侧的部署设计参考。
 
 ## 1. 先决条件
 

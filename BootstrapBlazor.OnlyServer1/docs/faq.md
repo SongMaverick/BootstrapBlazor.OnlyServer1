@@ -38,8 +38,10 @@
 **A**: DataProtection 密钥丢失。每次 IIS 应用池回收会重新生成,所有 Cookie 失效。
 
 修复:
-- 设置 `DataProtection:KeyDirectory` 为**持久盘**(默认 `keys/` 在应用根,IIS 回收可能被清)
-- 确认 `keys/` 目录有读/写权限给 IIS AppPool 身份
+- 默认 `keys/` 在应用根,`create-iis-site.ps1` 已自动加 `IIS_IUSRS:(OI)(CI)M`,理论上不会丢
+- 若用了独立盘,设置 `DataProtection:KeyDirectory` 为**持久盘**(配合 AppPool 环境变量 `DataProtection__KeyDirectory`)
+- 确认 `keys/` 目录有读/写权限给 IIS_IUSRS 组(`icacls "<InstallDir>\keys"` 查看)
+- **禁用 29h 周期回收**:确认 AppPool `PeriodicRestart.Time = 00:00:00`(`create-iis-site.ps1` 已自动设)
 
 ## 业务操作
 

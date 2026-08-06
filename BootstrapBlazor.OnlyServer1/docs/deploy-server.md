@@ -1,4 +1,14 @@
-# 服务器直接部署(Windows Service + 自签 HTTPS)
+> ⚠️ **本文档已废弃(2026-08-03)**
+>
+> 项目已迁移到 **IIS + ASP.NET Core Module V2** 部署,本文描述的 Kestrel 自承载 + Windows Service 形态不再使用。
+>
+> 新的部署流程请看 **[deploy-it-runbook.md](deploy-it-runbook.md)** — 包含 IIS 角色前置、create-iis-site.ps1 用法、AppPool/证书/端口配置。
+>
+> 本文件保留作为历史参考,**不要按本文操作**,所有相关脚本(install-windows-service.ps1 / uninstall-windows-service.ps1 / generate-cert.ps1)已从 `scripts/` 删除。
+
+---
+
+# 服务器直接部署(Windows Service + 自签 HTTPS)【已废弃,仅留历史】
 
 > 项目:DrawingNumber(内部工业系统)
 > 目标环境:Windows Server(单机部署,内网用户访问)

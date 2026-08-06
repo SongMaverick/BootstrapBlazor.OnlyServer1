@@ -23,9 +23,11 @@ NLog 接管后此项基本无效,保留为兜底。
 
 | 键 | 默认 | 说明 |
 |----|------|------|
-| `Urls` | `http://localhost:8373` | Web 监听地址 |
+| `Urls` | `http://localhost:8373` | dev 兜底监听地址 |
 
-**生产部署**:此项不生效,实际由 IIS 站点绑定决定。
+**(2026-08-03 IIS 迁移后)**:
+- **dev 路径**(`dotnet run`):被 `Properties/launchSettings.json` 的 `applicationUrl=http://localhost:8373` 覆盖。
+- **IIS 生产路径**:此项**完全不生效**,监听地址由 IIS 站点 binding(`create-iis-site.ps1` 创建)决定。
 
 ### `BootstrapBlazorOptions`
 
@@ -125,9 +127,10 @@ NLog 接管后此项基本无效,保留为兜底。
 
 DataProtection 密钥存储目录(cookie 加密用)。
 
-- 默认: `keys/`(应用根目录)
+- 默认: `<ContentRootPath>\keys\`(IIS 路径下 = 站点物理路径\keys\)
 - **生产**: 必须指向**持久盘**,否则 IIS 应用池回收后全员被踢
-- 推荐: `D:\PersistentKeys\BootstrapBlazor`
+- 推荐: `D:\PersistentKeys\BootstrapBlazor`(配合 `create-iis-site.ps1 -CopyKeysFrom` 跨服务器搬站)
+- **IIS 权限**:目录需要 `IIS_IUSRS:(OI)(CI)M` 写权限;`create-iis-site.ps1` 自动设置
 
 ## DbMigrator `BootstrapBlazor.DbMigrator/appsettings.json`
 

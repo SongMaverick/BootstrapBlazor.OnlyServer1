@@ -20,7 +20,9 @@
     <PackageReference Include="BootstrapBlazor" Version="8.*" />
     <PackageReference Include="BootstrapBlazor.FontAwesome" Version="8.*" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="8.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.*" />
+    <!-- (2026-08-03 IIS 迁移)删除 Microsoft.Extensions.Hosting.WindowsServices:
+         Windows Service 形态已废弃,改用 IIS + ASP.NET Core Module V2 承载。
+         ANCM 自动把应用加载到 w3wp.exe 工作进程,不需要 UseWindowsService。 -->
     <PackageReference Include="Microsoft.Extensions.Identity.Stores" Version="8.0.*" />
     <PackageReference Include="NLog" Version="6.1.3" />
     <PackageReference Include="NLog.Web.AspNetCore" Version="6.1.3" />

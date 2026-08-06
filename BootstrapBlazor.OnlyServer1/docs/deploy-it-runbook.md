@@ -1,22 +1,26 @@
-# DrawingNumber 系统部署手册(给 IT)
+# DrawingNumber 系统部署手册(给 IT)— IIS 路径
 
 > **给谁看**:负责把这套系统装到 Windows 服务器上的工程师。
 >
-> **目标是**:让一个会装普通软件、不一定懂 .NET / HTTPS / Windows 服务的 IT 同事,按本文操作一遍能把系统跑起来,出问题时能自己排查 80% 的常见故障,排查不了的知道该把哪些信息发回来。
+> **目标**:让一个会装普通软件、不一定懂 .NET / IIS / HTTPS 的 IT 同事,按本文操作一遍能把系统跑起来,出问题时能自己排查 80% 的常见故障,排查不了的知道该把哪些信息发回来。
 >
-> **不需要懂的东西**:IIS、ASP.NET、Kestrel、HTTPS 协议细节——本文只教"做什么、命令是什么、为什么"。
+> **形态**:**IIS + ASP.NET Core Module V2**(`create-iis-site.ps1` 一键创建 AppPool + Site + Bindings)。
+>
+> **不需要懂的东西**:ASP.NET Core / Kestrel / HTTPS 协议细节 / 证书生成 — 本文只教"做什么、命令是什么、为什么"。
 
 ---
 
-## 0. 在开始之前,先确认这 5 件事
+## 0. 在开始之前,先确认这 7 件事
 
 | # | 检查项 | 怎么查 | 不通过怎么办 |
 |---|---|---|---|
 | 1 | 服务器是 **Windows Server 2016 或更新** | `Win + R` → 输入 `winver` → 看版本 | 不支持,换机器 |
-| 2 | 你有**本机管理员**权限 | `Win + R` → `lusrmgr.msc` → 看自己是否在 Administrators 组 | 联系系统管理员加权限 |
+| 2 | 你有**本机管理员**权限 | `lusrmgr.msc` → 看自己是否在 Administrators 组 | 联系系统管理员加权限 |
 | 3 | 服务器**能 ping 通** SQL Server `JINWAD5A.AD101.SIEMENS-ENERGY.NET` | PowerShell 跑 `Test-NetConnection JINWAD5A.AD101.SIEMENS-ENERGY.NET -Port 1433`,返回 `TcpTestSucceeded: True` 即可 | 联系网络/数据库管理员放行 |
-| 4 | **8373 端口没被占用** | PowerShell 跑 `netstat -ano \| findstr :8373`,没输出就是空 | 找占用进程(看 PID 那列,任务管理器 → 详细信息 找对应进程)或换端口 |
-| 5 | 服务器能上**外网**(或能下载 .NET 8 SDK,可选) | 仅用于本地重新生成证书,一般不需要 | 不影响,跳过自签证书的可选项 |
+| 4 | **IIS 角色已装** | `Get-WindowsFeature Web-Server` → `Install State: Installed` | `Install-WindowsFeature Web-Server -IncludeManagementTools` |
+| 5 | **.NET 8 Hosting Bundle 已装** | `(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full').Release` 返回 ≥ `528040` | https://dotnet.microsoft.com/download/dotnet/8.0 → 选 **ASP.NET Core Runtime 8.x Hosting Bundle** |
+| 6 | **IIS WebSocket Protocol 已装**(Blazor Server SignalR 必须) | `Get-WindowsFeature Web-WebSocket` → `Installed` | `Install-WindowsFeature Web-WebSocket` |
+| 7 | **HTTPS 证书已在服务器 LocalMachine\My** | `Get-ChildItem Cert:\LocalMachine\My \| ? NotAfter -gt (Get-Date) \| Format-List Subject, Thumbprint, NotAfter` | 若自签:用 IIS Manager → Server Certificates → Create Self-Signed Certificate;若 CA 签:导入 .pfx 到 LocalMachine\My。**记下 Thumbprint 备用** |
 
 **全部通过,继续**。任意一条不过,先解决,再往下走。
 
@@ -24,43 +28,45 @@
 
 ## 1. 你会拿到什么
 
-项目负责人会通过内网共享 / U 盘 / 邮件给你一个**压缩包**(约 80 MB),名字类似 `DrawingNumber.zip`。
+项目负责人会通过内网共享 / U 盘 / 邮件给你一个**压缩包**(约 25 MB),名字类似 `DrawingNumber_IIS.zip`。
 
 里面长这样(只是让你认个脸,不用管):
-
 ```
-DrawingNumber/
-├── BootstrapBlazor.OnlyServer1.exe       ← 主程序
-├── appsettings.json                      ← 配置(连数据库的)
-├── appsettings.Production.json           ← 生产环境配置(端口 8373)
-├── NLog.config                           ← 日志配置
-├── web.config                            ← 历史遗留,装好的服务用不到
-├── DrawingName.sql                       ← 数据库脚本(参考,不用现在跑)
-├── wwwroot/                              ← 网页静态资源
-├── runtimes/                             ← 自带的 .NET 8 运行时(无需装)
+DrawingNumber_IIS/
+├── BootstrapBlazor.OnlyServer1.dll        ← 主程序集(ANCM 加载这个)
+├── BootstrapBlazor.OnlyServer1.deps.json
+├── BootstrapBlazor.OnlyServer1.runtimeconfig.json
+├── appsettings.json                       ← 公共配置(连数据库的)
+├── appsettings.Production.json            ← 生产环境配置(可能为空占位)
+├── NLog.config                            ← 日志配置
+├── web.config                             ← ANCM + 自定义响应头 + HTTP→HTTPS 重定向
+├── DrawingName.sql                        ← 数据库脚本(参考,不用现在跑)
+├── wwwroot/                               ← 网页静态资源
 ├── scripts/
-│   ├── generate-cert.ps1                 ← 生成 HTTPS 证书
-│   ├── install-windows-service.ps1       ← 装成 Windows 服务
-│   └── uninstall-windows-service.ps1     ← 卸载时用
+│   ├── publish-iis.ps1                    ← 已在开发机跑过,这里只列出来源
+│   ├── create-iis-site.ps1                ← IT 在服务器上跑这个
+│   └── remove-iis-site.ps1                ← 卸载时用
 └── docs/
-    └── deploy-it-runbook.md              ← 本文件
+    └── deploy-it-runbook.md               ← 本文件
 ```
+
+**注意**:这套包里**不包含** `BootstrapBlazor.OnlyServer1.exe`(那是 Windows Service 时代的产物,IIS 路径下不需要 — ANCM 通过 `dotnet .\BootstrapBlazor.OnlyServer1.dll` 加载)。
 
 ---
 
 ## 2. 安装路径约定(强烈建议)
 
-> **重要修订(2026-07-XX)**:本项目的标准部署目录是项目负责人和 IT 共同约定的 `D:\Applications\MXB\DrawingNumber\web_publish\`(`D:\Applications\<客户代号>\<系统名>\web_publish\` 是公司 IT 部门的多套系统隔离规范)。
->
-> 脚本默认参数已经指向这个路径,**不要再改路径**。如果实际部署目录是带日期戳的 `web_publish_<日期>\`,有两种处理方式:
-> 1. **推荐**:解压后把目录重命名/移动到 `web_publish\`(后续命令直接默认就行)
-> 2. **也行**:用 `.\install-windows-service.ps1 -InstallDir '...实际路径...'` 显式覆盖,但所有运维命令(查日志、回滚等)都要记得换成实际路径
+| 项 | 默认值 | 说明 |
+|---|---|---|
+| 站点物理路径 | `D:\inetpub\wwwroot\DrawingNumber\` | IIS 读取 .dll / web.config 的位置;不要放 C 盘根 |
+| AppPool 名 | `DrawingNumberAppPool` | IIS 应用池,所有进程归属 |
+| Site 名 | `DrawingNumber` | IIS 站点(一个站点 = 一个 hostname/port) |
+| HTTP 端口 | `8373` | 用户确认 IIS 默认端口已被占用,沿用 Kestrel 时代的 8373 |
+| HTTPS 端口 | `8373` | 同 HTTP 端口(若要分离,显式传参) |
+| DataProtection 密钥目录 | `<站点物理路径>\keys\` | 自动创建,不要手工建 |
+| 日志目录 | `<站点物理路径>\logs\` | 自动创建,NLog fallback + ANCM stdout |
 
-**整套系统装在 `D:\Applications\MXB\DrawingNumber\web_publish\`**。
-
-- 不要再改默认路径(脚本默认就是这个)
-- 装在 C 盘 **`C:\`** 上不会出错,但与公司多套系统隔离规范不符,**不推荐**
-- 路径里**不要有空格或中文**(Windows 服务对路径兼容性差)
+**路径里不要有空格或中文**(IIS 对路径兼容性差)。
 
 ---
 
@@ -68,115 +74,90 @@ DrawingNumber/
 
 ### 3.1 操作
 
-把 `DrawingNumber.zip` 拷到服务器任意位置(比如桌面或 `C:\Users\<你>\Downloads\`),然后:
+把 `DrawingNumber_IIS.zip` 拷到服务器任意位置(比如桌面或 `C:\Users\<你>\Downloads\`),然后:
 
 1. `Win + S` → 输入 `powershell` → 点 "Windows PowerShell"
 2. 在 PowerShell 里跑:
 
 ```powershell
-# 解压到标准部署根目录下(注意是 D:\Applications\MXB\DrawingNumber\)
-Expand-Archive -Path "C:\Users\<你>\Downloads\DrawingNumber.zip" -DestinationPath "D:\Applications\MXB\DrawingNumber\" -Force
-
-# 如果解出来的是 web_publish_<日期>\ 子目录(发布者打了日期戳),执行下面统一路径:
-# Move-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish_<日期>\*" `
-#          -Destination "D:\Applications\MXB\DrawingNumber\web_publish\" -Force
-# Remove-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish_<日期>" -Recurse -Force
+# 解压到 IIS 默认站点目录(请按需修改盘符)
+Expand-Archive -Path "C:\Users\<你>\Downloads\DrawingNumber_IIS.zip" -DestinationPath "D:\inetpub\wwwroot\" -Force
 ```
 
-### 3.2 命令是干什么的
+**预期看到**:`D:\inetpub\wwwroot\DrawingNumber\BootstrapBlavor.OnlyServer1.dll` 等文件。
 
-把 zip 里的内容解到 `D:\Applications\MXB\DrawingNumber\`,得到 `D:\Applications\MXB\DrawingNumber\web_publish\`(如果发布者把根目录起名为 `web_publish` 就直接得到;否则可能得到 `web_publish_<日期>\`,用上面的 Move-Item 步骤统一)。
-
-### 3.3 怎么看成没成功
+### 3.2 怎么看成没成功
 
 ```powershell
-Test-Path "D:\Applications\MXB\DrawingNumber\web_publish\BootstrapBlazor.OnlyServer1.exe"
+Test-Path "D:\inetpub\wwwroot\DrawingNumber\BootstrapBlavor.OnlyServer1.dll"
 ```
 
 输出 `True` 就对了。
 
 ---
 
-## 4. 生成 HTTPS 证书
+## 4. 拿到 HTTPS 证书 Thumbprint
 
-> **为什么需要这一步**:系统强制 HTTPS(纯 HTTP 直接 500)。HTTPS 需要一张证书,跟浏览器访问 `https://...` 时服务器要出示的"身份证"是同一张。
+> **为什么需要这一步**:`create-iis-site.ps1` 要把 HTTPS 绑定到 IIS 站点上,需要一张服务器上的证书和它的 Thumbprint。
 
 ### 4.1 操作
 
-1. **以管理员身份**打开 PowerShell:
-   - 开始菜单 → 输入 `powershell` → 在 "Windows PowerShell" 上**右键** → **「以管理员身份运行」**
-   - 标题栏会写 "管理员: Windows PowerShell",才是对的
-2. 跑:
+**管理员 PowerShell**:
 
 ```powershell
-cd D:\Applications\MXB\DrawingNumber\web_publish\scripts
-.\generate-cert.ps1
+Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.NotAfter -gt (Get-Date) } | Format-List Subject, Thumbprint, NotAfter
 ```
 
-3. 如果第一次跑 `.ps1` 报"禁止运行脚本",再跑一次下面这行(输入 `Y` 回车),然后重新跑 `.\generate-cert.ps1`:
+### 4.2 怎么看成没成功
 
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+输出类似:
+```
+Subject      : CN=drawing.example.com
+Thumbprint   : ABCDEF1234567890ABCDEF1234567890ABCDEF12
+NotAfter     : 2027-08-03 ...
 ```
 
-### 4.2 命令是干什么的
+**记下 `Thumbprint` 值**(40 字符,无空格)。
 
-生成一张自签 HTTPS 证书,导出成 `D:\Applications\MXB\DrawingNumber\web_publish\certs\server.pfx`,密码写在配置里、跟 PFX 文件配套。
-
-### 4.3 怎么看成没成功
-
-应该看到末尾类似:
-
-```
->>> DrawingNumber cert generator
-  + Created certs folder: D:\Applications\MXB\DrawingNumber\web_publish\certs
-  + Cert created in LocalMachine\My (Thumbprint: ABC123...)
-  + PFX exported: D:\Applications\MXB\DrawingNumber\web_publish\certs\server.pfx
-  + Removed cert from LocalMachine\My (only PFX remains)
-  + PFX ACL set (SYSTEM / Administrators read-only)
-
-DONE. Next steps:
-  1) Verify appsettings.Production.json:...:Certificate:Password matches 'Pfx@2026!...'
-  2) Run .\install-windows-service.ps1
-```
-
-**必须看到 `DONE.` 才算成功**。
-
-### 4.4 出问题怎么办
+### 4.3 出问题怎么办
 
 | 报错信息 | 原因 | 解法 |
 |---|---|---|
-| "因为此系统上禁止运行脚本" | PowerShell 默认策略禁用了 .ps1 | 见 4.1 步的 `Set-ExecutionPolicy` 修复 |
-| "Cert creation failed" | Windows 版本太旧不支持新式自签证书 | 截图发给项目负责人 |
-| "拒绝访问" | 没以管理员身份运行 | 重新打开 PowerShell,**右键 → 以管理员身份运行** |
-| 脚本卡住无输出 | 等待 30 秒,自签证书在某些慢机器上要 5-10 秒 | 等就行,超过 1 分钟再截图 |
+| "找不到路径 'Cert:\LocalMachine\My'" | 没用管理员 PowerShell | 重开 PowerShell,**右键 → 以管理员身份运行** |
+| 输出空(没有任何证书) | 服务器上没装证书 | 用 IIS Manager 申请自签或导入 CA 签的 .pfx |
+| 所有证书都已过期 | 证书过期 | 重新申请 / 续期 |
 
 ---
 
-## 5. 注册成 Windows 服务
+## 5. 创建 IIS 站点
 
-> **为什么需要这一步**:Windows 服务能开机自启、出错自动重启、不需要登录桌面就能跑,工厂服务器最合适的运行方式。
+> **为什么需要这一步**:`create-iis-site.ps1` 一次性做完 9 件事:
+> 1. 校验管理员权限 / WebAdministration 模块 / Hosting Bundle / WebSocket / ANCM
+> 2. 创建(或更新)AppPool:`NoManagedCode` + `AlwaysRunning` + `IdleTimeout=0` + `PeriodicRestart=0`
+> 3. AppPool 注入环境变量 `ASPNETCORE_ENVIRONMENT=Production`
+> 4. 创建(或更新)Site,物理路径 = `InstallDir`
+> 5. 创建 HTTP binding(默认 8373)
+> 6. 创建 HTTPS binding 并绑定证书(若有 Thumbprint)
+> 7. 建 `keys/`(DataProtection)+ `logs/` 目录
+> 8. 给 `keys/` `logs/` 加 `IIS_IUSRS:(OI)(CI)M`(应用池身份需要写权限)
+> 9. 启动 AppPool + Site + 预热首请求
 
 ### 5.1 操作
 
-还在刚才那个**管理员 PowerShell** 窗口(没关的话),跑:
+**管理员 PowerShell**:
 
 ```powershell
-cd D:\Applications\MXB\DrawingNumber\web_publish\scripts
-.\install-windows-service.ps1
+cd D:\inetpub\wwwroot\DrawingNumber\scripts
+.\create-iis-site.ps1 `
+    -InstallDir 'D:\inetpub\wwwroot\DrawingNumber' `
+    -CertThumbprint 'ABCDEF1234567890ABCDEF1234567890ABCDEF12'
 ```
+
+> 把 `CertThumbprint` 换成第 4 步拿到的 40 字符 Thumbprint。
 
 ### 5.2 命令是干什么的
 
-一次性做完 6 件事:
-
-1. 建好 `keys\`(登录态密钥)、`certs\`(放证书的,刚才已经有了)、`logs\`(日志)三个目录
-2. 给三个目录分别设权限(避免被误删或被攻击者读)
-3. 注册一个名叫 `DrawingNumber` 的 Windows 服务,设为**自动启动**
-4. 让它崩溃后**自动重启**(0 秒、30 秒、60 秒 三次机会)
-5. 告诉服务运行在 **Production 环境**(这才走 HTTPS,不走开发用的 HTTP)
-6. 防火墙自动放行 **TCP 8373**
-7. 启动服务
+(参见上方"为什么需要这一步"9 件事清单)
 
 ### 5.3 怎么看成没成功
 
@@ -184,30 +165,66 @@ cd D:\Applications\MXB\DrawingNumber\web_publish\scripts
 
 ```
 >>> Pre-flight checks
-  + D:\Applications\MXB\DrawingNumber\web_publish exists
-  + D:\Applications\MXB\DrawingNumber\web_publish\keys exists
-  + D:\Applications\MXB\DrawingNumber\web_publish\certs exists
-  + D:\Applications\MXB\DrawingNumber\web_publish\logs exists
-  ...
-  + Inbound TCP 8373 allowed
+  + Running as Administrator
+  + WebAdministration module loaded
+  + .NET 8 Hosting Bundle detected (Release=533320)
+  + IIS WebSocket Protocol installed
+  + ASP.NET Core Module V2 detected
+  + InstallDir exists: D:\inetpub\wwwroot\DrawingNumber
+  + Cert found: CN=drawing.example.com (thumb=ABCDEF...)
 
->>> Starting service
-  Status : Running
-  CanStop: True
+>>> AppPool: DrawingNumberAppPool
+  + AppPool created
+    .NET CLR     = No Managed Code
+    Start Mode   = AlwaysRunning
+    Idle Timeout = 00:00:00 (disabled)
+    PeriodicRestart.Time = 00:00:00 (disabled — avoids 29h SignalR drop)
+    Identity     = ApplicationPoolIdentity
+    EnvVar       = ASPNETCORE_ENVIRONMENT=Production (forced)
 
-DONE. Service 'DrawingNumber' is running.
+>>> Site: DrawingNumber
+  + Site created (physicalPath=..., AppPool=DrawingNumberAppPool)
+
+>>> Bindings
+  + HTTP binding *:8373: created
+  + HTTPS binding *:8373: created (cert=ABCDEF...)
+
+>>> DataProtection keys/
+  + Created D:\inetpub\wwwroot\DrawingNumber\keys
+  + ACL: IIS_IUSRS:(OI)(CI)M on ...\keys
+
+>>> logs/
+  + Created D:\inetpub\wwwroot\DrawingNumber\logs
+  + ACL: IIS_IUSRS:(OI)(CI)M on ...\logs
+
+>>> Starting AppPool + Site
+  + AppPool state : Started
+  + Site state    : Started
+
+>>> Warm-up
+  + HTTP  warmup OK (status=200)
+  + HTTPS warmup OK (status=200)
+
+DONE. Site is ready.
+  AppPool : DrawingNumberAppPool (Started)
+  Site    : DrawingNumber    (Started)
+  URL     : https://localhost:8373/
 ```
 
-**关键指标:`Status : Running`**。
+**关键指标:`AppPool state : Started` + `HTTPS warmup OK`**。
 
 ### 5.4 出问题怎么办
 
 | 报错信息 | 原因 | 解法 |
 |---|---|---|
-| "EXE not found" | EXE 不在 `D:\Applications\MXB\DrawingNumber\web_publish\` | 回第 3 步重新解压 |
-| "PFX not found" 警告 | 还没生成证书 | 回第 4 步先生成 |
-| "拒绝访问" | 没以管理员身份运行 | 重开 PowerShell 管理员 |
-| `Status : Stopped` | 服务启动失败 | 看 [第 8 章 故障排查](#8-故障排查) |
+| "Must run as Administrator" | 没以管理员身份运行 | 重开 PowerShell 管理员 |
+| "WebAdministration module not found" | 没装 IIS 管理工具 | `Install-WindowsFeature Web-Mgmt-Tools` |
+| ".NET 8 Hosting Bundle not detected" | 没装 Hosting Bundle | 装第 0 步第 5 条 |
+| "IIS WebSocket Protocol role not installed" | 没装 WebSocket | `Install-WindowsFeature Web-WebSocket` |
+| "Cert thumbprint not found" | Thumbprint 拼错 / 证书不在 LocalMachine\My | 重跑第 4 步确认 |
+| "InstallDir not found" | 没把 zip 解到 `InstallDir` | 回第 3 步重新解压 |
+| "web.config missing" | publish 产物不完整 | 联系项目负责人 |
+| 预热失败(HTTP warmup failed) | 端口冲突 / 应用池启动失败 | 看 [第 8 章 故障排查](#8-故障排查) |
 
 ---
 
@@ -215,23 +232,32 @@ DONE. Service 'DrawingNumber' is running.
 
 全部命令都在**普通 PowerShell**(不需要管理员)里跑。
 
-### 6.1 服务在运行吗
+### 6.1 应用池在运行吗
 
 ```powershell
-Get-Service DrawingNumber
+Get-WebAppPoolState -Name 'DrawingNumberAppPool'
 ```
 
-期望 `Status: Running`。
+期望 `Value: Started`。
 
-### 6.2 端口在听吗
+### 6.2 站点在跑吗
 
 ```powershell
-netstat -ano | findstr :8373
+Get-Website -Name 'DrawingNumber' | Select-Object State, PhysicalPath, Bindings
 ```
 
-期望看到 `LISTENING` 状态(类似 `0.0.0.0:8373 ... LISTENING`)。
+期望 `State: Started`,物理路径正确,Bindings 含 http:8373: 和 https:8373:。
 
-### 6.3 浏览器能打开吗
+### 6.3 HTTP 是否被自动重定向到 HTTPS
+
+```powershell
+# 不带 -k(不带 SkipCertificateCheck)时,HTTP 应 301 跳 HTTPS
+$resp = Invoke-WebRequest 'http://localhost:8373/' -MaximumRedirection 0 -ErrorAction SilentlyContinue
+$resp.StatusCode    # 期望 301
+$resp.Headers.Location   # 期望 https://...
+```
+
+### 6.4 浏览器能打开吗
 
 在服务器本机打开 Edge/Chrome,地址栏输入:
 
@@ -239,11 +265,9 @@ netstat -ano | findstr :8373
 https://localhost:8373
 ```
 
-**首次访问会弹**"您的连接不是私密连接"——这是因为用了自签证书。点 "**高级**" → "**继续前往 localhost(不安全)**" 就能看到登录页。**这是正常的**,不是配置错。
+**首次访问**:若证书是自签或 IT CA,会弹"您的连接不是私密连接" → 点 "高级" → "继续前往 localhost(不安全)"。**这是正常的**,不是配置错。
 
-> 如果连登录页都打不开(空白/超时/拒绝连接),看 [第 8 章](#8-故障排查)。
-
-### 6.4 登录试试
+### 6.5 登录试试
 
 | 字段 | 值 |
 |---|---|
@@ -254,20 +278,22 @@ https://localhost:8373
 
 **改密码是必须的**,默认密码所有人都知道。
 
-### 6.5 完整验证清单(打 ✅ 才算部署完成)
+### 6.6 完整验证清单(打 ✅ 才算部署完成)
 
 | # | 检查项 | 期望 | 怎么验 |
 |---|---|---|---|
-| 1 | 服务在运行 | Running | `Get-Service DrawingNumber` |
-| 2 | 端口监听 | LISTENING | `netstat -ano \| findstr :8373` |
-| 3 | 本机能访问 | 登录页 | `https://localhost:8373` |
-| 4 | 内网用户机能访问 | 登录页 | 用户机浏览器输 `https://<服务器 IP>:8373` |
-| 5 | 登录能用 | 进入主页 | 员工号 `1` / `Admin@123` |
-| 6 | 默认密码改了 | 新密码能登 | 退出 → 用新密码重登 |
-| 7 | 数据库能看到数据 | 列表有内容 | 主页或某个业务页面 |
-| 8 | 防火墙规则生效 | 端口开放 | `Get-NetFirewallRule -DisplayName "DrawingNumber-HTTPS-8373"` |
-| 9 | 日志有写入 | fallback 文件在 | `Get-ChildItem D:\Applications\MXB\DrawingNumber\web_publish\logs\fallback-*.log` |
-| 10 | 自动恢复生效 | 手动停后自动起 | `Stop-Service DrawingNumber; Start-Sleep 5; Get-Service DrawingNumber` |
+| 1 | AppPool 在运行 | Started | `Get-WebAppPoolState -Name DrawingNumberAppPool` |
+| 2 | Site 在运行 | Started | `Get-Website -Name DrawingNumber` |
+| 3 | HTTP→HTTPS 跳转 | 301 | `curl http://localhost:8373/ -I` |
+| 4 | 本机能访问 | 登录页 | `https://localhost:8373` |
+| 5 | 内网用户机能访问 | 登录页 | 用户机浏览器输 `https://<服务器 IP>:8373` |
+| 6 | 登录能用 | 进入主页 | 员工号 `1` / `Admin@123` |
+| 7 | 默认密码改了 | 新密码能登 | 退出 → 用新密码重登 |
+| 8 | 数据库能看到数据 | 列表有内容 | 主页或某个业务页面 |
+| 9 | 安全响应头生效 | CSP/X-Frame-Options 等都在 | DevTools → Network → Headers → Response |
+| 10 | 日志有写入 | fallback 文件在 | `Get-ChildItem D:\inetpub\wwwroot\DrawingNumber\logs\fallback-*.log` |
+| 11 | 自动恢复生效 | Recycle 后仍能访问 | `Restart-WebAppPool -Name DrawingNumberAppPool` 后等 10s 仍 200 |
+| 12 | DataProtection key 生成 | keys/ 有文件 | `Get-ChildItem D:\inetpub\wwwroot\DrawingNumber\keys\key-*.xml` |
 
 ---
 
@@ -278,30 +304,25 @@ https://localhost:8373
 ```
 DrawingNumber 系统访问地址:https://<服务器 IP>:8373
 
-首次访问浏览器会弹"不安全"警告:
+首次访问浏览器会弹"不安全"警告(若用了自签 / IT CA):
 → 点 "高级" → "继续前往 <服务器 IP>(不安全)" 即可
 
 默认账号(登录后请立即修改密码):
 → 员工号:1
 → 初始密码:Admin@123
-
-证书不安全警告的消除方法(可选,只在自己电脑上做一次):
-→ 把 D:\Applications\MXB\DrawingNumber\web_publish\certs\server.pfx 拷到本机
-→ 双击 → 下一步 → 下一步 → 选「受信任的根证书颁发机构」→ 完成
-→ 以后访问这个地址就不再弹警告了
 ```
 
 ---
 
 ## 8. 故障排查
 
-### 8.1 服务起不来(`Get-Service` 显示 Stopped)
+### 8.1 AppPool 起不来(`Get-WebAppPoolState` 显示 Stopped)
 
 **怎么看错误**:
 
 1. `Win + R` → 输入 `eventvwr.msc` → 回车
 2. 左边 "Windows 日志" → "应用程序"
-3. 找**红色错误条目**,来源是 `.NET Runtime` / `Application Error` / `DrawingNumber` 的优先看
+3. 找**红色错误条目**,来源是 `IIS AspNetCore Module V2` / `.NET Runtime` / `Application Error` 的优先看
 4. 看 "常规" 选项卡里的描述文字
 
 **最常见原因**:
@@ -309,16 +330,21 @@ DrawingNumber 系统访问地址:https://<服务器 IP>:8373
 | 原因 | 怎么确认 | 解法 |
 |---|---|---|
 | 数据库连不上 | 错误信息含 `connection` / `SqlSugar` / `Login failed` | `Test-NetConnection JINWAD5A.AD101.SIEMENS-ENERGY.NET -Port 1433`,不通找网络/数据库管理员 |
-| 证书文件读不了 | 错误信息含 `PFX` / `certificate` / `password` | 重新跑第 4 步;确认 `appsettings.Production.json` 里的密码跟脚本默认一致 |
-| 端口被占 | 错误信息含 `address already in use` | `netstat -ano \| findstr :8373` 看谁占了,改用别的端口或停掉占用方 |
-| `keys/` 写不进去 | 错误信息含 `UnauthorizedAccess` + `keys\` | 重跑第 5 步的 `install-windows-service.ps1`,脚本会自动修权限 |
+| Hosting Bundle 没装 / 版本低 | 错误信息含 `Microsoft.AspNetCore.App` / `0x80070002` | 装最新版 .NET 8 Hosting Bundle |
+| `keys/` 写不进去 | 错误信息含 `UnauthorizedAccess` + `keys\` | 重跑 `create-iis-site.ps1`,脚本会自动修权限 |
+| web.config 不合法 | 错误信息含 `HTTP Error 500.19` | 检查 web.config 语法(XML 是否闭合) |
+| ANCM 不匹配 .NET 版本 | 错误信息含 `ANCM` / `502.5` | 装匹配 .NET 8 的 ANCM(随 Hosting Bundle 一起) |
 
-### 8.2 端口没在听(服务 Running,但 `netstat` 没结果)
+### 8.2 端口没在监听
 
-Kestrel 启动失败但服务还在,可能是 HTTPS 终结点配置错。查日志:
+Kestrel(在 w3wp.exe 里)启动失败但 AppPool 还在。查日志:
 
 ```powershell
-Get-ChildItem D:\Applications\MXB\DrawingNumber\web_publish\logs\fallback-*.log | Sort LastWriteTime -Descending | Select -First 1 | Get-Content -Tail 50
+# ANCM stdout 日志(应用启动时崩溃回溯)
+Get-ChildItem D:\inetpub\wwwroot\DrawingNumber\logs\stdout_*.log | Sort LastWriteTime -Descending | Select -First 1 | Get-Content -Tail 50
+
+# NLog 兜底文件日志
+Get-ChildItem D:\inetpub\wwwroot\DrawingNumber\logs\fallback-*.log | Sort LastWriteTime -Descending | Select -First 1 | Get-Content -Tail 50
 ```
 
 把最后 50 行截图发给项目负责人。
@@ -328,99 +354,113 @@ Get-ChildItem D:\Applications\MXB\DrawingNumber\web_publish\logs\fallback-*.log 
 按顺序排查:
 
 ```powershell
-# 1. 防火墙规则在不在
-Get-NetFirewallRule -DisplayName "DrawingNumber-HTTPS-8373"
-# 期望 DisplayName 一栏能看到这条,Enabled: True
+# 1. 站点在跑吗
+Get-Website -Name DrawingNumber
 
-# 2. 端口从外面能连不(在用户机上跑,不是在服务器上)
+# 2. 端口在听吗(在用户机上跑)
 Test-NetConnection <服务器 IP> -Port 8373
 # 期望 TcpTestSucceeded: True
-
-# 3. 服务器上服务在跑
-Get-Service DrawingNumber
 ```
+
+**IIS 走 `http.sys` 内核驱动,Windows 默认放行 HTTP/HTTPS,无需额外防火墙规则**。若用户机不通,九成是网络问题(中间路由器 / VPN / 公司防火墙),不是 IIS 配置问题。
 
 ### 8.4 浏览器证书错误
 
 | 错误信息 | 原因 | 解法 |
 |---|---|---|
-| `NET::ERR_CERT_AUTHORITY_INVALID` | 用户机没信任证书 | 把 `server.pfx` 导入到用户机的"受信任的根证书颁发机构"(见第 7 章) |
-| `NET::ERR_CERT_SAN_MISMATCH` | 证书里没含你访问的 IP/域名 | 重跑第 4 步,确认服务器 IP 在证书 SAN 里 |
-| `NET::ERR_CERT_DATE_INVALID` | 证书过期了 | 重跑第 4 步生成新的 |
+| `NET::ERR_CERT_AUTHORITY_INVALID` | 用户机没信任证书 | 把证书导入到用户机的"受信任的根证书颁发机构" |
+| `NET::ERR_CERT_SAN_MISMATCH` | 证书里没含你访问的 IP/域名 | 重新申请证书,确认服务器 IP 在 SAN 里 |
+| `NET::ERR_CERT_DATE_INVALID` | 证书过期了 | 重新申请 / 续期证书,更新 Thumbprint |
 
 ### 8.5 登录页能开,登录提交后 500
 
 查日志(同 8.2 那条命令),最常见:
 
 - DB 账号被锁 / 密码过期 → 联系数据库管理员
-- `keys/` 目录写权限丢了 → 重跑第 5 步
+- `keys/` 目录写权限丢了 → 重跑 `create-iis-site.ps1`(幂等)
 - 应用首次启动慢(连 DB 建表 / 迁移数据),等 10-30 秒再试
+
+### 8.6 升级后所有人被踢重登
+
+**原因**:升级时 `keys/` 目录被覆盖了,旧的 DataProtection key 丢了。
+
+**预防**:升级脚本永远用 `robocopy ... /XD keys logs`(见第 9 章)。
+
+**补救**:全员重新登录一次即可,后续登录态就稳了。
 
 ---
 
 ## 9. 升级(有新版本时)
 
-> 项目负责人会给你一个新的 zip 文件。整个流程预计 5-10 分钟,期间用户**会短暂掉线**(最长 1 分钟)。
+> 项目负责人会给你一个新的 zip 文件。整个流程预计 5-10 分钟,期间用户**会短暂掉线**(最长 1 分钟,取决于 AppPool 启动速度)。
 
 ### 9.1 操作
 
 **管理员 PowerShell**:
 
 ```powershell
-# 1. 备份当前版本(回滚用,保留 keys/certs/logs 也一起)
+# 1. 备份当前版本(回滚用,保留 keys/logs 也一起)
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-Copy-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish" -Destination "D:\Applications\MXB\DrawingNumber\web_publish_BAK_$stamp" -Recurse -Force
+Copy-Item -Path "D:\inetpub\wwwroot\DrawingNumber" -Destination "D:\inetpub\wwwroot\DrawingNumber_BAK_$stamp" -Recurse -Force
 
-# 2. 停服务
-sc.exe stop DrawingNumber
+# 2. 解新版本到临时目录
+Expand-Archive -Path "C:\Users\<你>\Downloads\DrawingNumber_v2.zip" -DestinationPath "D:\inetpub\wwwroot\DrawingNumber_temp_$stamp\" -Force
 
-# 3. 解新版本到临时目录(temp/下)
-Expand-Archive -Path "C:\Users\<你>\Downloads\DrawingNumber_v2.zip" -DestinationPath "D:\Applications\MXB\DrawingNumber\web_publish_temp_$stamp\" -Force
-#    (如果发布者把 zip 根目录命名为 web_publish,此命令会得到
-#     web_publish_temp_<时间戳>\web_publish\,下一条命令据此调整)
+# 3. (可选)Recycle AppPool 让 SignalR 长连接断掉,避免文件锁
+Restart-WebAppPool -Name DrawingNumberAppPool
 
-# 4. 用 robocopy 把新版本的 EXE/dll/wwwroot 覆盖到 web_publish\
-#    显式排除 keys/ certs/ logs/(持久化数据不能丢:登录态 / 证书 / 历史日志)
-robocopy "D:\Applications\MXB\DrawingNumber\web_publish_temp_$stamp\web_publish" "D:\Applications\MXB\DrawingNumber\web_publish" /MIR /XD keys certs logs /XF NLog-internal.log *.pfx /NP
-Remove-Item "D:\Applications\MXB\DrawingNumber\web_publish_temp_$stamp" -Recurse -Force
+# 4. 用 robocopy 把新版本覆盖到目标目录
+#    显式排除 keys/ logs/(持久化数据不能丢)
+robocopy "D:\inetpub\wwwroot\DrawingNumber_temp_$stamp\DrawingNumber" "D:\inetpub\wwwroot\DrawingNumber" /MIR /XD keys logs /NP
+Remove-Item "D:\inetpub\wwwroot\DrawingNumber_temp_$stamp" -Recurse -Force
 
-# 5. 启服务
-sc.exe start DrawingNumber
-Get-Service DrawingNumber
+# 5. Recycle AppPool 加载新版本
+Restart-WebAppPool -Name DrawingNumberAppPool
+
+# 6. 验证
+Get-WebAppPoolState -Name DrawingNumberAppPool
+Invoke-WebRequest https://localhost:8373 -UseBasicParsing -SkipCertificateCheck | Select StatusCode
 ```
 
 ### 9.2 命令是干什么的
 
 | 行 | 作用 |
 |---|---|
-| `Copy-Item ... BAK_$stamp` | 把旧版本整个备份到 `D:\Applications\MXB\DrawingNumber\web_publish_BAK_20260727_153000\`(自动带时间戳),出问题可以还原 |
-| `sc.exe stop` | 停服务,期间用户访问会 503,**大约 5-15 秒** |
-| `Expand-Archive ... temp_$stamp` | 先解到**临时**目录,避免直接解到 web_publish\ 时命中现有文件锁 |
-| `robocopy ... /XD keys certs logs` | 把新版本的 EXE/dll/wwwroot 覆盖过来,**跳过** 3 个持久化目录(登录态/HTTPS 证书/历史日志都不会丢) |
+| `Copy-Item ... BAK_$stamp` | 把旧版本整个备份到 `DrawingNumber_BAK_<时间戳>\`,出问题可以还原 |
+| `Restart-WebAppPool` | 关闭当前 w3wp.exe,释放文件锁,期间用户访问会断 |
+| `Expand-Archive ... temp_$stamp` | 先解到**临时**目录,避免直接覆盖现有文件锁 |
+| `robocopy ... /XD keys logs` | 把新版本的 .dll / wwwroot 覆盖过来,**跳过** 2 个持久化目录 |
+| `Restart-WebAppPool` | 启动新 w3wp.exe,加载新 .dll |
 | `Remove-Item ... temp_$stamp` | 清掉临时解压目录 |
-| `sc.exe start` | 重启服务,新 EXE 生效 |
 
 ### 9.3 怎么看成没成功
 
-`Get-Service DrawingNumber` 显示 `Running`,用户访问正常。
+`Invoke-WebRequest` 返回 200,用户访问正常,登录态保留(没全员被踢)。
 
 ### 9.4 升级出问题要回滚
 
 **管理员 PowerShell**:
 
 ```powershell
-sc.exe stop DrawingNumber
-Remove-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish" -Recurse -Force
-Rename-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish_BAK_<时间戳>" -NewName "D:\Applications\MXB\DrawingNumber\web_publish"
-sc.exe start DrawingNumber
+# 1. 停 AppPool
+Stop-WebAppPool -Name DrawingNumberAppPool -ErrorAction SilentlyContinue
+
+# 2. 删除当前目录(注意:keys/ logs/ 会被一起删)
+Remove-Item -Path "D:\inetpub\wwwroot\DrawingNumber" -Recurse -Force
+
+# 3. 把备份改回原名
+Rename-Item -Path "D:\inetpub\wwwroot\DrawingNumber_BAK_<时间戳>" -NewName "D:\inetpub\wwwroot\DrawingNumber"
+
+# 4. 启动 AppPool
+Start-WebAppPool -Name DrawingNumberAppPool
 ```
 
 ### 9.5 备份目录太多要清理
 
-升级成功一周后,旧备份可以删:
+升级成功稳定运行一周后,旧备份可以删:
 
 ```powershell
-Remove-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish_BAK_<时间戳>" -Recurse -Force
+Remove-Item -Path "D:\inetpub\wwwroot\DrawingNumber_BAK_<时间戳>" -Recurse -Force
 ```
 
 ---
@@ -432,18 +472,17 @@ Remove-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish_BAK_<时间戳>
 **管理员 PowerShell**:
 
 ```powershell
-cd D:\Applications\MXB\DrawingNumber\web_publish\scripts
-.\uninstall-windows-service.ps1     # 删服务 + 防火墙规则 + 注册表环境变量
+cd D:\inetpub\wwwroot\DrawingNumber\scripts
+.\remove-iis-site.ps1 -Confirm:$false   # 删 Site + AppPool
 
 # 下面这行是删整个文件夹(包括 logs 和 keys),确认不需要历史数据再执行
-Remove-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish" -Recurse -Force
+Remove-Item -Path "D:\inetpub\wwwroot\DrawingNumber" -Recurse -Force
 ```
 
 会做的:
-
-- 停服务并删除 `DrawingNumber` 这个 Windows 服务
-- 删除防火墙规则 `DrawingNumber-HTTPS-8373`
-- 清理注册表里的环境变量 `ASPNETCORE_ENVIRONMENT=Production`
+- Stop + Remove `DrawingNumber` 这个 Site
+- Remove `DrawingNumberAppPool` 这个 AppPool
+- **不动** `keys/` `logs/` 目录(运维手动决定保留或删除)
 
 **不会**自动删文件——上面 `Remove-Item` 是手动加的。
 
@@ -453,15 +492,17 @@ Remove-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish" -Recurse -Forc
 
 | 想做的事 | 命令 |
 |---|---|
-| 看服务状态 | `Get-Service DrawingNumber` |
-| 启动服务 | `Start-Service DrawingNumber` |
-| 停止服务 | `Stop-Service DrawingNumber` |
-| 重启服务 | `Restart-Service DrawingNumber` |
-| 看最近日志 | `Get-ChildItem D:\Applications\MXB\DrawingNumber\web_publish\logs\fallback-*.log \| Sort LastWriteTime -Descending \| Select -First 1 \| Get-Content -Tail 50` |
+| 看 AppPool 状态 | `Get-WebAppPoolState -Name DrawingNumberAppPool` |
+| 看 Site 状态 | `Get-Website -Name DrawingNumber` |
+| 重启 AppPool(等同 Windows Service 的"重启服务") | `Restart-WebAppPool -Name DrawingNumberAppPool` |
+| 启动 AppPool | `Start-WebAppPool -Name DrawingNumberAppPool` |
+| 停止 AppPool | `Stop-WebAppPool -Name DrawingNumberAppPool` |
+| 看最近 ANCM stdout 日志 | `Get-ChildItem D:\inetpub\wwwroot\DrawingNumber\logs\stdout_*.log \| Sort LastWriteTime -Descending \| Select -First 1 \| Get-Content -Tail 50` |
+| 看最近 NLog 兜底日志 | `Get-ChildItem D:\inetpub\wwwroot\DrawingNumber\logs\fallback-*.log \| Sort LastWriteTime -Descending \| Select -First 1 \| Get-Content -Tail 50` |
 | 看 Event Viewer 错误 | `Get-EventLog -LogName Application -Newest 30 -EntryType Error` |
 | 看端口监听 | `netstat -ano \| findstr :8373` |
-| 看防火墙规则 | `Get-NetFirewallRule -DisplayName "DrawingNumber-HTTPS-8373"` |
 | 数据库连通性测试 | `Test-NetConnection JINWAD5A.AD101.SIEMENS-ENERGY.NET -Port 1433` |
+| 重新跑创建脚本(幂等) | `.\create-iis-site.ps1 -InstallDir '...' -CertThumbprint '...'` |
 
 ---
 
@@ -470,13 +511,13 @@ Remove-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish" -Recurse -Forc
 **80% 的故障,光看以下信息就能定位**:
 
 1. **完整报错文字** / 截图(错误框 / PowerShell 输出)
-2. **是第几步出问题**(第 3 / 4 / 5 / 6 / 8 章的第几小节)
+2. **是第几步出问题**(第 0/3/5/6/8 章的第几小节)
 3. 下面这条命令的输出:
 
    ```powershell
-   Get-Service DrawingNumber | Format-List; `
-   netstat -ano | findstr :8373; `
-   Get-ChildItem D:\Applications\MXB\DrawingNumber\web_publish\logs\fallback-*.log -ErrorAction SilentlyContinue | Sort LastWriteTime -Descending | Select -First 1 | Get-Content -Tail 50
+   Get-WebAppPoolState -Name DrawingNumberAppPool | Format-List; `
+   Get-Website -Name DrawingNumber | Format-List; `
+   Get-ChildItem D:\inetpub\wwwroot\DrawingNumber\logs\fallback-*.log -ErrorAction SilentlyContinue | Sort LastWriteTime -Descending | Select -First 1 | Get-Content -Tail 50
    ```
 4. Event Viewer 里最近的红色错误条目截图
 
@@ -492,18 +533,6 @@ Remove-Item -Path "D:\Applications\MXB\DrawingNumber\web_publish" -Recurse -Forc
 - **方法 B**:`Win + X` → "Windows PowerShell(管理员)"
 
 **判断对了没**:窗口标题栏最左边写 "**管理员:** Windows PowerShell"。
-
-### 第一次跑 .ps1 脚本被禁
-
-报错 "...因为此系统上禁止运行脚本"。
-
-**管理员 PowerShell** 跑一次:
-
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-输入 `Y` 回车。以后再跑 .ps1 就不报这个错了。
 
 ### 怎么打开 Event Viewer
 

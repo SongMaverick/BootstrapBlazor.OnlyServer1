@@ -46,14 +46,24 @@ BootstrapBlazor.OnlyServer1.Tests/ 单元测试
 | [docs/glossary.md](docs/glossary.md) | 业务术语统一(避免"图号/图名/DrawNumber"混用) |
 | [docs/development.md](docs/development.md) | 开发规范、命名约定、错误处理模式 |
 | [docs/configuration.md](docs/configuration.md) | appsettings.json 每一项含义 |
-| [docs/deployment.md](docs/deployment.md) | IIS 部署、端口、DataProtection 密钥 |
+| [docs/deployment.md](docs/deployment.md) | **IIS 部署设计**(开发侧):AppPool / 端口 / DataProtection 密钥 / HTTPS / HTTP→HTTPS rewrite |
+| [docs/deploy-it-runbook.md](docs/deploy-it-runbook.md) | **IIS IT 操作手册**(运维侧):完整 step-by-step,IT 同事按这部署 |
 | [docs/runbook.md](docs/runbook.md) | 运维手册:常见故障、日志位置、应急 |
 | [docs/monitoring.md](docs/monitoring.md) | 监控指标、告警阈值 |
 | [docs/disaster-recovery.md](docs/disaster-recovery.md) | 备份策略、回滚步骤 |
 | [docs/faq.md](docs/faq.md) | 常见问题 |
 | [docs/code-review-onlyserver1-2026-07-07.md](docs/code-review-onlyserver1-2026-07-07.md) | **2026-07-07 代码审查报告(仅主项目)** —— 27 项发现 + 已修/未修分类 |
+| [docs/code-review-onlyserver1-2026-07-09.md](docs/code-review-onlyserver1-2026-07-09.md) | 2026-07-09 权限审查(第 3 次) |
 | [docs/code-review-2026-07-07.md](docs/code-review-2026-07-07.md) | 多项目审查报告(覆盖 Tests/DbMigrator) |
 | [docs/add-drawing-numbers-ux.md](docs/add-drawing-numbers-ux.md) | AddDrawingNumbers 页面 UX 决策(折叠/响应式/同色系背景) |
+
+### 已废弃文档(2026-08-03 IIS 迁移后)
+
+| 文档 | 状态 |
+|------|------|
+| [docs/deploy-server.md](docs/deploy-server.md) | ⚠️ 已废弃 — 描述 Kestrel+Windows Service 部署,改用 IIS |
+| [docs/deploy-windows-service.md](docs/deploy-windows-service.md) | ⚠️ 已废弃 — 描述 Kestrel+Windows Service 部署,改用 IIS |
+| [docs/operations/cert-pfx-generation-2026-07-15.md](docs/operations/cert-pfx-generation-2026-07-15.md) | ⚠️ 已废弃 — Kestrel 时代 PFX 证书生成记录;现 HTTPS 由 IIS 终结 |
 
 ## 架构决策(ADR)
 

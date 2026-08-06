@@ -6,12 +6,14 @@
 
 | 资源 | 路径 |
 |------|------|
-| 应用根目录 | `D:\Apps\BootstrapBlazor.OnlyServer1\` |
-| 应用日志 | `D:\Apps\BootstrapBlazor.OnlyServer1\logs\*.log` |
+| 应用根目录 | `D:\inetpub\wwwroot\DrawingNumber\` |
+| 应用日志 | `D:\inetpub\wwwroot\DrawingNumber\logs\*.log` |
 | 数据库日志表 | `stclmd.dbo.Logs` |
 | DataProtection 密钥 | `<应用根>\keys\` 或 `DataProtection:KeyDirectory` 配置项 |
-| IIS 站点配置 | IIS 管理器 → 站点 "BootstrapBlazor" |
+| IIS 站点配置 | IIS 管理器 → 站点 "DrawingNumber" |
+| AppPool | `DrawingNumberAppPool` |
 | 配置文件 | `<应用根>\appsettings.{Environment}.json` |
+| ANCM stdout 日志 | `<应用根>\logs\stdout_*.log` |
 
 ## 服务状态检查
 
@@ -19,8 +21,15 @@
 
 ```powershell
 # PowerShell
-Get-WebSite -Name "BootstrapBlazor" | Select-Object State, Status
-# State = Started, Status = Running → 正常
+Get-Website -Name 'DrawingNumber' | Select-Object State, Status
+# State = Started → 正常
+```
+
+### AppPool 是否启动?
+
+```powershell
+Get-WebAppPoolState -Name 'DrawingNumberAppPool'
+# Value = Started → 正常
 ```
 
 ### 应用是否在监听?
@@ -34,14 +43,14 @@ Test-NetConnection -ComputerName localhost -Port 8373
 
 ```powershell
 # 任意机器
-sqlcmd -S "SE-XXXXX\SQLEXPRESS" -d stclmd -Q "SELECT 1"
+sqlcmd -S "JINWAD5A.AD101.SIEMENS-ENERGY.NET" -d stcl_md -Q "SELECT 1"
 # 返回 1 → 正常
 ```
 
 ### 进程是否存活?
 
 ```powershell
-Get-Process -Name w3wp | Where-Object {$_.MainWindowTitle -like "*BootstrapBlazor*"}
+Get-WebAppPoolState -Name 'DrawingNumberAppPool' | Select-Object -ExpandProperty WorkerProcesses
 # 或 Task Manager 查看 w3wp.exe 进程
 ```
 
@@ -55,17 +64,18 @@ Get-Process -Name w3wp | Where-Object {$_.MainWindowTitle -like "*BootstrapBlazo
 
 1. **DataProtection 密钥丢失**
    ```powershell
-   Test-Path "D:\Apps\BootstrapBlazor.OnlyServer1\keys"
-   Get-ChildItem "D:\Apps\BootstrapBlazor.OnlyServer1\keys" | Measure-Object
+   Test-Path "D:\inetpub\wwwroot\DrawingNumber\keys"
+   Get-ChildItem "D:\inetpub\wwwroot\DrawingNumber\keys" | Measure-Object
    ```
    - 目录不存在或为空 → 密钥丢失,Cookie 无法解密
    - 修复:从备份恢复 `keys/` 目录,或临时禁用 DataProtection(改 `Program.cs`)
    - **生产**:设置 `DataProtection:KeyDirectory` 指向**应用外的持久盘**
+   - **重新部署时**:重跑 `create-iis-site.ps1`(幂等,会自动建 keys/ 并加 ACL)
 
 2. **应用池身份无 keys 读权限**
    ```powershell
-   icacls "D:\Apps\BootstrapBlazor.OnlyServer1\keys"
-   # 确认 IIS AppPool\BootstrapBlazor 有读/写
+   icacls "D:\inetpub\wwwroot\DrawingNumber\keys"
+   # 确认 IIS_IUSRS 有 (OI)(CI)M
    ```
 
 3. **IIS 应用池回收后新密钥生成**
@@ -115,7 +125,7 @@ SELECT TOP 10 * FROM Logs ORDER BY Id DESC;
 
 1. **看 NLog 文件**
    ```
-   D:\Apps\BootstrapBlazor.OnlyServer1\logs\fallback-YYYY-MM-DD.log
+   D:\inetpub\wwwroot\DrawingNumber\logs\fallback-YYYY-MM-DD.log
    ```
    或 `Logs` 表最近 10 条 ERROR。
 
@@ -129,7 +139,7 @@ SELECT TOP 10 * FROM Logs ORDER BY Id DESC;
 
 3. **应急**:重启 IIS 应用池
    ```powershell
-   Restart-WebAppPool -Name "BootstrapBlazor"
+   Restart-WebAppPool -Name "DrawingNumberAppPool"
    ```
 
 ### F5: 应用启动慢 / 卡死
@@ -235,23 +245,24 @@ ORDER BY Logged DESC;
 
 ```powershell
 # 优雅重启(关闭现有连接)
-Restart-WebAppPool -Name "BootstrapBlazor"
+Restart-WebAppPool -Name "DrawingNumberAppPool"
 
 # 强制重启(立即杀掉进程)
-%windir%\system32\inetsrv\appcmd recycle apppool /apppool.name:"BootstrapBlazor"
+%windir%\system32\inetsrv\appcmd recycle apppool /apppool.name:"DrawingNumberAppPool"
 ```
 
 ### 回滚发布版本
 
 ```powershell
-# 1. 备份当前版本
-Copy-Item "D:\Apps\BootstrapBlazor.OnlyServer1" "D:\Backup\BootstrapBlazor_$(Get-Date -Format 'yyyyMMdd_HHmmss')" -Recurse
+# 1. 备份当前版本(保留 keys/ logs/)
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+Copy-Item "D:\inetpub\wwwroot\DrawingNumber" "D:\inetpub\wwwroot\DrawingNumber_BAK_$stamp" -Recurse -Force
 
 # 2. 解压历史版本到应用目录
-Expand-Archive "D:\Releases\BootstrapBlazor_2.0.0.zip" -DestinationPath "D:\Apps\BootstrapBlazor.OnlyServer1" -Force
+Expand-Archive "D:\Releases\DrawingNumber_2.0.0.zip" -DestinationPath "D:\inetpub\wwwroot\DrawingNumber" -Force
 
 # 3. 重启应用池
-Restart-WebAppPool -Name "BootstrapBlazor"
+Restart-WebAppPool -Name "DrawingNumberAppPool"
 ```
 
 ### 数据库紧急备份
@@ -274,13 +285,13 @@ WITH INIT;
 
 ```powershell
 # 查找错误
-Select-String -Path "D:\Apps\BootstrapBlazor.OnlyServer1\logs\*.log" -Pattern "ERROR|Exception"
+Select-String -Path "D:\inetpub\wwwroot\DrawingNumber\logs\*.log" -Pattern "ERROR|Exception"
 
 # 查找特定用户操作
-Select-String -Path "D:\Apps\BootstrapBlazor.OnlyServer1\logs\*.log" -Pattern "WorkerNumber=87100"
+Select-String -Path "D:\inetpub\wwwroot\DrawingNumber\logs\*.log" -Pattern "WorkerNumber=87100"
 
 # 查找数据库错误
-Select-String -Path "D:\Apps\BootstrapBlazor.OnlyServer1\logs\*.log" -Pattern "SqlException"
+Select-String -Path "D:\inetpub\wwwroot\DrawingNumber\logs\*.log" -Pattern "SqlException"
 ```
 
 ### DB Logs 表查询

@@ -82,22 +82,25 @@ WITH RECOVERY;
 
 #### 二进制回滚(只回滚代码,DB 不动)
 
+**(2026-08-03 IIS 迁移后)** 路径与脚本名:
+
 ```powershell
-# 1. 备份当前版本
-$bak = "D:\inetpub\wwwroot\BootstrapBlazor_BAK_{0:yyyyMMddHHmm}" -f (Get-Date)
-Copy-Item D:\inetpub\wwwroot\BootstrapBlazor $bak -Recurse
+# 1. 备份当前版本(保留 keys/ logs/)
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$bak = "D:\inetpub\wwwroot\DrawingNumber_BAK_$stamp"
+Copy-Item D:\inetpub\wwwroot\DrawingNumber $bak -Recurse -Force
 
-# 2. 停 AppPool
-Stop-WebAppPool -Name "BootstrapBlazor"
+# 2. Recycle AppPool(释放文件锁)
+Restart-WebAppPool -Name "DrawingNumberAppPool"
 
-# 3. 拷历史版本
-Copy-Item "D:\Publish\BootstrapBlazor_v1.0.0\*" D:\inetpub\wwwroot\BootstrapBlazor -Recurse -Force
+# 3. 用 robocopy 拷历史版本(跳过 keys/ logs/)
+robocopy "D:\Publish\DrawingNumber\IIS_v1.0.0" "D:\inetpub\wwwroot\DrawingNumber" /MIR /XD keys logs /NP
 
-# 4. 启动
-Start-WebAppPool -Name "BootstrapBlazor"
+# 4. Recycle AppPool 加载旧 .dll
+Restart-WebAppPool -Name "DrawingNumberAppPool"
 
 # 5. 验证
-Invoke-WebRequest http://localhost/ -UseBasicParsing | Select StatusCode
+Invoke-WebRequest https://localhost:8373/ -UseBasicParsing -SkipCertificateCheck | Select StatusCode
 ```
 
 #### DB schema 回滚(回滚到旧版本)
@@ -110,7 +113,7 @@ Invoke-WebRequest http://localhost/ -UseBasicParsing | Select StatusCode
 #    当前项目无自动 schema down 脚本,需手工编写
 
 # 反向迁移示例:删 IX_Orders_OrderNumber 索引(回到 SERIALIZABLE 防重)
-sqlcmd -S "..." -d stclmd -Q "DROP INDEX IX_Orders_OrderNumber ON Orders"
+sqlcmd -S "JINWAD5A.AD101.SIEMENS-ENERGY.NET" -d stcl_md -Q "DROP INDEX IX_Orders_OrderNumber ON Orders"
 ```
 
 ⚠️ **schema 回滚是高风险操作**,生产前务必先在测试环境验证。
@@ -121,16 +124,18 @@ sqlcmd -S "..." -d stclmd -Q "DROP INDEX IX_Orders_OrderNumber ON Orders"
 
 ```powershell
 # 1. 停 AppPool
-Stop-WebAppPool -Name "BootstrapBlazor"
+Stop-WebAppPool -Name "DrawingNumberAppPool"
 
 # 2. 从备份恢复 keys/
-Copy-Item "D:\Backup\Keys_20260704\*" D:\inetpub\wwwroot\BootstrapBlazor\keys -Recurse -Force
+Copy-Item "D:\Backup\Keys_20260704\*" "D:\inetpub\wwwroot\DrawingNumber\keys" -Recurse -Force
 
 # 3. 启 AppPool
-Start-WebAppPool -Name "BootstrapBlazor"
+Start-WebAppPool -Name "DrawingNumberAppPool"
 ```
 
-如果**没有 keys 备份**,全员会被强制重新登录(预期行为)。
+如果**没有 keys 备份**:
+- 全员会被强制重新登录(预期行为)
+- 或用跨服务器迁移方式:`create-iis-site.ps1 -CopyKeysFrom <旧 keys 路径>` 重建
 
 ## 灾难恢复等级
 

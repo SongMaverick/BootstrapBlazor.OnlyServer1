@@ -1,3 +1,15 @@
+# 证书生成操作记录 — 2026-07-15【已废弃,仅留历史】
+
+> ⚠️ **本文档已废弃(2026-08-03)**
+>
+> 项目已迁移到 **IIS + ASP.NET Core Module V2** 部署,HTTPS 终结由 IIS 站点绑定完成,Kestrel 不再直接读 PFX 文件。
+>
+> 证书现在通过 IIS 站点 HTTPS binding(`create-iis-site.ps1 -CertThumbprint`)绑定,流程参见 [../BootstrapBlazor.OnlyServer1/docs/deploy-it-runbook.md](../BootstrapBlazor.OnlyServer1/docs/deploy-it-runbook.md)。
+>
+> 本文件保留作为 2026-07-15 历史操作记录(**Kestrel/Windows Service 时代**),仅供参考当时遇到的 CA 证书合并技术细节。
+
+---
+
 # 证书生成操作记录 — 2026-07-15
 
 > **目的**:把今天这次"TCID 政务 CA 申请下来的证书合并成 pfx 给 Kestrel 用"的全过程记下来,以后同样需求能照抄。

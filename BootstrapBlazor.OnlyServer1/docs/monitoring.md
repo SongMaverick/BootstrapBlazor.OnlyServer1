@@ -12,7 +12,8 @@
 
 ```powershell
 # 手动
-Get-Process -Name w3wp | Where-Object { $_.Id -eq (Get-WebAppPoolState -Name "BootstrapBlazor").WorkerProcesses[0].ProcessId }
+Get-WebAppPoolState -Name 'DrawingNumberAppPool'   # Value: Started
+Get-Process -Name w3wp | Where-Object { $_.Id -in (Get-WebAppPoolState -Name 'DrawingNumberAppPool').WorkerProcesses.ProcessId }
 ```
 
 **告警**: 进程消失超过 5 分钟。
