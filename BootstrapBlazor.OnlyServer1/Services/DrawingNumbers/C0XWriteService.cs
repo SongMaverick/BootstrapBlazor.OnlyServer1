@@ -73,9 +73,11 @@ public class C0XWriteService
         }
 
         var order = await _db.Queryable<Orders>().InSingleAsync(orderId);
+        // (2026-08-06)Service 层"Order not found"日志统一由 Razor 入口层
+        // (OrderDrawingNumbers.razor / AddDrawingNumbers.razor)打,避免重复。
+        // 这里是 WriteService,被 Razor 入口层直接调用 — 入口层一打就够了。
         if (order == null)
         {
-            _logger.LogWarning("Order not found: {OrderId}", orderId);
             foreach (var n in drawingNames.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.Ordinal))
                 result.Failures.Add(new(n, "订单不存在"));
             return result;

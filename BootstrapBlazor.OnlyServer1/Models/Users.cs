@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Identity;
 using SqlSugar;
 
@@ -39,10 +40,15 @@ public class Users : IdentityUser<int>
     // ===== Identity 字段(全部显式标注可空性,绕过 SqlSugar 默认 NOT NULL 问题) =====
 
     // 必须非空:UserName 是 Identity 关键字段
+    // (2026-08-06)基类 IdentityUser<int> 把 UserName 声明成 string?,
+    // 我们坚持非空(DB 列 IsNullable=false 也保证非空),用 [property: AllowNull]
+    // 告诉编译器"基类签名是 string?,但我从不让其为 null,所以类型保留非空即可"。
     [SugarColumn(IsNullable = false, Length = 256)]
+    [property: AllowNull]
     public override string UserName { get; set; } = "";
 
     [SugarColumn(IsNullable = false, Length = 256)]
+    [property: AllowNull]
     public override string NormalizedUserName { get; set; } = "";
 
     // 邮箱:不用,允许 NULL

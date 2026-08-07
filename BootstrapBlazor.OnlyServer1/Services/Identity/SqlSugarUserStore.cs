@@ -27,10 +27,12 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         IDisposable
     {
         private readonly ISqlSugarClient _db;
+        private readonly ILogger<SqlSugarUserStore> _logger;       // (2026-08-06)记录被吞的异常
 
-        public SqlSugarUserStore(ISqlSugarClient db)
+        public SqlSugarUserStore(ISqlSugarClient db, ILogger<SqlSugarUserStore> logger)
         {
             _db = db;
+            _logger = logger;
         }
 
         // ============================================================
@@ -81,6 +83,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         public async Task SetUserNameAsync(Users user, string? userName, CancellationToken cancellationToken)
         {
             ThrowIfDisposed();
+            // (2026-08-06)UserName 在 Users.cs 已 [property: AllowNull],赋 null 合法
             user.UserName = userName;
             user.NormalizedUserName = userName?.ToUpperInvariant();
             await Task.CompletedTask;
@@ -117,6 +120,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "SqlSugarUserStore.CreateAsync failed for UserName={UserName}", user?.UserName ?? "(null)");
                 return IdentityResult.Failed(new IdentityError { Description = "操作失败,请查看日志" });
             }
         }
@@ -137,6 +141,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "SqlSugarUserStore.UpdateAsync failed for UserId={UserId}", user?.Id);
                 return IdentityResult.Failed(new IdentityError { Description = "操作失败,请查看日志" });
             }
         }
@@ -157,6 +162,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "SqlSugarUserStore.DeleteAsync failed for UserId={UserId}", user?.Id);
                 return IdentityResult.Failed(new IdentityError { Description = "操作失败,请查看日志" });
             }
         }
@@ -219,10 +225,11 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         // ============================================================
         // IUserLockoutStore<Users>
         // ============================================================
-        public async Task<DateTimeOffset?> GetLockoutEndDateAsync(Users user, CancellationToken cancellationToken)
+        // (2026-08-06)同步包装 — 此前 async 签名没有 await,触发 CS1998
+        public Task<DateTimeOffset?> GetLockoutEndDateAsync(Users user, CancellationToken cancellationToken)
         {
             ThrowIfDisposed();
-            return user.LockoutEnd;
+            return Task.FromResult(user.LockoutEnd);
         }
 
         public async Task SetLockoutEndDateAsync(Users user, DateTimeOffset? lockoutEnd, CancellationToken cancellationToken)
@@ -496,10 +503,13 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         public async Task<IList<string>> GetRolesAsync(Users user, CancellationToken cancellationToken)
         {
             ThrowIfDisposed();
+            // (2026-08-06)r.Name 在 Roles 模型是 string,非可空,
+            // 但 SqlSugar 的 Select((ur, r) => r.Name) 在 InnerJoin 投影推断成 string?,
+            // 触发 CS8619 收不到非空列表。强制 ToList 把 string? 兜成 string。
             return await _db.Queryable<UserRolesRow>()
                 .InnerJoin<Roles>((ur, r) => ur.RoleId == r.Id)
-                .Where((ur, r) => ur.UserId == user.Id)
-                .Select((ur, r) => r.Name)
+                .Where((ur, r) => ur.UserId == user.Id && r.Name != null)
+                .Select((ur, r) => r.Name!)
                 .ToListAsync(cancellationToken);
         }
 
@@ -520,7 +530,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             var userIds = await _db.Queryable<UserRolesRow>()
                 .InnerJoin<Roles>((ur, r) => ur.RoleId == r.Id)
                 .Where((ur, r) => r.NormalizedName == normalized)
-                .Select((ur, r) => ur.UserId)
+                .Select((ur, r) => ur.UserId)         // (2026-08-06 修正)UserRolesRow 上才有 UserId,Roles 上没有
                 .ToListAsync(cancellationToken);
             if (userIds.Count == 0) return new List<Users>();
             return await _db.Queryable<Users>()

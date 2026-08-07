@@ -183,7 +183,11 @@ namespace BootstrapBlazor.OnlyServer1.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "软删部门失败");
+                // (2026-08-06)补业务上下文:失败时要知道是哪批 / 哪些 Id 在处理,
+                // 否则出问题了翻日志只能看到"软删部门失败",还得去对 OrderId / 时间戳。
+                var ids = string.Join(",", list.Select(d => d.Id));
+                _logger.LogError(ex, "软删部门失败: count={Count} ids={Ids}",
+                    list.Count, ids);
                 return false;
             }
         }

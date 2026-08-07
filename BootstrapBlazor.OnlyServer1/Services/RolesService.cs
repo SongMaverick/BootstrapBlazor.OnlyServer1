@@ -56,7 +56,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 if (!string.IsNullOrEmpty(options.SearchText))
                 {
-                    query = query.Where(r => r.Name.Contains(options.SearchText));
+                    // (2026-08-06)IdentityRole<int>.Name 是 string?,需显式 null-check
+                    query = query.Where(r => r.Name != null && r.Name.Contains(options.SearchText));
                 }
 
                 if (!string.IsNullOrEmpty(options.SortName) && _rolesAllowedSortCols.Contains(options.SortName))
@@ -158,8 +159,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
         {
             return await _db.Queryable<Roles>()
                 .InnerJoin<UserRolesRow>((r, ur) => r.Id == ur.RoleId)
-                .Where((r, ur) => ur.UserId == userId)
-                .Select((r, ur) => r.Name)
+                .Where((r, ur) => ur.UserId == userId && r.Name != null)
+                .Select((r, ur) => r.Name!)                  // (2026-08-06)Name 已过滤 null,这里 null-forgive
                 .ToListAsync();
         }
 
@@ -480,6 +481,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 if (user == null) return (false, "用户不存在");
                 var role = await _db.Queryable<Roles>().Where(r => r.Id == roleId).FirstAsync();
                 if (role == null) return (false, "角色不存在");
+                if (string.IsNullOrEmpty(role.Name)) return (false, "角色名称为空");   // (2026-08-06)防御 nullable
 
                 var result = await _userManager.AddToRoleAsync(user, role.Name);
                 if (!result.Succeeded)
@@ -517,6 +519,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 if (user == null) return (false, "用户不存在");
                 var role = await _db.Queryable<Roles>().Where(r => r.Id == roleId).FirstAsync();
                 if (role == null) return (false, "角色不存在");
+                if (string.IsNullOrEmpty(role.Name)) return (false, "角色名称为空");   // (2026-08-06)防御 nullable
 
                 // ADMIN 是最后一名超管时,拒绝解除关联(避免锁死系统)
                 if (role.NormalizedName == AdminRoleName.ToUpperInvariant())
@@ -569,7 +572,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 var targetIds = roleIds.Distinct().ToList();
                 var targetRoles = await _db.Queryable<Roles>().Where(r => targetIds.Contains(r.Id)).ToListAsync();
-                var targetNames = targetRoles.Select(r => r.Name).ToArray();
+                // (2026-08-06)r.Name 是 string?;不为 null 的才纳入 targetNames。
+                var targetNames = targetRoles.Where(r => r.Name != null).Select(r => r.Name!).ToArray();
 
                 // ====================================================================
                 // (2026-07-09 Review #L4-NEW) Admin 不能降自己的权 ——

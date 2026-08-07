@@ -30,10 +30,14 @@
     <PackageReference Include="SqlSugarCore" Version="5.1.4.214" />
   </ItemGroup>
 
+  <!-- (2026-08-06)DrawingName.sql 不再发布到 publish
+       原因:
+         1. 包含真实姓名等 PII(王芳/宋程等),不能随部署包外发
+         2. 应用运行时无 C# 代码读它,只是历史数据 dump 文件
+         3. DbMigrator 用的是根目录的 DrawingNames.sql (复数),不是这个,互不影响
+       老部署文档(README-DEPLOY.md / deploy-windows-service.md / deploy-it-runbook.md)提到的
+       "DrawingName.sql 在站点根下" 现在已不成立,文档待同步修订 -->
   <ItemGroup>
-    <None Include="DrawingName.sql">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Include="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

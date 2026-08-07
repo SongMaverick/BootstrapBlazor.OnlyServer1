@@ -1,6 +1,6 @@
 @page "/user-management"
 @attribute [TabItemOption(Text = "人员列表")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin)]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator)]
 @using Microsoft.Extensions.Options
 @inject BootstrapBlazor.OnlyServer1.Services.UsersService UsersService
 @inject BootstrapBlazor.OnlyServer1.Services.DepartmentsService DepartmentsService
@@ -34,10 +34,23 @@
            IsMultipleSelect="true"
            Height="700"
            ShowAddButton="@CurrentUser.HasPermission(PermissionCodes.UserCreate)"
-           ShowDeleteButton="@CurrentUser.HasPermission(PermissionCodes.UserDelete)">
+           ShowDeleteButton="@CurrentUser.HasPermission(PermissionCodes.UserDelete)"
+           ShowEditButton="@CurrentUser.HasPermission(PermissionCodes.UserCreate)">
         <TableColumns>
             <TableColumn @bind-Field="@context.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
             <TableColumn @bind-Field="@context.Name" Width="150" Sortable="true" />
+            <TableColumn @bind-Field="@context.PhoneNumber" Width="140" Sortable="true">
+                <Template Context="value">
+                    @if (string.IsNullOrWhiteSpace(value.Value))
+                    {
+                        <span class="text-muted">未填写</span>
+                    }
+                    else
+                    {
+                        @value.Value
+                    }
+                </Template>
+            </TableColumn>
             <TableColumn @bind-Field="@context.WorkerNumber" Width="120" Align="Alignment.Center" Sortable="true" />
             <TableColumn @bind-Field="@context.Gid" Width="150" Sortable="true" />
             @* 部门下拉:列表不显示(由 DepartmentName 展示),新增/编辑弹窗里提供 Select 选择。
@@ -189,7 +202,10 @@
 
     private async Task<QueryData<Models.Users>> OnQueryAsync(QueryPageOptions options)
     {
-        var result = await UsersService.QueryAsync(options.ToPagedQuery());
+        // (2026-08-07) Operator / Viewer 看不到 ADMIN 角色用户(超管隐于日常运营视角);
+        // Admin 自己仍可见全部,方便多超管场景下的管理与交接。
+        var hideAdmin = !CurrentUser.IsInAnyRole(BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin);
+        var result = await UsersService.QueryAsync(options.ToPagedQuery(), hideAdmin);
         return result.ToQueryData();
     }
 

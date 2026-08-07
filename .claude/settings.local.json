@@ -58,7 +58,8 @@
       "Bash(cp \"/c/Users/z0048byz/Desktop/Product list6.xlsx\" /tmp/data.xlsx)",
       "Bash(cmd.exe *)",
       "Read(//f/MXB/DrawingNumber/web_publish_20260709/logs/**)",
-      "Bash(dir \"F:\\\\MXB\\\\DrawingNumber\\\\web_publish_20260709\\\\logs\\\\\" 2>&1)"
+      "Bash(dir \"F:\\\\MXB\\\\DrawingNumber\\\\web_publish_20260709\\\\logs\\\\\" 2>&1)",
+      "Bash(du -sh \"/d/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1/bin/Release/net8.0/publish/\"/*)"
     ]
   }
 }

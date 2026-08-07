@@ -29,11 +29,9 @@ public class C0XQueryService
     public async Task<List<C0XBase>> GetAddedDrawingNumbersByOrderIdAsync(int orderId)
     {
         var order = await _db.Queryable<Orders>().InSingleAsync(orderId);
-        if (order == null)
-        {
-            _logger.LogWarning("Order not found: {OrderId}", orderId);
-            return new List<C0XBase>();
-        }
+        // (2026-08-06)Service 层"Order not found"日志被入口层重复打,
+        // 这里只返回空集合,由 Razor 入口一次性打日志,避免每次进入页面刷 4 行。
+        if (order == null) return new List<C0XBase>();
 
         var drawingType = _registry.GetDrawingType(order);
         if (string.IsNullOrEmpty(drawingType))
@@ -49,11 +47,8 @@ public class C0XQueryService
     public async Task<List<DrawingNumberViewModel>> GetAddedDrawingNumberViewModelsByOrderIdAsync(int orderId)
     {
         var order = await _db.Queryable<Orders>().InSingleAsync(orderId);
-        if (order == null)
-        {
-            _logger.LogWarning("Order not found: {OrderId}", orderId);
-            return new List<DrawingNumberViewModel>();
-        }
+        // 同上,Service 不打"Order not found"日志,统一由入口层处理。
+        if (order == null) return new List<DrawingNumberViewModel>();
 
         var c0xList = await GetAddedDrawingNumbersByOrderIdAsync(orderId);
         var drawingType = _registry.GetDrawingType(order) ?? "";

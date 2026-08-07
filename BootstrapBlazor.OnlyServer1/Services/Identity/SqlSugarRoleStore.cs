@@ -15,11 +15,13 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         IDisposable
     {
         private readonly ISqlSugarClient _db;
+        private readonly ILogger<SqlSugarRoleStore> _logger;     // (2026-08-06)记录被吞的异常
         private bool _disposed;
 
-        public SqlSugarRoleStore(ISqlSugarClient db)
+        public SqlSugarRoleStore(ISqlSugarClient db, ILogger<SqlSugarRoleStore> logger)
         {
             _db = db;
+            _logger = logger;
         }
 
         public void Dispose() => _disposed = true;
@@ -45,6 +47,8 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             }
             catch (Exception ex)
             {
+                // (2026-08-06)异常入日志 — 前文 "操作失败,请查看日志" 之前没接日志,等于吞了
+                _logger.LogError(ex, "SqlSugarRoleStore.CreateAsync failed for RoleName={RoleName}", role?.Name ?? "(null)");
                 return IdentityResult.Failed(new IdentityError { Description = "操作失败,请查看日志" });
             }
         }
@@ -62,6 +66,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "SqlSugarRoleStore.UpdateAsync failed for RoleId={RoleId}", role?.Id);
                 return IdentityResult.Failed(new IdentityError { Description = "操作失败,请查看日志" });
             }
         }
@@ -78,6 +83,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "SqlSugarRoleStore.DeleteAsync failed for RoleId={RoleId}", role?.Id);
                 return IdentityResult.Failed(new IdentityError { Description = "操作失败,请查看日志" });
             }
         }

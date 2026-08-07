@@ -409,6 +409,9 @@
         showError = false;
         _partErrorMessage = null;
 
+        // (2026-08-06 fix)声明上提到 try 之外,catch 才能读到上下文参数
+        string[] checkedDrawingNumbersList = Array.Empty<string>();
+
         try {
             if (C0XWriteService == null) {
                 Logger.LogWarning("C0XWriteService is null");
@@ -417,7 +420,7 @@
                 return;
             }
 
-            var checkedDrawingNumbersList = editorContent
+            checkedDrawingNumbersList = editorContent
                 .Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(l => l.Trim())
                 .Where(l => !string.IsNullOrEmpty(l))
@@ -434,7 +437,11 @@
             HandleInsertResult(result);
         }
         catch (Exception ex) {
-            Logger.LogError(ex, "Error adding drawing numbers");
+            // (2026-08-06)补业务上下文 — 失败时知道哪个订单、几条名字、第一条名字是什么
+            Logger.LogError(ex, "Error adding drawing numbers: orderId={OrderId} count={Count} firstName={First}",
+                OrderId,
+                checkedDrawingNumbersList.Length,
+                checkedDrawingNumbersList.Length > 0 ? checkedDrawingNumbersList[0] : "(none)");
             showError = true;
             _partErrorMessage = "添加图号时发生错误";
         }
@@ -453,6 +460,9 @@
         showError = false;
         _partErrorMessage = null;
 
+        // (2026-08-06 fix)声明上提到 try 之外,catch 才能读到上下文参数
+        List<string> checkedItems = new();
+
         try {
             if (C0XWriteService == null) {
                 Logger.LogWarning("C0XWriteService is null");
@@ -461,7 +471,7 @@
                 return;
             }
 
-            var checkedItems = GetCheckedItems();
+            checkedItems = GetCheckedItems();
             if (checkedItems.Count == 0) {
                 return;
             }
@@ -472,7 +482,9 @@
             HandleInsertResult(result);
         }
         catch (Exception ex) {
-            Logger.LogError(ex, "Error adding drawing numbers");
+            // (2026-08-06)补业务上下文 — 失败时知道哪个订单、几条图号
+            Logger.LogError(ex, "Error adding drawing numbers: orderId={OrderId} count={Count}",
+                OrderId, checkedItems.Count);
             showError = true;
             _partErrorMessage = "添加图号时发生错误";
         }

@@ -45,16 +45,36 @@ namespace BootstrapBlazor.OnlyServer1.Services
             _logger = logger;
         }
 
-        public Task<PagedResult<Users>> QueryAsync(PagedQuery options)
+        public Task<PagedResult<Users>> QueryAsync(PagedQuery options, bool hideAdminRole = false)
         {
             try
             {
                 // LEFT JOIN Departments:DepartmentId 可空,NULL 时仍要显示(部门列空)
-                // 过滤软删;ADMIN 角色用户也展示(超管在此页面可统一管理所有用户角色分配)
-                // 唯一超管不可解除 ADMIN 的保护由 RolesService.RemoveUserFromRoleAsync 提供
+                // 过滤软删
+                //   - 默认:ADMIN 角色用户也展示(超管在此页面可统一管理所有用户角色分配)
+                //   - hideAdminRole=true:排除 ADMIN 角色用户(Operator / Viewer 视角,看不到超管)
+                //     唯一超管不可解除 ADMIN 的保护由 RolesService.RemoveUserFromRoleAsync 提供
                 var query = _db.Queryable<Users>()
                     .LeftJoin<Departments>((u, d) => u.DepartmentId == d.Id)
                     .Where(u => !u.IsDeleted);
+
+                if (hideAdminRole)
+                {
+                    // 排除 ADMIN 角色的用户:UserRoles 中关联的 Role.NormalizedName = 'ADMIN'
+                    // (2026-08-07) SqlSugar 不支持在 Where lambda 里嵌套 _db.Queryable<>().Any()
+                    //   ——编译能过但生成 SQL 不对。改成"先 ToList() 拉出 admin user ids,再 NOT IN"
+                    //   ——ADMIN 用户极少(通常 1-2 人),这个额外查询成本可忽略
+                    var adminUserIds = _db.Queryable<UserRolesRow>()
+                        .InnerJoin<Roles>((ur, r) => ur.RoleId == r.Id)
+                        .Where((ur, r) => r.NormalizedName == "ADMIN")
+                        .Select(ur => ur.UserId)
+                        .Distinct()
+                        .ToList();
+                    if (adminUserIds.Count > 0)
+                    {
+                        query = query.Where(u => !adminUserIds.Contains(u.Id));
+                    }
+                }
 
                 if (!string.IsNullOrEmpty(options.SearchText))
                 {

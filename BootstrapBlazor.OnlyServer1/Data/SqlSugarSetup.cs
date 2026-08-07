@@ -44,6 +44,13 @@ namespace BootstrapBlazor.OnlyServer1.Data
             {
                 db.Aop.OnLogExecuting = (sql, pars) =>
                 {
+                    // (2026-08-06 P0 优化)Debug 默认被 Default=Information 关掉;
+                    // 但 pars.ToDictionary + SerializeObject 在 LogDebug 调用之前
+                    // 就会跑,等于没开 Debug 也浪费一次字典构造 + JSON 序列化。
+                    // 守门后:Debug 关 → 立即返回,零分配。
+                    // 排查时把 appsettings.json "Logging:LogLevel:Default" 临时改 Debug 即可,无需重启服务。
+                    if (!logger.IsEnabled(LogLevel.Debug)) return;
+
                     // 把参数序列化成 JSON 拼到 SQL 后面,方便排查"参数值到底是啥"
                     var parsJson = db.Utilities.SerializeObject(
                         pars.ToDictionary(p => p.ParameterName, p => p.Value));

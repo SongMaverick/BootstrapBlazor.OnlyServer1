@@ -85,7 +85,10 @@ namespace BootstrapBlazor.OnlyServer1.Services
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Concurrent init for {Type}, retry increment", drawingType);
+                // (2026-08-06 P0 优化)Debug 默认关着时,LogDebug(ex,...) 仍会付一次
+                // args[] 装箱 / ex 引用复制。生产无意义,加 IsEnabled 守门零成本。
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    _logger.LogDebug(ex, "Concurrent init for {Type}, retry increment", drawingType);
                 // 重试一次原子 +1(此时行已存在)
                 var retried = await _db.Ado.GetIntAsync(
                     "UPDATE DrawingNumberSequence SET CurrentMax = CurrentMax + 1 " +
