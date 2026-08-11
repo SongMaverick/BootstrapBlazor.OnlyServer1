@@ -164,6 +164,7 @@ builder.Services.AddScoped<C0XWriteService>();
 builder.Services.AddScoped<DrawingNameService>();
 builder.Services.AddScoped<IDrawingNumberAllocator, DrawingNumberAllocator>();
 builder.Services.AddScoped<OrdersService>();
+builder.Services.AddScoped<OrderDetailsService>();
 builder.Services.AddScoped<UsersService>();
 builder.Services.AddScoped<DepartmentsService>();
 builder.Services.AddScoped<PermissionsService>();

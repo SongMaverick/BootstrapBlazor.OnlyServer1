@@ -12,6 +12,12 @@ public static class PermissionCodes
     public const string OrderEdit   = "Order.Edit";
     public const string OrderDelete = "Order.Delete";
 
+    // 订单管理(结构设计订单明细,/order-management)
+    // 明细行随订单存在,不单独新增,故没有 OrderDetail.Create
+    public const string OrderDetailRead   = "OrderDetail.Read";
+    public const string OrderDetailEdit   = "OrderDetail.Edit";
+    public const string OrderDetailDelete = "OrderDetail.Delete";
+
     // 图号
     public const string DrawingNumberAllocate = "DrawingNumber.Allocate";
     public const string DrawingNumberRead     = "DrawingNumber.Read";

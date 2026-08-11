@@ -59,7 +59,13 @@
       "Bash(cmd.exe *)",
       "Read(//f/MXB/DrawingNumber/web_publish_20260709/logs/**)",
       "Bash(dir \"F:\\\\MXB\\\\DrawingNumber\\\\web_publish_20260709\\\\logs\\\\\" 2>&1)",
-      "Bash(du -sh \"/d/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1/bin/Release/net8.0/publish/\"/*)"
+      "Bash(du -sh \"/d/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1/bin/Release/net8.0/publish/\"/*)",
+      "Bash(python -c ' *)",
+      "Bash(python *)",
+      "Bash(awk '/2026-08-11 13:58:29/,/^2026-08-11 14:13:49/' \"F:/MXB/DrawingNumber/web_publish_20260804/logs/app-2026-08-11.log\")",
+      "Bash(awk '/2026-08-10 13:40:12/,/2026-08-10 13:46:30/' \"F:/MXB/DrawingNumber/web_publish_20260804/logs/app-2026-08-10.log\")",
+      "Bash(awk '/2026-08-11 13:58:29/,/^2026-08-11 14:14:00/' \"F:/MXB/DrawingNumber/web_publish_20260804/logs/app-2026-08-11.log\")",
+      "Bash(awk '/2026-08-11 14:00:24/,/^2026-08-11 14:14:00/' \"F:/MXB/DrawingNumber/web_publish_20260804/logs/app-2026-08-11.log\")"
     ]
   }
 }

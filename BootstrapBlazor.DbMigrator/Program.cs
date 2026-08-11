@@ -47,14 +47,14 @@ namespace BootstrapBlazor.DbMigrator;
 ///   dotnet run --project DbMigrator -- --rename-c0x-drawingname
 ///   dotnet run --project DbMigrator -- --check-c0x-state
 ///   dotnet run --project DbMigrator -- --rollback-c0x-drawingname  # 失败时回滚
-///   详见 docs/deploy/l7-rename-deploy.md
+///   (部署步骤见 git history L-7 列重命名提交)
 ///
 ///   # L-8 协调迁移 — Users.GID 列重命名(独立模式)
 ///   dotnet run --project DbMigrator -- --check-users-state
 ///   dotnet run --project DbMigrator -- --rename-users-gid
 ///   dotnet run --project DbMigrator -- --check-users-state
 ///   dotnet run --project DbMigrator -- --rollback-users-gid  # 失败时回滚
-///   详见 docs/deploy/l8-rename-deploy.md
+///   (部署步骤见 git history L-8 列重命名提交)
 /// </summary>
 public class Program
 {
@@ -1461,7 +1461,10 @@ END";
                 {
                     Id = oldId,
                     DrawingNumber = GetSeedDrawingNumber(tableName) + oldId,
-                    DrawingName = row["DrawingName"] as string ?? "",
+                    // 兼容旧库导出 SQL:旧库 C0X 表在 L-7 列重命名前用 DrawName,
+                    // 新库用 DrawingName。优先读新名,fallback 旧名,
+                    // 这样用户每次重新从旧库导出 SQL 直接覆盖即可,不用关心列名。
+                    DrawingName = row["DrawingName"] as string ?? row["DrawName"] as string ?? "",
                     OrderId = newOrderId,
                     CreatedBy = row["CreatedBy"] as string ?? "",
                     UpdatedBy = row["UpdatedBy"] as string ?? "",

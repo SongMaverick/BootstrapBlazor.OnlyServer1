@@ -16,7 +16,7 @@
 
 ## 已知安全约束
 
-参见 [docs/configuration.md](BootstrapBlazor.OnlyServer1/docs/configuration.md#安全策略) — Identity 密码策略 / 锁定策略 / DataProtection 配置。
+参见 `appsettings.json` 配置项说明 — Identity 密码策略 / 锁定策略 / DataProtection 配置。
 
 ## 安全编码规范
 

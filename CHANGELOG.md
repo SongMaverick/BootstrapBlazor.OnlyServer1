@@ -36,10 +36,10 @@
 - **Fixed** P0-3 部署修复回归:`Program.cs` 两个 Cookie 的 `SecurePolicy` 按环境分流——`Development` 走 `SameAsRequest`(配合 `launchSettings.json` 的 `http://localhost:8373`),`Production` 走 `Always`(配合 IIS HTTPS binding)。原先写死 `Always` 会让本地 HTTP 下浏览器拒传 antiforgery / 登录 cookie,表现为"开发模式不能正常启动 / 反复跳登录页";新增防回归注释说明此坑
 - **Fixed** P0-3 部署修复回归:`web.config` 的 HSTS 头(`max-age=31536000; preload`)迁出到 `web.Release.config`(`Insert` 转换,Release 构建时才合并)。原写死会让 dev / IIS Express 触发浏览器 HSTS 缓存,缓存后切回 HTTP dev 被浏览器强制升级 HTTPS → 开发模式打不开
 - **Fixed** 生产姓名显示为 `?` 的根因:测试/生产 DB collation 不同(测试 `Chinese_PRC_CI_AS` 支持中文 VARCHAR,生产 `SQL_Latin1_General_CP1_CI_AS` 不支持),`Users.sql` 把 Name/GID/Email 等定义为 `varchar` 导致 NVARCHAR→VARCHAR 隐式转换时中文被替换为 `?`。修复路径选 **drop + DbMigrator 重建**(数据未正式上线,可丢):`--drop --schema --seed --migrate --source . --production` 一把搞定,SqlSugar CodeFirst 自动建 NVARCHAR。同时把 `Users.sql` + `DrawingNames.sql` 7+4 个列改为 `nvarchar`(留作 schema 文档,防以后有人手动 SSMS 踩坑);文件从 UTF-16LE 改为 UTF-8 BOM
-- **Added** `docs/db/collation-pitfall.md` 完整复盘这个坑(根因/验证/修复方案对比/防再犯清单),并对照正确的 `Migrations/001_IdentitySchema.sql`(全 NVARCHAR)作为后续新表的 schema 模板
+- **Added** collation 坑复盘(根因/验证/修复方案对比/防再犯清单),并对照正确的 `Migrations/001_IdentitySchema.sql`(全 NVARCHAR)作为后续新表的 schema 模板
 - **Removed** 临时考虑的 `002_ConvertChineseColumnsToNvarchar.sql` ALTER 方案(用户确认生产数据可丢,drop + 重建更干净)
 - **Fixed** DbMigrator `BackfillUserDepartmentsAsync` 永远不跑导致 DepartmentId 全 NULL 的 bug:从 `if (doSeed)` 改到 `if (doMigrate)`(它操作的是 migrate 出来的 Users,与 --seed 无关);同时默认部门不存在时**自动建一份**(不再静默跳过),并打印"预期回填 N 条 / 实际 N 条"用于排查 0 更新问题
-- **Added** `docs/deploy/it-https-deploy-guide.md`(约 350 行):给 IT 的纯 GUI HTTPS 部署操作清单(加 binding / HTTP Redirect / 应用池重启 / 验证 / 6 类常见问题 / 回滚)
+- **Added** 给 IT 的纯 GUI HTTPS 部署操作清单(约 350 行,加 binding / HTTP Redirect / 应用池重启 / 验证 / 6 类常见问题 / 回滚)
 
 ### UX(2026-07-07 AddDrawingNumbers UX 多轮迭代)
 - **Changed** 卡片布局:`col-md-6`(每行 2 卡)→ `col-12`(每行 1 Part 列表式)
@@ -48,13 +48,13 @@
 - **Added** Toolbar `⇕ 全部展开/折叠` 单按钮开关,文案随状态切换
 - **Changed** 图名水平多列:响应式 `col-12 / col-sm-6 / col-md-4 / col-lg-3 / col-xl-2`(手机 1 / 平板 2 / 笔记本 3 / 标准 4 / 大屏 **6** 列)
 - **Added** Card body 同色系浅背景:`LightBgFor()` 映射 8 色 Bootstrap 对应浅色 hex(`#fff3cd` 黄 / `#d1e7dd` 绿 / …)
-- **Added** 详情见 `docs/add-drawing-numbers-ux.md`
+- **Added** AddDrawingNumbers 页面 UX 决策说明(折叠/响应式/同色系背景)
 
 ### Documentation
-- **Added** `docs/code-review-onlyserver1-2026-07-07.md` 主项目审查报告(27 项发现,3 Critical / 7 High / 8 Medium / 9 Low)
-- **Added** `docs/code-review-2026-07-07.md` 多项目审查报告(覆盖 Tests/DbMigrator)
+- **Added** 主项目代码审查报告(2026-07-07,27 项发现,3 Critical / 7 High / 8 Medium / 9 Low)
+- **Added** 多项目代码审查报告(2026-07-07,覆盖 Tests/DbMigrator)
 - **Added** README.md 引用审查报告
-- **Added** `docs/add-drawing-numbers-ux.md` UX 决策文档
+- **Added** AddDrawingNumbers UX 决策文档
 - **Added** README-DEPLOY.md 第 7.x 节"部署后必查清单"(M7)
 
 ### Test

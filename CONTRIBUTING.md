@@ -41,7 +41,7 @@ Closes #42
 
 ## 代码规范
 
-详细见 [docs/development.md](BootstrapBlazor.OnlyServer1/docs/development.md)。要点:
+详细见代码本身的命名/规范约束(项目根 `.editorconfig`、各项目 `.csproj`)。要点:
 
 - **命名空间**:统一 file-scoped(`namespace Foo;`,不用 `namespace Foo { ... }`)
 - **可空性**:`<Nullable>enable</Nullable>` 已开,引用类型必须显式标注 `?`
@@ -58,17 +58,16 @@ Closes #42
    - `CreateAllTables` 加新表
    - `EvolveSchemaAsync` 加演进逻辑(给已存在库加列)
    - `EnsureAllIndexes` 加索引
-3. 更新 [docs/database.md](BootstrapBlazor.OnlyServer1/docs/database.md) 的 ER 图
+3. 在 PR 描述里附带新表/新字段说明(暂时没有独立的 ER 图文档)
 4. 在 PR 描述里写明:"需要跑 `--schema` 升级现有库"
 
 ## 架构变更
 
 任何技术选型/架构调整必须先写 ADR:
 
-1. 复制 `BootstrapBlazor.OnlyServer1/docs/adr/template.md` 为 `0006-xxx.md`
-2. 填写"背景/决策/后果"
-3. 在主 [README.md](README.md) 的 ADR 表格里加一行链接
-4. PR 合并前 reviewer 必须确认 ADR 完整
+1. 在项目根新建 `0006-xxx.md`,按 ADR 模板(标题/背景/决策/后果)填写
+2. 在主 [README.md](README.md) 的文档节里登记一行链接
+3. PR 合并前 reviewer 必须确认 ADR 完整
 
 ## 不要做的事
 

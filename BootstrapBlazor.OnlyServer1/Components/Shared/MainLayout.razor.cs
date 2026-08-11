@@ -64,6 +64,8 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
         {
             (new() { Text = "订单列表", Icon = "fa-solid fa-fw fa-file-invoice", Url = "/orders" },
                 RoleNames.All),
+            (new() { Text = "订单管理", Icon = "fa-solid fa-fw fa-clipboard-list", Url = "/order-management" },
+                RoleNames.All),
             (new() { Text = "图名列表", Icon = "fa-solid fa-fw fa-list", Url = "/drawing-names" },
                 new[] { RoleNames.Admin, RoleNames.Operator }),
             (new() { Text = "人员列表", Icon = "fa-solid fa-fw fa-users", Url = "/user-management" },

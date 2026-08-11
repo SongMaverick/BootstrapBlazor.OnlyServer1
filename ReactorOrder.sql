@@ -11,3 +11,4 @@ INSERT INTO ReactorOrder (Id, OrderNumber, Power, Ratedvoltage, CreatedBy, Creat
 INSERT INTO ReactorOrder (Id, OrderNumber, Power, Ratedvoltage, CreatedBy, CreatedTime) VALUES (71, 813320, 155, 400, '郭运波', '2026-04-07 09:36:42.3845266');
 INSERT INTO ReactorOrder (Id, OrderNumber, Power, Ratedvoltage, CreatedBy, CreatedTime) VALUES (72, 813237, 100, 230, '戚彬', '2026-04-14 13:12:23.7047321');
 INSERT INTO ReactorOrder (Id, OrderNumber, Power, Ratedvoltage, CreatedBy, CreatedTime) VALUES (73, 813290, 100, 220, '郭运波', '2026-05-30 15:29:35.9901239');
+INSERT INTO ReactorOrder (Id, OrderNumber, Power, Ratedvoltage, CreatedBy, CreatedTime) VALUES (74, 813408, 60, 380, '郭运波', '2026-07-17 13:29:54.6677338');

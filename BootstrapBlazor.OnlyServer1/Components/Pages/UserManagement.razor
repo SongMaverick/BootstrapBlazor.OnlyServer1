@@ -15,7 +15,8 @@
 <div class="page-user">
     <h1>人员列表</h1>
 
-    <Table TItem="Models.Users"
+    <Table @ref="_tableRef"
+           TItem="Models.Users"
            IsPagination="true"
            PageItemsSource="@PageItemsSource"
            RenderMode="TableRenderMode.Table"
@@ -76,8 +77,9 @@
                          Text="部门"
                          IsVisibleWhenAdd="false"
                          IsVisibleWhenEdit="false" />
-            @* 角色列:仅列表展示,新增/编辑弹窗里不显示 —— 新增走自定义的"初始密码+角色"弹窗
+            @* 角色列:仅列表展示,新增/编辑弹窗里不显示 —— 新增走自定义的"选择角色"弹窗
                (line 121-125 MultiSelect),编辑角色通过 /user-roles 页面管理。
+               (2026-08-11 改:弹窗里不再让管理员设置初始密码,密码统一默认 123456)
                (2026-07-13 修"新建弹窗有个不能填的 RoleNames 文本框"困惑:Readonly 不会自动
                隐藏,必须显式 IsVisibleWhenAdd=false / IsVisibleWhenEdit=false,
                与 DepartmentName 列同样的处理) *@
@@ -100,7 +102,7 @@
                     }
                 </Template>
             </TableColumn>
-            @* 密码列:不再直接显示 PasswordHash;改为新增时弹出"初始密码"输入框 *@
+            @* 密码列:不再直接显示 PasswordHash;新增时统一使用默认密码 123456,在弹窗里只选角色 *@
             <TableColumn @bind-Field="@context.PasswordHash"
                          Text="密码哈希"
                          Visible="false" />
@@ -112,14 +114,14 @@
         </TableColumns>
     </Table>
 
-    @* 新增用户弹窗(仅在新增时显示,用于录入初始密码 + 选部门) *@
+    @* 新增用户弹窗(仅在新增时显示,用于选角色;密码统一默认 123456) *@
     @if (_showAddPasswordModal)
     {
         <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog" aria-modal="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">设置初始密码</h5>
+                        <h5 class="modal-title">选择角色(初始密码默认 123456,用户登录后请立即修改)</h5>
                         <button type="button" class="btn-close" @onclick="CloseAddPasswordModal"></button>
                     </div>
                     <div class="modal-body">
@@ -138,22 +140,35 @@
                         @* 部门已在 Table 自带编辑弹窗的 EditTemplate 里选过(2026-07-10),这里不再重复 *@
                         <div class="mb-3">
                             <label class="form-label">角色(可多选)</label>
-                            @* 注:BootstrapBlazor 8.11.0 的 <Select> 没有 IsMultiple 属性,
-                               多选必须使用专门的 <MultiSelect> 组件,它绑定 SelectedItems 集合(SelectedItem 列表)。 *@
-                            <MultiSelect TValue="SelectedItem"
-                                         Items="_roleItems"
-                                         @bind-SelectedItems="_pendingAddSelectedRoles"
-                                         ShowSearch="true"
-                                         PlaceHolder="请选择角色(可多选)" />
-                            <small class="form-text text-muted">不选则该用户无任何角色,登录后访问任何模块都会被拒(2026-07-10 新增)</small>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">初始密码</label>
-                            <input type="password" class="form-control" @bind="_pendingPassword" placeholder="@($"至少 {IdentityOptions.Value.Password.RequiredLength} 位")" />
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">确认密码</label>
-                            <input type="password" class="form-control" @bind="_pendingPasswordConfirm" placeholder="再次输入" />
+                            @* (2026-08-11) BootstrapBlazor 8.11.0 的 <MultiSelect> SelectedItemsChanged
+                               在 Modal 里选中的角色没真正传到字段(N=0)—— 直接改用原生 checkbox
+                               列表,100% 可控,选中状态肉眼可见。 *@
+                            <div class="role-checkbox-list" style="max-height: 220px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
+                                @if (_roleItems == null || _roleItems.Count == 0)
+                                {
+                                    <div class="text-muted small">暂无可选角色</div>
+                                }
+                                else
+                                {
+                                    @foreach (var role in _roleItems)
+                                    {
+                                        var isChecked = _pendingAddSelectedRoles.Any(r => r.Value == role.Value);
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox"
+                                                   id="pending-role-@role.Value"
+                                                   checked="@isChecked"
+                                                   @onchange="@(e => TogglePendingRole(role, (bool)e.Value))" />
+                                            <label class="form-check-label" for="pending-role-@role.Value">
+                                                @role.Text
+                                            </label>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                            <small class="form-text text-muted">
+                                已选 <strong>@_pendingAddSelectedRoles.Count</strong> 个角色。
+                                不选则该用户无任何角色,登录后访问任何模块都会被拒(2026-07-10 新增)
+                            </small>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -216,13 +231,21 @@
     {
         if (changedType == ItemChangedType.Add)
         {
-            // 新增:先让管理员在弹窗里输入初始密码 + 选角色
+            // 新增:弹出"选择角色"弹窗。密码统一默认 123456,不需要用户输入。
             _pendingAddUser = user;
-            _pendingPassword = "";
-            _pendingPasswordConfirm = "";
             _pendingAddSelectedRoles = new();   // 复位,避免上次残留 (2026-07-10)
             _showAddPasswordModal = true;
-            return false;  // 暂不保存,等弹窗确认后再调用 SaveAsync
+
+            // (2026-08-11) 强制先渲染模态框,再 return true 让 BootstrapBlazor 关闭内置弹窗。
+            // 不然 return true 触发表格关闭"新建窗口"的渲染,会跟我们的"选择角色"模态框
+            // 渲染打架,模态框被挤掉 —— 用户得切走再切回才能看到。
+            await InvokeAsync(StateHasChanged);
+
+            // (2026-08-11) 返回 true 而非 false:BootstrapBlazor Table 在 OnSaveAsync
+            // 返回 false 时会强制弹"保存数据失败" Toast,误导用户以为操作坏了。
+            // 真正的 Save 在 ConfirmAddUserAsync 里。
+            await ShowToast("请在弹窗里选择角色,初始密码统一为 123456", ToastCategory.Information);
+            return true;
         }
         else
         {
@@ -240,15 +263,28 @@
     }
 
     private async Task<bool> OnDeleteAsync(IEnumerable<Models.Users> users)
-        => await UsersService.SoftDeleteAsync(users);
+    {
+        var (ok, error) = await UsersService.SoftDeleteAsync(users);
+        if (!ok && !string.IsNullOrEmpty(error))
+        {
+            await ShowToast(error, ToastCategory.Error);
+        }
+        return ok;
+    }
 
     // ===== 新增用户弹窗 =====
     private bool _showAddPasswordModal;
     private Models.Users? _pendingAddUser;
-    private string _pendingPassword = "";
-    private string _pendingPasswordConfirm = "";
+    // (2026-08-11) Table 引用 —— 角色绑定完成后手动触发 QueryAsync 刷新,
+    //   让 RoleNames(LEFT JOIN 查出来的视图列)显示出来
+    private BootstrapBlazor.Components.Table<Models.Users>? _tableRef;
+    // (2026-08-11) 移除 _pendingPassword / _pendingPasswordConfirm —— 密码统一默认 123456,
+    //   与 DbMigrator 迁移 Users.sql 时一致,用户登录后自行修改。
     private List<SelectedItem> _pendingAddSelectedRoles = new();   // MultiSelect 绑定的是 SelectedItem 集合,提交时再转 int
     private bool _addSaving;
+
+    // 项目惯例的默认密码(与 DbMigrator 迁移 Users.sql 时一致),首次登录后强制修改。
+    private const string DefaultPassword = "123456";
 
     private void CloseAddPasswordModal()
     {
@@ -257,26 +293,34 @@
         _pendingAddSelectedRoles = new();
     }
 
+    /// <summary>
+    /// (2026-08-11) BootstrapBlazor 8.11.0 MultiSelect 在 Modal 里有 binding quirk —— 改成原生 checkbox 列表,
+    /// 这里直接维护 _pendingAddSelectedRoles 集合。
+    /// </summary>
+    private void TogglePendingRole(SelectedItem role, bool isChecked)
+    {
+        if (isChecked)
+        {
+            if (!_pendingAddSelectedRoles.Any(r => r.Value == role.Value))
+            {
+                _pendingAddSelectedRoles.Add(role);
+            }
+        }
+        else
+        {
+            _pendingAddSelectedRoles.RemoveAll(r => r.Value == role.Value);
+        }
+    }
+
     private async Task ConfirmAddUserAsync()
     {
         if (_pendingAddUser == null) return;
 
-        if (string.IsNullOrEmpty(_pendingPassword) || _pendingPassword.Length < IdentityOptions.Value.Password.RequiredLength)
-        {
-            await ShowToast($"初始密码至少 {IdentityOptions.Value.Password.RequiredLength} 位", ToastCategory.Warning);
-            return;
-        }
-        if (_pendingPassword != _pendingPasswordConfirm)
-        {
-            await ShowToast("两次输入的密码不一致", ToastCategory.Warning);
-            return;
-        }
-
         _addSaving = true;
         try
         {
-            // 1) 先建用户
-            var (ok, error) = await UsersService.SaveAsync(_pendingAddUser, _pendingPassword, ItemChangedType.Add.ToDomain());
+            // 1) 先建用户,密码用项目默认 123456
+            var (ok, error) = await UsersService.SaveAsync(_pendingAddUser, DefaultPassword, ItemChangedType.Add.ToDomain());
             if (!ok)
             {
                 await ShowToast(error ?? "创建失败", ToastCategory.Error);
@@ -291,6 +335,10 @@
                 .Distinct()
                 .ToList();
             var assignedRoles = roleIds.Count;
+
+            _logger.LogInformation(
+                "UserManagement.ConfirmAddUserAsync: 准备为新用户 userId={Uid} 分配 {N} 个角色",
+                _pendingAddUser.Id, assignedRoles);
 
             // 3) 分配角色(可选)。失败则回滚刚创建的用户 —— 不留孤儿账户。
             if (assignedRoles > 0)
@@ -317,10 +365,19 @@
             }
 
             await ShowToast(assignedRoles > 0
-                ? $"用户创建成功,已分配 {assignedRoles} 个角色"
-                : "用户创建成功(未分配角色)",
+                ? $"用户创建成功(默认密码 123456),已分配 {assignedRoles} 个角色"
+                : "用户创建成功(默认密码 123456,未分配角色)",
                 ToastCategory.Success);
             CloseAddPasswordModal();
+
+            // (2026-08-11) 手动刷新 Table 一次 —— BootstrapBlazor Table 在 OnSaveAsync
+            // 返回 true 时会自动调一次 OnQueryAsync,但那一次在我们的 ConfirmAddUserAsync
+            // 完成前就触发了,那时用户还没绑角色,RoleNames 是空的。
+            // 我们 Save + SetUserRoles 都做完后再补一次刷新,RoleNames 就对了。
+            if (_tableRef != null)
+            {
+                await _tableRef.QueryAsync();
+            }
         }
         finally
         {

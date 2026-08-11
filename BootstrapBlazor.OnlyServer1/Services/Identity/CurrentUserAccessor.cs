@@ -84,7 +84,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         //
         // **不要删这段注释,不要删这个方法,不要在 Service mutation 里
         //   旁路调用而不调本方法。** 漏调的 Service 方法视为"已知未审",
-        //   上线前需回到 docs/code-review-onlyserver1-2026-07-07.md "H1"
+        //   上线前需对照 2026-07-07 代码审查报告 "H1" 段
         //   段对照检查。
         // ====================================================================
         public (bool ok, string? error) RequireRole(params string[] roles)

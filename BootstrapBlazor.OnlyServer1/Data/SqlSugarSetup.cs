@@ -17,9 +17,10 @@ namespace BootstrapBlazor.OnlyServer1.Data
 
         public SqlSugarSetup(IConfiguration configuration, ILogger<SqlSugarSetup> logger)
         {
-            
-            var connectionString = configuration.GetConnectionString("sqlServerConnection");
-            //var connectionString = configuration.GetConnectionString("sqlServerConnectionStringOffice");
+            //生产环境连接字符串
+            //var connectionString = configuration.GetConnectionString("sqlServerConnection");
+            //测试环境连接字符串
+            var connectionString = configuration.GetConnectionString("sqlServerConnectionStringOffice");
             //var connectionString = configuration.GetConnectionString("sqlServerConnectionStringHomeSA");
 
             var config = new ConnectionConfig

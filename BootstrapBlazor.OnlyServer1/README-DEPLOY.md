@@ -6,7 +6,7 @@
 > 应用托管：ASP.NET Core 8 in-process hosting (ANCM V2)
 > 部署工具：`scripts/publish-iis.ps1`（开发机）+ `scripts/create-iis-site.ps1`（服务器）
 >
-> **(2026-08-03 IIS 迁移)** 给 IT 的**完整操作手册**已重写到 [docs/deploy-it-runbook.md](docs/deploy-it-runbook.md),本文是开发侧的部署设计参考。
+> **(2026-08-03 IIS 迁移)** 本文是开发侧的部署设计参考。
 
 ## 1. 先决条件
 

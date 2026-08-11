@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BootstrapBlazor.DbMigrator"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BootstrapBlazor.OnlyServer1.Tests", "BootstrapBlazor.OnlyServer1.Tests\BootstrapBlazor.OnlyServer1.Tests.csproj", "{2A925FA1-DF08-45FD-8B85-F74FD272F5FC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BootstrapBlazor.OrderManagementSetup", "BootstrapBlazor.OrderManagementSetup\BootstrapBlazor.OrderManagementSetup.csproj", "{CA8CF22D-2428-462C-8F0D-FECFE9430D19}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{2A925FA1-DF08-45FD-8B85-F74FD272F5FC}.Release|x64.Build.0 = Release|Any CPU
 		{2A925FA1-DF08-45FD-8B85-F74FD272F5FC}.Release|x86.ActiveCfg = Release|Any CPU
 		{2A925FA1-DF08-45FD-8B85-F74FD272F5FC}.Release|x86.Build.0 = Release|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Debug|x64.Build.0 = Debug|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Debug|x86.Build.0 = Debug|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Release|x64.ActiveCfg = Release|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Release|x64.Build.0 = Release|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Release|x86.ActiveCfg = Release|Any CPU
+		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

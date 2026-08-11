@@ -45,6 +45,20 @@ namespace BootstrapBlazor.OnlyServer1.Services
             _logger = logger;
         }
 
+        /// <summary>
+        /// 下拉选项:未删除的用户 Id → Name(框架无关,UI 层再映射为 SelectedItem)。
+        /// 命名对齐 RolesService.GetSelectItemsAsync(返回 SelectItem 而非实体)。
+        /// 供「订单管理」页选择项目负责人(一次/二次)。
+        /// </summary>
+        public async Task<List<SelectItem<int>>> GetSelectItemsAsync()
+        {
+            var users = await _db.Queryable<Users>()
+                .Where(u => !u.IsDeleted)
+                .OrderBy(u => u.Name)
+                .ToListAsync();
+            return users.Select(u => new SelectItem<int>(u.Id, u.Name ?? string.Empty)).ToList();
+        }
+
         public Task<PagedResult<Users>> QueryAsync(PagedQuery options, bool hideAdminRole = false)
         {
             try
@@ -244,11 +258,13 @@ namespace BootstrapBlazor.OnlyServer1.Services
         }
 
         /// <summary>
-        /// 软删用户。
+        /// 软删用户:把 IsDeleted 置 true,不真删行。
+        /// 这样 OnQueryAsync 的 `!u.IsDeleted` 过滤才能生效,被软删的用户在列表里看不到,
+        /// 但行还在表里(为审计 / 后续物理清理留底)。
         /// 授权规则(纵深防御,2026-07-08 Review #H1 补漏):仅 Admin。
         /// 不删这段校验、不删这个注释。
         /// </summary>
-        public async Task<bool> SoftDeleteAsync(IEnumerable<Users> users)
+        public async Task<(bool ok, string? error)> SoftDeleteAsync(IEnumerable<Users> users)
         {
             // ====================================================================
             // 纵深防御(2026-07-08 Review #H1 补漏):
@@ -261,28 +277,53 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 _logger.LogWarning(
                     "UsersService.SoftDeleteAsync denied: callerId={CallerId} reason={Reason}",
                     _currentUser.GetUserId(), authErr);
-                return false;
+                return (false, authErr);
             }
 
             var userList = users.ToList();
+            if (userList.Count == 0) return (true, null);
+
+            // 不允许软删唯一超管(防止全站没人能登录)
+            var targetIds = userList.Select(u => u.Id).ToList();
+            var adminIds = await _db.Queryable<UserRolesRow>()
+                .InnerJoin<Roles>((ur, r) => ur.RoleId == r.Id)
+                .Where((ur, r) => r.NormalizedName == "ADMIN")
+                .Select(ur => ur.UserId)
+                .Distinct()
+                .ToListAsync();
+            // 排除那些已经是 IsDeleted=true 的(避免误判)
+            var activeAdminIds = await _db.Queryable<Users>()
+                .Where(u => adminIds.Contains(u.Id) && !u.IsDeleted)
+                .Select(u => u.Id)
+                .ToListAsync();
+            var activeAdminCount = activeAdminIds.Count;
+            var wouldRemoveAllAdmins = activeAdminIds.All(id => targetIds.Contains(id)) && activeAdminCount > 0 && activeAdminCount <= targetIds.Count;
+            if (wouldRemoveAllAdmins)
+            {
+                var msg = "禁止软删唯一超管账号";
+                _logger.LogWarning("UsersService.SoftDeleteAsync blocked: callerId={CallerId} reason={Reason}",
+                    _currentUser.GetUserId(), msg);
+                return (false, msg);
+            }
+
             try
             {
-                foreach (var user in userList)
-                {
-                    _logger.LogInformation("Soft-deleting user: {Name}", user.Name);
-                    var result = await _userManager.DeleteAsync(user);
-                    if (!result.Succeeded)
-                    {
-                        _logger.LogWarning("Soft-delete user failed: {Name} {Errors}",
-                            user.Name, string.Join(";", result.Errors.Select(e => e.Description)));
-                    }
-                }
-                return true;
+                // 真软删:UPDATE Users SET IsDeleted = 1 WHERE Id IN (...) AND IsDeleted = 0
+                // 用 ExecuteCommandAsync 拿受影响行数,0 行 = 已经被别人删了(并发)或不存在,不算错。
+                var affected = await _db.Updateable<Users>()
+                    .SetColumns(u => u.IsDeleted == true)
+                    .Where(u => targetIds.Contains(u.Id) && !u.IsDeleted)
+                    .ExecuteCommandAsync();
+                _logger.LogInformation(
+                    "UsersService.SoftDeleteAsync: callerId={CallerId} targetIds=[{Ids}] affected={N}",
+                    _currentUser.GetUserId(), string.Join(",", targetIds), affected);
+                return (true, null);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting users");
-                return false;
+                _logger.LogError(ex, "UsersService.SoftDeleteAsync: callerId={CallerId} targetIds=[{Ids}]",
+                    _currentUser.GetUserId(), string.Join(",", targetIds));
+                return (false, "删除失败,请重试");
             }
         }
 

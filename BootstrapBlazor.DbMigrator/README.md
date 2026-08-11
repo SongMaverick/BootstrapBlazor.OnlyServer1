@@ -15,7 +15,7 @@
 
 ```bash
 # 命令 6:drop 表 + CodeFirst 重建(NVARCHAR)+ 灌种子 + 从 SQL 文件灌数据 + DepartmentId 回填
-dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.DbMigrator --drop --schema --seed --migrate --source "D:\D7_codeBase\BootstrapBlazor.OnlyServer1" --production --admin-password "YourSecurePwd!2026"
+dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.DbMigrator --drop --schema --seed --migrate --source "D:\D7_codeBase\BootstrapBlazor.OnlyServer1" --production --admin-password "在此替换为你的强密码"
 ```
 
 详细 checklist + 执行顺序 + 跑完验证见下方**命令 6**。
@@ -85,8 +85,10 @@ dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.
 #### 6.2 命令
 
 ```bash
-dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.DbMigrator --drop --schema --seed --migrate --source "D:\D7_codeBase\BootstrapBlazor.OnlyServer1" --production --admin-password "YourSecurePwd!2026"
+dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.DbMigrator --drop --schema --seed --migrate --source "D:\D7_codeBase\BootstrapBlazor.OnlyServer1" --production --admin-password "在此替换为你的强密码"
 ```
+
+> ⚠ 复制后**必须**把 `"在此替换为你的强密码"` 改成你自己的强密码(≥12 位、大小写+数字+符号)。直接复制粘贴 = Admin 密码是中文占位符 = 登录失败。
 
 > **注意**:`--source` 指向**包含 SQL 文件的目录**,不是某个具体文件。默认用项目根目录(里面有 Users.sql / C04.sql 等)。
 
@@ -223,7 +225,7 @@ dotnet run --project D:\D7_codeBase\BootstrapBlazor.OnlyServer1\BootstrapBlazor.
 
 ### L-7 协调迁移(2026-07-08 Review #L-7)
 
-C0X 9 张表的 `DrawName` / `DrawNumber` 列改名为 `DrawingName` / `DrawingNumber`(详见 `docs/naming-consistency-2026-07-08.md` L-7)。
+C0X 9 张表的 `DrawName` / `DrawNumber` 列改名为 `DrawingName` / `DrawingNumber`(命名一致性审查报告 2026-07-08 L-7 项)。
 
 **3 个 mode 独立运行**(不与 `--schema` / `--seed` / `--migrate` 组合):
 - `--check-c0x-state`:只读检查当前状态(部署前后必跑)
@@ -245,11 +247,11 @@ dotnet run --project BootstrapBlazor.DbMigrator -- --check-c0x-state
 dotnet run --project BootstrapBlazor.DbMigrator -- --rollback-c0x-drawingname
 ```
 
-**部署手册**:`docs/deploy/l7-rename-deploy.md`(含备份、回滚、round-trip 验证、烟测清单)
+**部署手册**:见 git history 中 L-7 列重命名提交(含备份、回滚、round-trip 验证、烟测清单)
 
 ### L-8 协调迁移(2026-07-08 Review #L-8)
 
-`Users.GID` 列重命名为 `Users.Gid`(详见 `docs/naming-consistency-2026-07-08.md` L-8)。
+`Users.GID` 列重命名为 `Users.Gid`(命名一致性审查报告 2026-07-08 L-8 项)。
 
 **注意**:项目尚未上线,无现存用户 cookie/会话,Claim 字符串可直接改 `GidClaim = "Gid"`,无需 C.1 双 Claim 过渡阶段。
 
@@ -273,7 +275,7 @@ dotnet run --project BootstrapBlazor.DbMigrator -- --check-users-state
 dotnet run --project BootstrapBlazor.DbMigrator -- --rollback-users-gid
 ```
 
-**部署手册**:`docs/deploy/l8-rename-deploy.md`
+**部署手册**:见 git history 中 L-8 列重命名提交
 
 ---
 
