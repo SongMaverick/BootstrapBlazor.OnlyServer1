@@ -14,9 +14,9 @@ namespace BootstrapBlazor.OrderManagementSetup;
 ///   会遍历全部业务表、读 Order.sql / C0X.sql 等历史 SQL 文件重灌数据。
 ///   在生产库上为了一张新表去跑它,风险面远大于收益。
 ///   所以订单管理的建表/索引/权限码单独成一个进程,只碰它自己的东西:
-///     - OrderDetails 表(不存在才建)
-///     - IX_OrderDetails_OrderId 过滤唯一索引
-///     - Permissions 表里 3 个 OrderDetail.* 权限码
+///     - OrderMDDetail 表(不存在才建)
+///     - IX_OrderMDDetail_OrderId 过滤唯一索引
+///     - Permissions 表里 3 个 OrderMDDetail.* 权限码
 ///     - RolePermissions 里这 3 个码到 ADMIN / OPERATOR / VIEWER 的关联
 ///   绝不 DROP、不改任何已有表的结构、不动任何业务数据。
 ///
@@ -36,18 +36,18 @@ namespace BootstrapBlazor.OrderManagementSetup;
 /// </summary>
 public static class Program
 {
-    private const string TableName = "OrderDetails";
-    private const string IndexName = "IX_OrderDetails_OrderId";
+    private const string TableName = "OrderMDDetail";
+    private const string IndexName = "IX_OrderMDDetail_OrderId";
 
     /// <summary>
-    /// 本功能引入的权限码。明细行随订单存在,不单独新增,故没有 OrderDetail.Create。
+    /// 本功能引入的权限码。明细行随订单存在,不单独新增,故没有 OrderMDDetail.Create。
     /// 与 BootstrapBlazor.OnlyServer1/Models/Identity/PermissionCodes.cs 一一对应。
     /// </summary>
     private static readonly Permissions[] _permissionSeeds =
     {
-        new() { Code = PermissionCodes.OrderDetailRead,   Name = "查看订单明细", Category = "订单管理", SortOrder = 1, IsActive = true },
-        new() { Code = PermissionCodes.OrderDetailEdit,   Name = "编辑订单明细", Category = "订单管理", SortOrder = 2, IsActive = true },
-        new() { Code = PermissionCodes.OrderDetailDelete, Name = "清空订单明细", Category = "订单管理", SortOrder = 3, IsActive = true },
+        new() { Code = PermissionCodes.OrderMDDetailRead,   Name = "查看订单明细", Category = "订单管理", SortOrder = 1, IsActive = true },
+        new() { Code = PermissionCodes.OrderMDDetailEdit,   Name = "编辑订单明细", Category = "订单管理", SortOrder = 2, IsActive = true },
+        new() { Code = PermissionCodes.OrderMDDetailDelete, Name = "清空订单明细", Category = "订单管理", SortOrder = 3, IsActive = true },
     };
 
     /// <summary>
@@ -56,9 +56,9 @@ public static class Program
     /// </summary>
     private static readonly Dictionary<string, string[]> _roleMapping = new()
     {
-        ["ADMIN"] = new[] { PermissionCodes.OrderDetailRead, PermissionCodes.OrderDetailEdit, PermissionCodes.OrderDetailDelete },
-        ["OPERATOR"] = new[] { PermissionCodes.OrderDetailRead, PermissionCodes.OrderDetailEdit, PermissionCodes.OrderDetailDelete },
-        ["VIEWER"] = new[] { PermissionCodes.OrderDetailRead },
+        ["ADMIN"] = new[] { PermissionCodes.OrderMDDetailRead, PermissionCodes.OrderMDDetailEdit, PermissionCodes.OrderMDDetailDelete },
+        ["OPERATOR"] = new[] { PermissionCodes.OrderMDDetailRead, PermissionCodes.OrderMDDetailEdit, PermissionCodes.OrderMDDetailDelete },
+        ["VIEWER"] = new[] { PermissionCodes.OrderMDDetailRead },
     };
 
     public static async Task<int> Main(string[] args)
@@ -74,7 +74,10 @@ public static class Program
         if (!doCheck && !doInstall)
         {
             Console.Error.WriteLine("错误:必须指定 --check(只读检查)或 --install(执行安装)");
-            Console.Error.WriteLine("用法:dotnet run --project BootstrapBlazor.OrderManagementSetup -- --check");
+            Console.Error.WriteLine("用法:");
+            Console.Error.WriteLine("  dotnet run --project BootstrapBlazor.OrderManagementSetup -- --check");
+            Console.Error.WriteLine("  dotnet run --project BootstrapBlazor.OrderManagementSetup -- --install               # 测试环境直接建表");
+            Console.Error.WriteLine("  dotnet run --project BootstrapBlazor.OrderManagementSetup -- --install --production   # 生产环境(需输 YES)");
             return 1;
         }
 
@@ -135,7 +138,7 @@ public static class Program
             Console.WriteLine("即将对生产数据库执行以下操作(均为新增,不删除、不修改已有数据):");
             Console.WriteLine($"  - 创建表 {TableName}(已存在则跳过)");
             Console.WriteLine($"  - 创建过滤唯一索引 {IndexName}(已存在则跳过)");
-            Console.WriteLine("  - 灌入 3 个 OrderDetail.* 权限码(已存在则跳过)");
+            Console.WriteLine("  - 灌入 3 个 OrderMDDetail.* 权限码(已存在则跳过)");
             Console.WriteLine("  - 把这 3 个权限码绑给 ADMIN / OPERATOR / VIEWER(已绑定则跳过)");
             Console.Write(" 确认? 输入 YES 继续: ");
             var confirm = Console.ReadLine();
@@ -194,12 +197,12 @@ public static class Program
         }
 
         // CodeFirst 只建这一张表,不会碰其它实体
-        await Task.Run(() => db.CodeFirst.InitTables<OrderDetails>());
+        await Task.Run(() => db.CodeFirst.InitTables<OrderMDDetail>());
         Console.WriteLine($"  ✓ {TableName}:已创建");
     }
 
     /// <summary>
-    /// OrderDetails.OrderId 用 filtered unique index(仅约束 IsDeleted=0 的活跃行):
+    /// OrderMDDetail.OrderId 用 filtered unique index(仅约束 IsDeleted=0 的活跃行):
     /// 保证一个订单最多只有一条"有效"明细;清空明细(软删)后可以重新填写。
     /// 做法与 DbMigrator 里 IX_Orders_OrderNumber 一致。
     /// </summary>
@@ -214,9 +217,35 @@ END";
         Console.WriteLine($"  ✓ 过滤唯一索引 {IndexName} (WHERE IsDeleted = 0) 已就绪");
     }
 
-    /// <summary>只插入 Code 不存在的权限码,已存在的一律不动(不覆盖 Name/Category 的人工调整)。</summary>
+    /// <summary>
+    /// 灌入 3 个 OrderMDDetail.* 权限码。
+    ///
+    /// 流程:
+    ///   1. 清理老的 OrderDetail.* 码(2026-08-12 重命名为 OrderMDDetail.*)
+    ///      —— 关联 RolePermissions 一起删;若有自定义角色分配老码,也会一并清理。
+    ///      仅匹配我们列出的 3 个老 Code,绝不 LIKE 模糊匹配,防误删其它模块权限。
+    ///   2. 插入 Code 不存在的新码(已存在的不动,不覆盖 Name/Category 的人工调整)。
+    /// </summary>
     private static async Task SeedPermissionsAsync(ISqlSugarClient db)
     {
+        // 1. 清理老的 OrderDetail.* 码
+        var oldCodes = new[] { "OrderDetail.Read", "OrderDetail.Edit", "OrderDetail.Delete" };
+        var oldPerms = await db.Queryable<Permissions>()
+            .Where(p => oldCodes.Contains(p.Code))
+            .ToListAsync();
+        if (oldPerms.Count > 0)
+        {
+            var oldIds = oldPerms.Select(p => p.Id).ToList();
+            var deletedRolePerms = await db.Deleteable<RolePermissions>()
+                .Where(rp => oldIds.Contains(rp.PermissionId))
+                .ExecuteCommandAsync();
+            var deletedPerms = await db.Deleteable<Permissions>()
+                .Where(p => oldIds.Contains(p.Id))
+                .ExecuteCommandAsync();
+            Console.WriteLine($"  ! 清理老的 OrderDetail.* 权限码:Permissions {deletedPerms} 个 + RolePermissions {deletedRolePerms} 条关联");
+        }
+
+        // 2. 插入 Code 不存在的新码
         var existingCodes = (await db.Queryable<Permissions>().ToListAsync())
             .Select(p => p.Code)
             .ToHashSet();
@@ -224,7 +253,7 @@ END";
         var toInsert = _permissionSeeds.Where(p => !existingCodes.Contains(p.Code)).ToList();
         if (toInsert.Count == 0)
         {
-            Console.WriteLine("  - 3 个权限码均已存在,跳过");
+            Console.WriteLine("  - 3 个 OrderMDDetail.* 权限码均已存在,跳过");
             return;
         }
 

@@ -7,9 +7,9 @@ using SqlSugar;
 namespace BootstrapBlazor.OnlyServer1.Services
 {
     /// <summary>
-    /// 「订单管理」Service:结构设计订单明细(OrderDetails)的读写。
+    /// 「订单管理」Service:结构设计订单明细(OrderMDDetail)的读写。
     ///
-    /// 列表以 Orders 为主体 LEFT JOIN OrderDetails —— 尚未填写明细的订单也要出现在列表里,
+    /// 列表以 Orders 为主体 LEFT JOIN OrderMDDetail —— 尚未填写明细的订单也要出现在列表里,
     /// 所以不能继承 BaseQueryService(它只支持单表 Queryable&lt;T&gt;)。
     /// 这里照 UsersService.QueryAsync 的 LeftJoin + 显式 Select 投影写法手写查询。
     ///
@@ -18,34 +18,34 @@ namespace BootstrapBlazor.OnlyServer1.Services
     ///
     /// Scoped 生命周期,与其他业务 Service 一致。
     /// </summary>
-    public class OrderDetailsService
+    public class OrderMDDetailService
     {
         private readonly ISqlSugarClient _db;
         private readonly CurrentUserAccessor _currentUser;
-        private readonly ILogger<OrderDetailsService> _logger;
+        private readonly ILogger<OrderMDDetailService> _logger;
 
         // (2026-07-07 Review #H3) OrderBy(string) 字符串拼接 SortName 防注入。
         // 值必须是下面 Select 投影里出现过的列名;不在集合内的 SortName 静默忽略,回退默认排序。
         private static readonly HashSet<string> _allowedSortCols =
             new(StringComparer.OrdinalIgnoreCase)
             {
-                nameof(OrderDetailRow.OrderId),
-                nameof(OrderDetailRow.OrderNumber),
-                nameof(OrderDetailRow.Power),
-                nameof(OrderDetailRow.RatedVoltage),
-                nameof(OrderDetailRow.Customer),
-                nameof(OrderDetailRow.MarketType),
-                nameof(OrderDetailRow.UnitCount),
-                nameof(OrderDetailRow.PrimarySubmitDate),
-                nameof(OrderDetailRow.PrimaryConfirmDate),
-                nameof(OrderDetailRow.SecondarySubmitDate),
-                nameof(OrderDetailRow.SecondaryConfirmDate),
+                nameof(OrderMDDetailRow.OrderId),
+                nameof(OrderMDDetailRow.OrderNumber),
+                nameof(OrderMDDetailRow.Power),
+                nameof(OrderMDDetailRow.RatedVoltage),
+                nameof(OrderMDDetailRow.Customer),
+                nameof(OrderMDDetailRow.MarketType),
+                nameof(OrderMDDetailRow.UnitCount),
+                nameof(OrderMDDetailRow.PrimarySubmitDate),
+                nameof(OrderMDDetailRow.PrimaryConfirmDate),
+                nameof(OrderMDDetailRow.SecondarySubmitDate),
+                nameof(OrderMDDetailRow.SecondaryConfirmDate),
             };
 
-        public OrderDetailsService(
+        public OrderMDDetailService(
             ISqlSugarClient db,
             CurrentUserAccessor currentUser,
-            ILogger<OrderDetailsService> logger)
+            ILogger<OrderMDDetailService> logger)
         {
             _db = db;
             _currentUser = currentUser;
@@ -55,17 +55,17 @@ namespace BootstrapBlazor.OnlyServer1.Services
         // ===== 查询 =====
 
         /// <summary>
-        /// 分页查询订单明细列表。Orders 为主表,LEFT JOIN 未删除的 OrderDetails
+        /// 分页查询订单明细列表。Orders 为主表,LEFT JOIN 未删除的 OrderMDDetail
         /// 以及两次 LEFT JOIN Users 取一次/二次负责人姓名。
         /// </summary>
-        public Task<PagedResult<OrderDetailRow>> QueryAsync(PagedQuery options)
+        public Task<PagedResult<OrderMDDetailRow>> QueryAsync(PagedQuery options)
         {
             try
             {
                 // 注意 join 条件里带上 !d.IsDeleted:软删的明细不能被 join 出来,
                 // 否则清空明细后该行仍显示旧数据。
                 var query = _db.Queryable<Orders>()
-                    .LeftJoin<OrderDetails>((o, d) => o.Id == d.OrderId && !d.IsDeleted)
+                    .LeftJoin<OrderMDDetail>((o, d) => o.Id == d.OrderId && !d.IsDeleted)
                     .LeftJoin<Users>((o, d, p) => d.PrimaryEngineerId == p.Id)
                     .LeftJoin<Users>((o, d, p, s) => d.SecondaryEngineerId == s.Id)
                     .Where(o => !o.IsDeleted);
@@ -94,7 +94,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 var total = query.Count();
                 var items = query
-                    .Select((o, d, p, s) => new OrderDetailRow
+                    .Select((o, d, p, s) => new OrderMDDetailRow
                     {
                         DetailId = d.Id,
                         OrderId = o.Id,
@@ -109,8 +109,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
                         SecondarySubmitDate = d.SecondarySubmitDate,
                         SecondaryConfirmDate = d.SecondaryConfirmDate,
                         IsSplitFrame = d.IsSplitFrame,
-                        HasTestBushing = d.HasTestBushing,
-                        TestBushingSpec = d.TestBushingSpec,
+                        TestBushingModel = d.TestBushingModel,
+                        TestBushingQuantity = d.TestBushingQuantity,
                         SwitchCount = d.SwitchCount,
                         IsWeldedTankRim = d.IsWeldedTankRim,
                         OrderNumber = o.OrderNumber,
@@ -130,7 +130,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     if (item.DetailId == 0 && item.UnitCount == 0) item.UnitCount = 1;
                 }
 
-                return Task.FromResult(new PagedResult<OrderDetailRow>
+                return Task.FromResult(new PagedResult<OrderMDDetailRow>
                 {
                     Items = items,
                     TotalCount = total,
@@ -141,8 +141,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error querying OrderDetails");
-                return Task.FromResult(new PagedResult<OrderDetailRow>());
+                _logger.LogError(ex, "Error querying OrderMDDetail");
+                return Task.FromResult(new PagedResult<OrderMDDetailRow>());
             }
         }
 
@@ -152,7 +152,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// 保存订单明细。返回 (ok, error):ok=false 时 error 是用户可读的中文消息。
         /// DetailId == 0 → INSERT 一条新明细;否则 UPDATE 现有明细。
         /// </summary>
-        public async Task<(bool ok, string? error)> SaveAsync(OrderDetailRow row)
+        public async Task<(bool ok, string? error)> SaveAsync(OrderMDDetailRow row)
         {
             // ====================================================================
             // 纵深防御(2026-07-07 Review #H1):
@@ -165,7 +165,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
             if (!authOk)
             {
                 _logger.LogWarning(
-                    "OrderDetailsService.SaveAsync denied: callerId={CallerId} reason={Reason}",
+                    "OrderMDDetailService.SaveAsync denied: callerId={CallerId} reason={Reason}",
                     _currentUser.GetUserId(), authErr);
                 return (false, authErr);
             }
@@ -195,9 +195,9 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 if (row.DetailId <= 0)
                 {
                     // 并发兜底:另一个会话可能刚给这个订单建了明细。
-                    // 真正的唯一性由 IX_OrderDetails_OrderId (WHERE IsDeleted=0) 保证,
+                    // 真正的唯一性由 IX_OrderMDDetail_OrderId (WHERE IsDeleted=0) 保证,
                     // 这里的预查只是为了给出更友好的提示。
-                    var existing = await _db.Queryable<OrderDetails>()
+                    var existing = await _db.Queryable<OrderMDDetail>()
                         .Where(d => d.OrderId == row.OrderId && !d.IsDeleted)
                         .FirstAsync();
                     if (existing != null)
@@ -205,7 +205,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                         return (false, "该订单的明细已被他人创建,请刷新页面后重试");
                     }
 
-                    var entity = ToEntity(row, new OrderDetails());
+                    var entity = ToEntity(row, new OrderMDDetail());
                     entity.CreatedBy = operatorName;
                     entity.CreatedTime = now;
                     entity.UpdatedBy = operatorName;
@@ -216,18 +216,18 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     {
                         row.DetailId = await _db.Insertable(entity).ExecuteReturnIdentityAsync();
                     }
-                    catch (Exception ex) when (IsDuplicateOrderDetailError(ex))
+                    catch (Exception ex) when (IsDuplicateOrderMDDetailError(ex))
                     {
-                        _logger.LogWarning("Duplicate OrderId on OrderDetails INSERT: {OrderId}", row.OrderId);
+                        _logger.LogWarning("Duplicate OrderId on OrderMDDetail INSERT: {OrderId}", row.OrderId);
                         return (false, "该订单的明细已存在,请刷新页面后重试");
                     }
 
-                    _logger.LogInformation("OrderDetails inserted: orderId={OrderId} detailId={DetailId}",
+                    _logger.LogInformation("OrderMDDetail inserted: orderId={OrderId} detailId={DetailId}",
                         row.OrderId, row.DetailId);
                 }
                 else
                 {
-                    var entity = await _db.Queryable<OrderDetails>()
+                    var entity = await _db.Queryable<OrderMDDetail>()
                         .Where(d => d.Id == row.DetailId && !d.IsDeleted)
                         .FirstAsync();
                     if (entity == null)
@@ -240,7 +240,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     entity.UpdatedTime = now;
 
                     await _db.Updateable(entity).ExecuteCommandAsync();
-                    _logger.LogInformation("OrderDetails updated: orderId={OrderId} detailId={DetailId}",
+                    _logger.LogInformation("OrderMDDetail updated: orderId={OrderId} detailId={DetailId}",
                         row.OrderId, row.DetailId);
                 }
 
@@ -248,7 +248,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error saving OrderDetails: orderId={OrderId}", row.OrderId);
+                _logger.LogError(ex, "Error saving OrderMDDetail: orderId={OrderId}", row.OrderId);
                 return (false, "保存失败,请重试");
             }
         }
@@ -266,7 +266,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         ///
         /// 订单本身完全不受影响。
         /// </summary>
-        public async Task<bool> ClearAsync(IEnumerable<OrderDetailRow> rows)
+        public async Task<bool> ClearAsync(IEnumerable<OrderMDDetailRow> rows)
         {
             // ====================================================================
             // 纵深防御(2026-07-07 Review #H1):不删这段校验、不删这个注释。
@@ -276,7 +276,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
             if (!ok)
             {
                 _logger.LogWarning(
-                    "OrderDetailsService.ClearAsync denied: callerId={CallerId} reason={Reason}",
+                    "OrderMDDetailService.ClearAsync denied: callerId={CallerId} reason={Reason}",
                     _currentUser.GetUserId(), err);
                 return false;
             }
@@ -291,8 +291,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
             try
             {
                 // 只清业务字段;OrderId / 审计字段 / IsDeleted 保持不动
-                await _db.Updateable<OrderDetails>()
-                    .SetColumns(d => new OrderDetails
+                await _db.Updateable<OrderMDDetail>()
+                    .SetColumns(d => new OrderMDDetail
                     {
                         Customer = null,
                         MarketType = null,
@@ -305,8 +305,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
                         SecondarySubmitDate = null,
                         SecondaryConfirmDate = null,
                         IsSplitFrame = false,
-                        HasTestBushing = false,
-                        TestBushingSpec = null,
+                        TestBushingModel = null,
+                        TestBushingQuantity = null,
                         SwitchCount = null,
                         IsWeldedTankRim = false,
                         UpdatedBy = operatorName,
@@ -315,12 +315,12 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     .Where(d => ids.Contains(d.Id))
                     .ExecuteCommandAsync();
 
-                _logger.LogInformation("OrderDetails cleared: detailIds={Ids}", string.Join(",", ids));
+                _logger.LogInformation("OrderMDDetail cleared: detailIds={Ids}", string.Join(",", ids));
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error clearing OrderDetails");
+                _logger.LogError(ex, "Error clearing OrderMDDetail");
                 return false;
             }
         }
@@ -330,7 +330,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// <summary>
         /// 业务校验。放在 Service 而不是只靠 UI,理由同上面的纵深防御注释。
         /// </summary>
-        private static (bool ok, string? error) Validate(OrderDetailRow row)
+        private static (bool ok, string? error) Validate(OrderMDDetailRow row)
         {
             if (row.UnitCount <= 0)
             {
@@ -356,7 +356,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// <summary>
         /// 把 UI 行的业务字段拷进实体。审计字段由调用方设置,不在这里碰。
         /// </summary>
-        private static OrderDetails ToEntity(OrderDetailRow row, OrderDetails entity)
+        private static OrderMDDetail ToEntity(OrderMDDetailRow row, OrderMDDetail entity)
         {
             entity.OrderId = row.OrderId;
             entity.Customer = row.Customer;
@@ -370,8 +370,8 @@ namespace BootstrapBlazor.OnlyServer1.Services
             entity.SecondarySubmitDate = row.SecondarySubmitDate;
             entity.SecondaryConfirmDate = row.SecondaryConfirmDate;
             entity.IsSplitFrame = row.IsSplitFrame;
-            entity.HasTestBushing = row.HasTestBushing;
-            entity.TestBushingSpec = row.TestBushingSpec;
+            entity.TestBushingModel = row.TestBushingModel;
+            entity.TestBushingQuantity = row.TestBushingQuantity;
             entity.SwitchCount = row.SwitchCount;
             entity.IsWeldedTankRim = row.IsWeldedTankRim;
             return entity;
@@ -381,11 +381,11 @@ namespace BootstrapBlazor.OnlyServer1.Services
         /// SQL Server 唯一索引冲突检测。做法与 OrdersService.IsDuplicateOrderNumberError 一致:
         /// 先看错误号 2627 / 2601,再用索引名和英文关键字兜底(防消息被本地化后号码匹配失效)。
         /// </summary>
-        private static bool IsDuplicateOrderDetailError(Exception ex)
+        private static bool IsDuplicateOrderMDDetailError(Exception ex)
         {
             var msg = ex.Message ?? string.Empty;
             if (msg.Contains("2627") || msg.Contains("2601")) return true;
-            if (msg.Contains("IX_OrderDetails_OrderId", StringComparison.OrdinalIgnoreCase)) return true;
+            if (msg.Contains("IX_OrderMDDetail_OrderId", StringComparison.OrdinalIgnoreCase)) return true;
             if (msg.Contains("unique key", StringComparison.OrdinalIgnoreCase)) return true;
             if (msg.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)) return true;
             return false;

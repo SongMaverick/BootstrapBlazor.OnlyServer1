@@ -5,18 +5,18 @@ namespace BootstrapBlazor.OnlyServer1.Models.ViewModels;
 /// <summary>
 /// 「订单管理」列表行。
 ///
-/// 数据来源是 Orders LEFT JOIN OrderDetails —— 列表以订单为主体,
+/// 数据来源是 Orders LEFT JOIN OrderMDDetail —— 列表以订单为主体,
 /// 尚未填写明细的订单也会出现(此时 DetailId = 0,明细字段全为默认值)。
-/// 保存时由 OrderDetailsService 按 DetailId 决定 INSERT 还是 UPDATE(upsert)。
+/// 保存时由 OrderMDDetailService 按 DetailId 决定 INSERT 还是 UPDATE(upsert)。
 ///
 /// 订单号/容量/电压/是否电抗器 来自 Orders,本页只读,修改请去 /orders。
 /// PrimaryEngineerName / SecondaryEngineerName 是 join 出来的展示字段,不落库。
 /// </summary>
-public class OrderDetailRow
+public class OrderMDDetailRow
 {
-    // ===== 来自 OrderDetails =====
+    // ===== 来自 OrderMDDetail =====
 
-    /// <summary>OrderDetails.Id;为 0 表示该订单尚无明细行</summary>
+    /// <summary>OrderMDDetail.Id;为 0 表示该订单尚无明细行</summary>
     public int DetailId { get; set; }
 
     /// <summary>Orders.Id</summary>
@@ -44,9 +44,9 @@ public class OrderDetailRow
 
     public bool IsSplitFrame { get; set; }
 
-    public bool HasTestBushing { get; set; }
+    public string? TestBushingModel { get; set; }
 
-    public string? TestBushingSpec { get; set; }
+    public int? TestBushingQuantity { get; set; }
 
     public int? SwitchCount { get; set; }
 

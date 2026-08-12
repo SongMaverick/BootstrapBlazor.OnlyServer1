@@ -4,11 +4,51 @@
 > 安装程序:`BootstrapBlazor.OrderManagementSetup`
 > 页面路由:`/order-management`
 
+## ⚡ 开发/测试环境快速流程(3 步)
+
+如果只是想**在测试库建表**跑通 `/order-management` 页面,跳过 DBA 备份、域名切换、YES 确认这些生产流程,只跑这 3 条:
+
+```bat
+cd /d D:\D7_codeBase\BootstrapBlazor.OnlyServer1
+
+REM 1. 装前看一眼(只读,零写入)
+dotnet run --project BootstrapBlazor.OrderManagementSetup -- --check
+
+REM 2. 直接建表(开发/测试环境,不需要 --production 也不要 YES 确认)
+dotnet run --project BootstrapBlazor.OrderManagementSetup -- --install
+
+REM 3. 装完再确认一次
+dotnet run --project BootstrapBlazor.OrderManagementSetup -- --check
+```
+
+**前置**:`BootstrapBlazor.OrderManagementSetup/Program.cs` 第 89 行 `connStr = config.GetConnectionString("sqlServerConnectionStringOffice");`(默认就是 Office 测试库,无需改)。
+
+**期望输出**(步骤 1,全新环境):
+```
+  表 OrderMDDetail: 不存在
+  权限码: 0/3 已存在
+```
+
+**期望输出**(步骤 3,装完):
+```
+  表 OrderMDDetail: 存在
+    行数: 0
+    索引 IX_OrderMDDetail_OrderId: 存在
+  权限码: 3/3 已存在
+    ADMIN: 已绑定 3/3
+    OPERATOR: 已绑定 3/3
+    VIEWER: 已绑定 1/1
+```
+
+接下来打开 `/order-management` 就能用了。**生产环境部署请看下面完整手册**(差异:DBA 备份 + 切连接串 + `--production` + YES 确认)。
+
+---
+
 ## 背景
 
 用 `2026 订单管理.xlsx` 的「2026结构设计订单」sheet 手工维护的排产信息(客户、国内/出口、台数、一次/二次项目负责人、四个图纸日期、设计工具、分体大架子、试验套管、开关数量、焊接箱沿)搬进系统。
 
-现有 `Orders` 表只有 4 个业务字段,且 `/orders` 页与图号分配深度耦合,所以**不改动 Orders 表和 /orders 页**,新建一对一扩展表 `OrderDetails` + 独立页面 `/order-management`。
+现有 `Orders` 表只有 4 个业务字段,且 `/orders` 页与图号分配深度耦合,所以**不改动 Orders 表和 /orders 页**,新建一对一扩展表 `OrderMDDetail` + 独立页面 `/order-management`。
 
 本期不做:「问题汇总」「详细设计完成状态」两列;Excel 那 200 行历史数据也不导入,上线后手工录。
 
@@ -18,18 +58,18 @@
 
 | 对象 | 说明 |
 |---|---|
-| `OrderDetails` 表 | 21 列,`OrderId` 关联 `Orders.Id` |
-| `IX_OrderDetails_OrderId` | 过滤唯一索引 `WHERE IsDeleted = 0` |
-| `Permissions` 3 行 | `OrderDetail.Read` / `.Edit` / `.Delete` |
+| `OrderMDDetail` 表 | 21 列,`OrderId` 关联 `Orders.Id` |
+| `IX_OrderMDDetail_OrderId` | 过滤唯一索引 `WHERE IsDeleted = 0` |
+| `Permissions` 3 行 | `OrderMDDetail.Read` / `.Edit` / `.Delete` |
 | `RolePermissions` 7 行 | ADMIN 3 + OPERATOR 3 + VIEWER 1 |
 
 **代码改动**
 
 | 文件 | 类型 |
 |---|---|
-| `Models/OrderDetails.cs` | 新增 |
-| `Models/ViewModels/OrderDetailRow.cs` | 新增 |
-| `Services/OrderDetailsService.cs` | 新增 |
+| `Models/OrderMDDetail.cs` | 新增 |
+| `Models/ViewModels/OrderMDDetailRow.cs` | 新增 |
+| `Services/OrderMDDetailService.cs` | 新增 |
 | `Components/Pages/OrderManagement.razor` | 新增 |
 | `BootstrapBlazor.OrderManagementSetup/` | 新增项目 |
 | `Models/Identity/PermissionCodes.cs` | 追加 3 个常量 |
@@ -47,7 +87,7 @@
 1. `order.Id = await _db.Insertable(order).ExecuteReturnIdentityAsync();` —— 接住原本被丢弃的自增 Id
 2. 事务提交后追加 `if (changedType == Add) await TryCreateEmptyOrderDetailAsync(...)` —— 新建订单时自动建一条空明细行
 
-`TryCreateEmptyOrderDetailAsync` 是 best-effort:**放在事务之外 + 捕获所有异常只记日志**。所以即使 `OrderDetails` 表不存在,下单也不会失败。Update 分支、权限校验、事务结构、唯一索引冲突处理全部原样未动。
+`TryCreateEmptyOrderDetailAsync` 是 best-effort:**放在事务之外 + 捕获所有异常只记日志**。所以即使 `OrderMDDetail` 表不存在,下单也不会失败。Update 分支、权限校验、事务结构、唯一索引冲突处理全部原样未动。
 
 ## 部署顺序:无需停机
 
@@ -99,13 +139,13 @@ sqlcmd -S JINWAD5A.AD101.SIEMENS-ENERGY.NET -d stcl_md -Q "BACKUP DATABASE [stcl
 REM === 步骤 2 · 切换连接串到生产并编译 ===
 REM 编辑 BootstrapBlazor.OrderManagementSetup/Program.cs,把 connStr 切回 sqlServerConnection
 cd /d D:\D7_codeBase\BootstrapBlazor.OnlyServer1
-dotnet build BootstrapBlazor.OnlyServer1.sln
+dotnet build BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1.csproj
 
 REM === 步骤 3 · 装前只读检查 ===
 dotnet run --project BootstrapBlazor.OrderManagementSetup -- --check
 REM 确认输出里的连接串是生产库
 REM 全新环境期望:
-REM   表 OrderDetails: 不存在
+REM   表 OrderMDDetail: 不存在
 REM   权限码: 0/3 已存在
 
 REM === 步骤 4 · 执行安装(要求输入 YES) ===
@@ -114,9 +154,9 @@ dotnet run --project BootstrapBlazor.OrderManagementSetup -- --install --product
 REM === 步骤 5 · 装后复查 ===
 dotnet run --project BootstrapBlazor.OrderManagementSetup -- --check
 REM 期望输出:
-REM   表 OrderDetails: 存在
+REM   表 OrderMDDetail: 存在
 REM     行数: 0
-REM     索引 IX_OrderDetails_OrderId: 存在
+REM     索引 IX_OrderMDDetail_OrderId: 存在
 REM   权限码: 3/3 已存在
 REM     ADMIN: 已绑定 3/3
 REM     OPERATOR: 已绑定 3/3
@@ -131,13 +171,13 @@ REM 任何一项对不上,停止
 ```sql
 -- 表结构:期望 21 列,4 个日期列 IS_NULLABLE = YES
 SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
-FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OrderDetails'
+FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OrderMDDetail'
 ORDER BY ORDINAL_POSITION;
 
 -- 过滤唯一索引:必须有 filter_definition,否则清空后无法重填
 SELECT name, is_unique, filter_definition
 FROM sys.indexes
-WHERE object_id = OBJECT_ID('OrderDetails') AND name = 'IX_OrderDetails_OrderId';
+WHERE object_id = OBJECT_ID('OrderMDDetail') AND name = 'IX_OrderMDDetail_OrderId';
 -- 期望 is_unique = 1, filter_definition = ([IsDeleted]=(0))
 
 -- 权限绑定:期望 7 行
@@ -145,7 +185,7 @@ SELECT r.Name AS 角色, p.Code
 FROM RolePermissions rp
 JOIN Roles r ON r.Id = rp.RoleId
 JOIN Permissions p ON p.Id = rp.PermissionId
-WHERE p.Code LIKE 'OrderDetail%'
+WHERE p.Code LIKE 'OrderMDDetail%'
 ORDER BY r.Name, p.Code;
 ```
 
@@ -176,7 +216,7 @@ ORDER BY r.Name, p.Code;
 ```sql
 SELECT o.OrderNumber, d.Id AS DetailId, d.CreatedBy, d.CreatedTime
 FROM Orders o
-LEFT JOIN OrderDetails d ON o.Id = d.OrderId AND d.IsDeleted = 0
+LEFT JOIN OrderMDDetail d ON o.Id = d.OrderId AND d.IsDeleted = 0
 WHERE o.OrderNumber = <刚建的订单号>;
 ```
 
@@ -231,10 +271,10 @@ WHERE o.OrderNumber = <刚建的订单号>;
 执行下面的 SQL 回滚,恢复到安装前状态:
 
 ```sql
-DROP TABLE OrderDetails;   -- 索引随表一起删除
+DROP TABLE OrderMDDetail;   -- 索引随表一起删除
 DELETE FROM RolePermissions
-WHERE PermissionId IN (SELECT Id FROM Permissions WHERE Code LIKE 'OrderDetail%');
-DELETE FROM Permissions WHERE Code LIKE 'OrderDetail%';
+WHERE PermissionId IN (SELECT Id FROM Permissions WHERE Code LIKE 'OrderMDDetail%');
+DELETE FROM Permissions WHERE Code LIKE 'OrderMDDetail%';
 ```
 
 ## 风险与缓解
@@ -252,8 +292,8 @@ DELETE FROM Permissions WHERE Code LIKE 'OrderDetail%';
 | 关注点 | 文件 |
 |---|---|
 | 安装程序 | `BootstrapBlazor.OrderManagementSetup/Program.cs` |
-| 实体定义 | `BootstrapBlazor.OnlyServer1/Models/OrderDetails.cs` |
-| 查询/保存/清空逻辑 | `BootstrapBlazor.OnlyServer1/Services/OrderDetailsService.cs` |
+| 实体定义 | `BootstrapBlazor.OnlyServer1/Models/OrderMDDetail.cs` |
+| 查询/保存/清空逻辑 | `BootstrapBlazor.OnlyServer1/Services/OrderMDDetailService.cs` |
 | 自动建明细 | `BootstrapBlazor.OnlyServer1/Services/OrdersService.cs` → `TryCreateEmptyOrderDetailAsync` |
 | 页面 | `BootstrapBlazor.OnlyServer1/Components/Pages/OrderManagement.razor` |
 | 权限码常量 | `BootstrapBlazor.OnlyServer1/Models/Identity/PermissionCodes.cs` |

@@ -5,14 +5,16 @@ namespace BootstrapBlazor.OnlyServer1.Models;
 /// <summary>
 /// 结构设计订单明细(订单管理)。
 /// 与 Orders 一对一扩展:OrderId 引用 Orders.Id,由过滤唯一索引
-/// IX_OrderDetails_OrderId (WHERE IsDeleted = 0) 保证"一个订单只有一条有效明细"。
+/// IX_OrderMDDetail_OrderId (WHERE IsDeleted = 0) 保证"一个订单只有一条有效明细"。
 ///
 /// 字段来源:2026 订单管理.xlsx →「2026结构设计订单」sheet。
 /// 订单号/容量/电压/是否电抗器 不在本表,统一读 Orders,避免两处维护。
 /// 「问题汇总」「详细设计完成状态」两列本期不做。
+///
+/// 命名约定:MD = Mechanical Design(机械设计),与项目里「MD 部门」一致。
 /// </summary>
-[SugarTable("OrderDetails")]
-public class OrderDetails
+[SugarTable("OrderMDDetail")]
+public class OrderMDDetail
 {
     [SugarColumn(IsPrimaryKey = true, IsIdentity = true)]
     public int Id { get; set; }
@@ -87,15 +89,16 @@ public class OrderDetails
     public bool IsSplitFrame { get; set; }
 
     /// <summary>
-    /// 是否试验套管
+    /// 试验套管型号。是否需要试验套管改为隐式判断:型号或数量任一有值 = 需要。
     /// </summary>
-    public bool HasTestBushing { get; set; }
+    [SugarColumn(IsNullable = true, Length = 200)]
+    public string? TestBushingModel { get; set; }
 
     /// <summary>
-    /// 试验套管型号及数量
+    /// 试验套管数量(整数,允许空)。是否需要试验套管改为隐式判断:型号或数量任一有值 = 需要。
     /// </summary>
-    [SugarColumn(IsNullable = true, Length = 500)]
-    public string? TestBushingSpec { get; set; }
+    [SugarColumn(IsNullable = true)]
+    public int? TestBushingQuantity { get; set; }
 
     /// <summary>
     /// 开关数量

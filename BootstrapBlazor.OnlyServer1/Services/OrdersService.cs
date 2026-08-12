@@ -206,9 +206,9 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 // 新建订单时,同步给「订单管理」建一条空明细行(2026-08-10)。
                 // 刻意放在事务提交之后、且吞掉所有异常:
                 //   下单是主流程,填明细是附属功能,后者失败绝不能连累前者。
-                //   例如新功能的 OrderDetails 表还没建(安装程序未执行),
+                //   例如新功能的 OrderMDDetail 表还没建(安装程序未执行),
                 //   如果放进事务里,整个下单会直接失败。
-                // 这里失败也不会丢数据:OrderDetailsService.SaveAsync 里保留了
+                // 这里失败也不会丢数据:OrderMDDetailService.SaveAsync 里保留了
                 //   DetailId == 0 → INSERT 的兜底分支,用户第一次编辑明细时会自动补建。
                 //   存量订单(本功能上线前就存在的)同样走那条兜底路径。
                 if (changedType == ItemChangedType.Add)
@@ -226,11 +226,11 @@ namespace BootstrapBlazor.OnlyServer1.Services
         }
 
         /// <summary>
-        /// 给新建的订单补一条空的「订单管理」明细行(OrderDetails)。
+        /// 给新建的订单补一条空的「订单管理」明细行(OrderMDDetail)。
         ///
         /// best-effort:任何异常只记日志,不向上抛、不影响下单结果。
         /// 幂等:已存在未删除的明细时直接返回,不会重复插入
-        /// (真正的唯一性由 IX_OrderDetails_OrderId (WHERE IsDeleted=0) 兜底)。
+        /// (真正的唯一性由 IX_OrderMDDetail_OrderId (WHERE IsDeleted=0) 兜底)。
         /// </summary>
         private async Task TryCreateEmptyOrderDetailAsync(int orderId, string createdBy)
         {
@@ -238,13 +238,13 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
             try
             {
-                var exists = await _db.Queryable<OrderDetails>()
+                var exists = await _db.Queryable<OrderMDDetail>()
                     .Where(d => d.OrderId == orderId && !d.IsDeleted)
                     .AnyAsync();
                 if (exists) return;
 
                 var now = DateTime.Now;
-                await _db.Insertable(new OrderDetails
+                await _db.Insertable(new OrderMDDetail
                 {
                     OrderId = orderId,
                     UnitCount = 1,
@@ -255,11 +255,11 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     IsDeleted = false,
                 }).ExecuteCommandAsync();
 
-                _logger.LogInformation("Empty OrderDetails created for new order {OrderId}", orderId);
+                _logger.LogInformation("Empty OrderMDDetail created for new order {OrderId}", orderId);
             }
             catch (Exception ex)
             {
-                // 不影响下单;用户首次编辑明细时会由 OrderDetailsService 兜底补建
+                // 不影响下单;用户首次编辑明细时会由 OrderMDDetailService 兜底补建
                 _logger.LogError(ex,
                     "TryCreateEmptyOrderDetailAsync failed for order {OrderId} (下单已成功,明细行将在首次编辑时补建)",
                     orderId);

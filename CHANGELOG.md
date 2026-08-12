@@ -9,6 +9,7 @@
 - **重构**:Models 目录全部统一为 file-scoped namespace (ADR 0003)
 - **重构**:N+1 查询修复 — `RolesService` 新增批量查询方法,`Roles.razor` / `UserRoles.razor` 单页查询数从 20-80 降到 2
 - **重构**:角色/权限变更后 5 分钟内自动续 cookie — 注册 `SecurityStampValidator<Users>` + `ValidationInterval = TimeSpan.FromMinutes(5)`,用户不重登也能拿到新 Permission / DisplayName / Gid claim
+- **重构**:`OrderDetails` → `OrderMDDetail` 重命名(类名/服务/表名/索引/视图模型全栈统一),MD = Mechanical Design,与项目「MD 部门」一致;`IX_OrderDetails_OrderId` → `IX_OrderMDDetail_OrderId`。当前为开发期,数据库尚无此表,无需数据迁移
 - **清理**:删除死页面 `UpdateDrawingNumber.razor` 和 `AddDrawingNumbersSelect.razor`
 - **清理**:删除导航菜单上无效入口(`/add-drawing-numbers`、`/update-drawing-number` 缺路由参数 → 404)
 
