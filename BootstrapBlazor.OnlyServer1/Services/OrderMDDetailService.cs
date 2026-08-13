@@ -33,7 +33,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 nameof(OrderMDDetailRow.OrderNumber),
                 nameof(OrderMDDetailRow.Power),
                 nameof(OrderMDDetailRow.RatedVoltage),
-                nameof(OrderMDDetailRow.Customer),
+                nameof(OrderMDDetailRow.ProjectName),
                 nameof(OrderMDDetailRow.MarketType),
                 nameof(OrderMDDetailRow.UnitCount),
                 nameof(OrderMDDetailRow.PrimarySubmitDate),
@@ -75,7 +75,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 {
                     query = query.Where((o, d, p, s) =>
                         o.OrderNumber.ToString().Contains(kw)
-                        || (d.Customer != null && d.Customer.Contains(kw))
+                        || (d.ProjectName != null && d.ProjectName.Contains(kw))
                         || (p.Name != null && p.Name.Contains(kw))
                         || (s.Name != null && s.Name.Contains(kw)));
                 }
@@ -98,7 +98,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     {
                         DetailId = d.Id,
                         OrderId = o.Id,
-                        Customer = d.Customer,
+                        ProjectName = d.ProjectName,
                         MarketType = d.MarketType,
                         UnitCount = d.UnitCount,
                         PrimaryEngineerId = d.PrimaryEngineerId,
@@ -294,7 +294,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 await _db.Updateable<OrderMDDetail>()
                     .SetColumns(d => new OrderMDDetail
                     {
-                        Customer = null,
+                        ProjectName = null,
                         MarketType = null,
                         UnitCount = 1,
                         PrimaryEngineerId = null,
@@ -359,7 +359,7 @@ namespace BootstrapBlazor.OnlyServer1.Services
         private static OrderMDDetail ToEntity(OrderMDDetailRow row, OrderMDDetail entity)
         {
             entity.OrderId = row.OrderId;
-            entity.Customer = row.Customer;
+            entity.ProjectName = row.ProjectName;
             entity.MarketType = row.MarketType;
             entity.UnitCount = row.UnitCount;
             entity.PrimaryEngineerId = row.PrimaryEngineerId;

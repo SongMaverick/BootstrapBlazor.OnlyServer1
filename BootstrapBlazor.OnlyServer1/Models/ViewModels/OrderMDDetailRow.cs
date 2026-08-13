@@ -22,7 +22,7 @@ public class OrderMDDetailRow
     /// <summary>Orders.Id</summary>
     public int OrderId { get; set; }
 
-    public string? Customer { get; set; }
+    public string? ProjectName { get; set; }
 
     public string? MarketType { get; set; }
 

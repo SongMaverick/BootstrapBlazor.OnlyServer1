@@ -49,10 +49,10 @@
             <TableColumn @bind-Field="@context.RatedVoltage" Text="电压 kV" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
 
             @* ===== 明细字段(每个 EditTemplate 强制 col-12 col-md-6,2 个一行) ===== *@
-            <TableColumn @bind-Field="@context.Customer" Text="客户" Width="220" Sortable="true">
+            <TableColumn @bind-Field="@context.ProjectName" Text="项目名称" Width="220" Sortable="true">
                 <EditTemplate Context="row">
                     <div class="col-12 col-md-6">
-                        <BootstrapInput TValue="string" @bind-Value="row.Customer" ShowLabel="true" DisplayText="客户" />
+                        <BootstrapInput TValue="string" @bind-Value="row.ProjectName" ShowLabel="true" DisplayText="项目名称" />
                     </div>
                 </EditTemplate>
             </TableColumn>

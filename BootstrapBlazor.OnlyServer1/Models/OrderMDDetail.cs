@@ -25,10 +25,10 @@ public class OrderMDDetail
     public int OrderId { get; set; }
 
     /// <summary>
-    /// 客户
+    /// 项目名称(2026-08-13 由 Customer 改名,DB 列同步 sp_rename)
     /// </summary>
     [SugarColumn(IsNullable = true, Length = 200)]
-    public string? Customer { get; set; }
+    public string? ProjectName { get; set; }
 
     /// <summary>
     /// 国内 / 出口
