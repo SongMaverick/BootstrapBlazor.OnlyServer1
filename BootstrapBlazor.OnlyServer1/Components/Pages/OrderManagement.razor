@@ -16,7 +16,48 @@
         新增或删除订单请前往「订单列表」。
     </p>
 
+    @* (2026-08-13) 日期范围筛选:一次/二次图纸提交,各 2 个 DateTimePicker *@
+    <div class="card mb-3">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-2">
+                    <DateTimePicker TValue="DateTime?" @bind-Value="_primarySubmitStart"
+                                    ViewMode="DatePickerViewMode.Date"
+                                    ShowLabel="true"
+                                    DisplayText="一次提交-起始" />
+                </div>
+                <div class="col-12 col-md-auto text-center text-muted pb-2">~</div>
+                <div class="col-12 col-md-2">
+                    <DateTimePicker TValue="DateTime?" @bind-Value="_primarySubmitEnd"
+                                    ViewMode="DatePickerViewMode.Date"
+                                    ShowLabel="true"
+                                    DisplayText="一次提交-结束" />
+                </div>
+                <div class="col-12 col-md-2">
+                    <DateTimePicker TValue="DateTime?" @bind-Value="_secondarySubmitStart"
+                                    ViewMode="DatePickerViewMode.Date"
+                                    ShowLabel="true"
+                                    DisplayText="二次提交-起始" />
+                </div>
+                <div class="col-12 col-md-auto text-center text-muted pb-2">~</div>
+                <div class="col-12 col-md-2">
+                    <DateTimePicker TValue="DateTime?" @bind-Value="_secondarySubmitEnd"
+                                    ViewMode="DatePickerViewMode.Date"
+                                    ShowLabel="true"
+                                    DisplayText="二次提交-结束" />
+                </div>
+                <div class="col-12 col-md-auto">
+                    <Button Color="Color.Primary" Icon="fa-solid fa-filter" OnClick="ApplyFilters">筛选</Button>
+                </div>
+                <div class="col-12 col-md-auto">
+                    <Button Color="Color.Secondary" Icon="fa-solid fa-xmark" OnClick="ResetFilters">重置</Button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <Table TItem="OrderMDDetailRow"
+           @ref="_table"
            IsPagination="true"
            PageItemsSource="@PageItemsSource"
            RenderMode="TableRenderMode.Table"
@@ -223,6 +264,15 @@
 
     private List<SelectedItem> _userItems = new();
 
+    // (2026-08-13) Table 组件引用(用于按钮手动触发 QueryAsync)
+    private Table<OrderMDDetailRow>? _table;
+
+    // 日期范围筛选状态(4 个 DateTimePicker 双向绑定)
+    private DateTime? _primarySubmitStart;
+    private DateTime? _primarySubmitEnd;
+    private DateTime? _secondarySubmitStart;
+    private DateTime? _secondarySubmitEnd;
+
     // 静态选项:与 Excel「2026结构设计订单」sheet 的取值一致
     private static readonly List<SelectedItem> _marketTypeItems = new()
     {
@@ -254,8 +304,36 @@
 
     private async Task<QueryData<OrderMDDetailRow>> OnQueryAsync(QueryPageOptions options)
     {
-        var result = await OrderMDDetailService.QueryAsync(options.ToPagedQuery());
+        // (2026-08-13) 用带日期筛选的重载,把 4 个 DateTimePicker 状态闭包传过去
+        var result = await OrderMDDetailService.QueryAsync(options.ToPagedQuery(
+            _primarySubmitStart, _primarySubmitEnd,
+            _secondarySubmitStart, _secondarySubmitEnd));
         return result.ToQueryData();
+    }
+
+    private async Task ApplyFilters()
+    {
+        // 校验:起始不能晚于结束(任一组独立校验)
+        if (_primarySubmitStart.HasValue && _primarySubmitEnd.HasValue && _primarySubmitStart > _primarySubmitEnd)
+        {
+            await ShowToast("一次提交的起始日期不能晚于结束日期", ToastCategory.Error);
+            return;
+        }
+        if (_secondarySubmitStart.HasValue && _secondarySubmitEnd.HasValue && _secondarySubmitStart > _secondarySubmitEnd)
+        {
+            await ShowToast("二次提交的起始日期不能晚于结束日期", ToastCategory.Error);
+            return;
+        }
+        await _table!.QueryAsync();
+    }
+
+    private async Task ResetFilters()
+    {
+        _primarySubmitStart = null;
+        _primarySubmitEnd = null;
+        _secondarySubmitStart = null;
+        _secondarySubmitEnd = null;
+        await _table!.QueryAsync();
     }
 
     private async Task<bool> OnSaveAsync(OrderMDDetailRow row, ItemChangedType changedType)

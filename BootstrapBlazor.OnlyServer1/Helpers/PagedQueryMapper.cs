@@ -25,6 +25,34 @@ public static class PagedQueryMapper
         };
     }
 
+    /// <summary>(2026-08-13) 订单管理带日期范围筛选的扩展重载。
+    /// UI 层把 4 个 DateTimePicker 状态用闭包捕获,经此方法转 PagedQuery 传给 Service。</summary>
+    public static PagedQuery ToPagedQuery(
+        this QueryPageOptions options,
+        DateTime? primarySubmitStart, DateTime? primarySubmitEnd,
+        DateTime? secondarySubmitStart, DateTime? secondarySubmitEnd)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new PagedQuery
+        {
+            SearchText = options.SearchText,
+            SortName = options.SortName,
+            SortOrder = options.SortOrder == SortOrder.Asc ? Models.SortDirection.Asc : Models.SortDirection.Desc,
+            PageIndex = options.PageIndex <= 0 ? 1 : options.PageIndex,
+            PageItems = options.PageItems <= 0 ? 20 : options.PageItems,
+            FilterCount =
+                (primarySubmitStart.HasValue ? 1 : 0) +
+                (primarySubmitEnd.HasValue   ? 1 : 0) +
+                (secondarySubmitStart.HasValue ? 1 : 0) +
+                (secondarySubmitEnd.HasValue   ? 1 : 0),
+            HasSearchModel = options.SearchModel is not null,
+            PrimarySubmitStart   = primarySubmitStart,
+            PrimarySubmitEnd     = primarySubmitEnd,
+            SecondarySubmitStart = secondarySubmitStart,
+            SecondarySubmitEnd   = secondarySubmitEnd,
+        };
+    }
+
     /// <summary>通用 PagedResult&lt;T&gt; → BootstrapBlazor QueryData&lt;T&gt;</summary>
     public static QueryData<T> ToQueryData<T>(this PagedResult<T> result)
     {

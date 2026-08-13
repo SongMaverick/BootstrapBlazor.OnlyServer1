@@ -80,6 +80,19 @@ namespace BootstrapBlazor.OnlyServer1.Services
                         || (s.Name != null && s.Name.Contains(kw)));
                 }
 
+                // (2026-08-13) 日期范围筛选:任一为空表示该侧不限制
+                //  End 用 AddDays(1) 排他比较 — 包含当天整天(用户选 2026-08-13 = 当天所有时分秒都算)
+                //  ⚠ 应用 LEFT JOIN,无明细行(DetailId=0)的订单 d.PrimarySubmitDate 为 NULL,
+                //     一旦加 WHERE 就会被排除 — 这是预期行为(筛选"已提交"才合语义)
+                if (options.PrimarySubmitStart.HasValue)
+                    query = query.Where((o, d) => d.PrimarySubmitDate >= options.PrimarySubmitStart!.Value);
+                if (options.PrimarySubmitEnd.HasValue)
+                    query = query.Where((o, d) => d.PrimarySubmitDate < options.PrimarySubmitEnd!.Value.AddDays(1));
+                if (options.SecondarySubmitStart.HasValue)
+                    query = query.Where((o, d) => d.SecondarySubmitDate >= options.SecondarySubmitStart!.Value);
+                if (options.SecondarySubmitEnd.HasValue)
+                    query = query.Where((o, d) => d.SecondarySubmitDate < options.SecondarySubmitEnd!.Value.AddDays(1));
+
                 if (!string.IsNullOrEmpty(options.SortName) && _allowedSortCols.Contains(options.SortName))
                 {
                     query = options.SortOrder == SortDirection.Asc
@@ -88,8 +101,10 @@ namespace BootstrapBlazor.OnlyServer1.Services
                 }
                 else
                 {
-                    // 默认:订单号倒序(新订单在前),与 Excel 的排产习惯一致
-                    query = query.OrderBy((o, d) => o.OrderNumber, OrderByType.Desc);
+                    // (2026-08-13) 默认排序:一次图纸提交时间降序(新提交在前),NULL 排在最后(SQL Server DESC 默认行为)
+                    //    tie-breaker:订单号倒序,新单在前
+                    query = query.OrderBy($"{nameof(OrderMDDetailRow.PrimarySubmitDate)} desc")
+                                 .OrderBy($"{nameof(OrderMDDetailRow.OrderNumber)} desc");
                 }
 
                 var total = query.Count();

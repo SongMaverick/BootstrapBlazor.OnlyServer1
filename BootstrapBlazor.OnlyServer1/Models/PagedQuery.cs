@@ -26,4 +26,20 @@ public class PagedQuery
 
     /// <summary>是否有高级搜索表单绑定。</summary>
     public bool HasSearchModel { get; init; }
+
+    // ===== (2026-08-13) 订单管理页面日期范围筛选 =====
+    // 都用 [起始, 结束] 闭区间,任一为空表示该侧不限制。
+    // Service 层把 End 当作"含当天"(End.AddDays(1) 排他比较)。
+
+    /// <summary>一次图纸提交日期 — 起始(含)</summary>
+    public DateTime? PrimarySubmitStart { get; init; }
+
+    /// <summary>一次图纸提交日期 — 结束(含当天)</summary>
+    public DateTime? PrimarySubmitEnd { get; init; }
+
+    /// <summary>二次图纸提交日期 — 起始(含)</summary>
+    public DateTime? SecondarySubmitStart { get; init; }
+
+    /// <summary>二次图纸提交日期 — 结束(含当天)</summary>
+    public DateTime? SecondarySubmitEnd { get; init; }
 }
