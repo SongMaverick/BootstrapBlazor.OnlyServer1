@@ -1,5 +1,6 @@
 @page "/login"
 @layout BootstrapBlazor.OnlyServer1.Components.Shared.LoginLayout
+@inject Microsoft.JSInterop.IJSRuntime JS
 
 <PageTitle>登录</PageTitle>
 
@@ -10,7 +11,9 @@
             <h3 class="mb-0">后台管理系统</h3>
         </div>
         <div class="card-body p-4">
-            <form method="post" action="/Account/Login">
+            @* (2026-08-14) 加 id="loginForm",rememberMeInit 据此挂 submit 监听。
+                 加 id 到表单是为了 JS 能挂监听 + 区分登录页 vs 其他表单。 *@
+            <form id="loginForm" method="post" action="/Account/Login">
                 <AntiforgeryToken />
                 <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
 
@@ -34,6 +37,16 @@
                            autocomplete="current-password"
                            placeholder="请输入密码" />
                 </div>
+                <div class="mb-3 form-check">
+                    @* (2026-08-14) 记住我:勾上后,提交表单时 JS 把员工号+密码写到非 HttpOnly cookie(30 天)。
+                         value="true" 保证 checkbox 勾上时表单能正确传 RememberMe=true 给服务端。 *@
+                    <input type="checkbox"
+                           name="RememberMe"
+                           id="rememberMe"
+                           class="form-check-input"
+                           value="true" />
+                    <label for="rememberMe" class="form-check-label">记住我(30 天内自动填充)</label>
+                </div>
 
                 @if (ErrorMessage is not null)
                 {
@@ -51,4 +64,23 @@
 
     [SupplyParameterFromQuery(Name = "error")]
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// (2026-08-14) 首次渲染时调 wwwroot/js/rememberMe.js,JS 接管 cookie 读写。
+    /// 失败(JS 没加载 / cookie 被禁用)静默忽略,不影响主流程登录。
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("rememberMeInit", "loginForm", "workerNumber", "password", "rememberMe");
+            }
+            catch
+            {
+                // JS 没加载 / cookie 被禁用 → 静默忽略,功能降级为「不记住我」
+            }
+        }
+    }
 }

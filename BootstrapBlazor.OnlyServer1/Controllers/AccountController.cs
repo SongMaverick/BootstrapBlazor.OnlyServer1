@@ -25,6 +25,7 @@ namespace BootstrapBlazor.OnlyServer1.Controllers
         public async Task<IActionResult> Login(
             [FromForm] string WorkerNumber,
             [FromForm] string Password,
+            [FromForm] bool RememberMe,
             [FromForm] string? ReturnUrl)
         {
             if (string.IsNullOrEmpty(ReturnUrl) || !Url.IsLocalUrl(ReturnUrl))
@@ -42,14 +43,18 @@ namespace BootstrapBlazor.OnlyServer1.Controllers
             // 用于审计关联。注意:错误 WorkerNumber 时返回 null,不影响密码校验失败原因。
             var (userId, userName) = await GetUserInfoByWorkerNumberAsync(WorkerNumber);
 
+            // (2026-08-14) RememberMe 控制 ASP.NET Identity cookie 的生命周期:
+            //   true  → auth cookie 持久化(浏览器关闭也不丢)
+            //   false → session cookie(关闭浏览器即失效)
+            // 客户端「员工号+密码」cookie 由 wwwroot/js/rememberMe.js 接管,与本参数独立。
             var result = await _signInManager.PasswordSignInAsync(
-                WorkerNumber, Password, isPersistent: true, lockoutOnFailure: true);
+                WorkerNumber, Password, isPersistent: RememberMe, lockoutOnFailure: true);
 
             if (result.Succeeded)
             {
                 _logger.LogInformation(
-                    "登录成功: userId={UserId} workerNumber={WorkerNumber} name={Name} ip={Ip} persistent={Persistent}",
-                    userId, WorkerNumber, userName ?? "(未知)", ip, true);
+                    "登录成功: userId={UserId} workerNumber={WorkerNumber} name={Name} ip={Ip} rememberMe={RememberMe}",
+                    userId, WorkerNumber, userName ?? "(未知)", ip, RememberMe);
                 return LocalRedirect(ReturnUrl);
             }
 
@@ -100,6 +105,11 @@ namespace BootstrapBlazor.OnlyServer1.Controllers
             var ip = GetClientIp();
 
             await _signInManager.SignOutAsync();
+
+            // (2026-08-14) 清掉「记住我」写入的两个非 HttpOnly cookie。
+            // 设 Max-Age=-1 让浏览器立即过期。路径必须跟写入时一致(/),否则删不掉。
+            Response.Cookies.Delete("remember_user", new CookieOptions { Path = "/" });
+            Response.Cookies.Delete("remember_pass", new CookieOptions { Path = "/" });
 
             _logger.LogInformation(
                 "用户登出: userId={UserId} workerNumber={WorkerNumber} name={Name} ip={Ip}",

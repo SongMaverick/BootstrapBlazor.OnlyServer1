@@ -70,6 +70,25 @@
                             PlaceHolder="请选择部门" />
                 </EditTemplate>
             </TableColumn>
+            @* (2026-08-14) 邮箱:Users.Email 继承自 IdentityUser<int>,DB 列已存在。
+               列表也展示(空值显示 "未填写"),新增/编辑弹窗里提供输入框,沿用 PhoneNumber 的展示风格。 *@
+            <TableColumn @bind-Field="@context.Email" Text="邮箱" Width="200" Sortable="true">
+                <Template Context="value">
+                    @if (string.IsNullOrWhiteSpace(value.Value))
+                    {
+                        <span class="text-muted">未填写</span>
+                    }
+                    else
+                    {
+                        @value.Value
+                    }
+                </Template>
+                <EditTemplate Context="field">
+                    <BootstrapInput TValue="string"
+                                    @bind-Value="field.Email"
+                                    PlaceHolder="可选,例如 someone@example.com" />
+                </EditTemplate>
+            </TableColumn>
             <TableColumn @bind-Field="@context.DepartmentName"
                          Width="120"
                          Sortable="true"
