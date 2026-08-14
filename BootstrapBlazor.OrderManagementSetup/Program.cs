@@ -8,6 +8,7 @@ namespace BootstrapBlazor.OrderManagementSetup;
 
 /// <summary>
 /// 「订单管理」功能的一次性安装程序(2026-08-10)。
+/// (2026-08-13) 扩展:订单问题汇总(OrderIssues)。
 ///
 /// 为什么不放进 BootstrapBlazor.DbMigrator:
 ///   DbMigrator 是已上线系统的建表 + 历史数据迁移工具,它的 --schema / --seed / --migrate
@@ -18,6 +19,11 @@ namespace BootstrapBlazor.OrderManagementSetup;
 ///     - IX_OrderMDDetail_OrderId 过滤唯一索引
 ///     - Permissions 表里 3 个 OrderMDDetail.* 权限码
 ///     - RolePermissions 里这 3 个码到 ADMIN / OPERATOR / VIEWER 的关联
+///   (2026-08-13 新增)
+///     - OrderIssues 表(不存在才建)
+///     - IX_OrderIssues_OrderId_Active 过滤索引(加速按订单查问题)
+///     - Permissions 表里 3 个 OrderIssue.* 权限码
+///     - RolePermissions 绑定到 ADMIN/OPERATOR/VIEWER
 ///   绝不 DROP、不改任何已有表的结构、不动任何业务数据。
 ///
 /// 全部操作幂等,可反复执行。
@@ -36,8 +42,10 @@ namespace BootstrapBlazor.OrderManagementSetup;
 /// </summary>
 public static class Program
 {
-    private const string TableName = "OrderMDDetail";
-    private const string IndexName = "IX_OrderMDDetail_OrderId";
+    private const string OrderMDDetailTable = "OrderMDDetail";
+    private const string OrderMDDetailIndex = "IX_OrderMDDetail_OrderId";
+    private const string OrderIssuesTable   = "OrderIssues";
+    private const string OrderIssuesIndex   = "IX_OrderIssues_OrderId_Active";
 
     /// <summary>
     /// 本功能引入的权限码。明细行随订单存在,不单独新增,故没有 OrderMDDetail.Create。
@@ -48,17 +56,31 @@ public static class Program
         new() { Code = PermissionCodes.OrderMDDetailRead,   Name = "查看订单明细", Category = "订单管理", SortOrder = 1, IsActive = true },
         new() { Code = PermissionCodes.OrderMDDetailEdit,   Name = "编辑订单明细", Category = "订单管理", SortOrder = 2, IsActive = true },
         new() { Code = PermissionCodes.OrderMDDetailDelete, Name = "清空订单明细", Category = "订单管理", SortOrder = 3, IsActive = true },
+        // (2026-08-13) 订单问题汇总权限码
+        new() { Code = PermissionCodes.OrderIssueRead,       Name = "查看订单问题汇总", Category = "订单管理", SortOrder = 4, IsActive = true },
+        new() { Code = PermissionCodes.OrderIssueAdd,        Name = "添加订单问题",     Category = "订单管理", SortOrder = 5, IsActive = true },
+        new() { Code = PermissionCodes.OrderIssueEditStatus, Name = "修改订单问题状态", Category = "订单管理", SortOrder = 6, IsActive = true },
     };
 
     /// <summary>
     /// 角色 → 权限码。Operator 与 Admin 一样可完整操作本页(用户 2026-08-10 明确要求),
     /// Viewer 只读。
+    /// (2026-08-13) 问题汇总权限同样按"Admin/Operator 全权、Viewer 只读"分配。
     /// </summary>
     private static readonly Dictionary<string, string[]> _roleMapping = new()
     {
-        ["ADMIN"] = new[] { PermissionCodes.OrderMDDetailRead, PermissionCodes.OrderMDDetailEdit, PermissionCodes.OrderMDDetailDelete },
-        ["OPERATOR"] = new[] { PermissionCodes.OrderMDDetailRead, PermissionCodes.OrderMDDetailEdit, PermissionCodes.OrderMDDetailDelete },
-        ["VIEWER"] = new[] { PermissionCodes.OrderMDDetailRead },
+        ["ADMIN"] = new[] {
+            PermissionCodes.OrderMDDetailRead, PermissionCodes.OrderMDDetailEdit, PermissionCodes.OrderMDDetailDelete,
+            PermissionCodes.OrderIssueRead, PermissionCodes.OrderIssueAdd, PermissionCodes.OrderIssueEditStatus,
+        },
+        ["OPERATOR"] = new[] {
+            PermissionCodes.OrderMDDetailRead, PermissionCodes.OrderMDDetailEdit, PermissionCodes.OrderMDDetailDelete,
+            PermissionCodes.OrderIssueRead, PermissionCodes.OrderIssueAdd, PermissionCodes.OrderIssueEditStatus,
+        },
+        ["VIEWER"] = new[] {
+            PermissionCodes.OrderMDDetailRead,
+            PermissionCodes.OrderIssueRead,
+        },
     };
 
     public static async Task<int> Main(string[] args)
@@ -136,10 +158,13 @@ public static class Program
             Console.WriteLine();
             Console.WriteLine("⚠⚠⚠ 生产模式 ⚠⚠⚠");
             Console.WriteLine("即将对生产数据库执行以下操作(均为新增,不删除、不修改已有数据):");
-            Console.WriteLine($"  - 创建表 {TableName}(已存在则跳过)");
-            Console.WriteLine($"  - 创建过滤唯一索引 {IndexName}(已存在则跳过)");
-            Console.WriteLine("  - 灌入 3 个 OrderMDDetail.* 权限码(已存在则跳过)");
-            Console.WriteLine("  - 把这 3 个权限码绑给 ADMIN / OPERATOR / VIEWER(已绑定则跳过)");
+            Console.WriteLine($"  - 创建表 {OrderMDDetailTable}(已存在则跳过)");
+            Console.WriteLine($"  - 创建过滤唯一索引 {OrderMDDetailIndex}(已存在则跳过)");
+            Console.WriteLine($"  - (2026-08-13) 创建表 {OrderIssuesTable}(已存在则跳过)");
+            Console.WriteLine($"  - (2026-08-13) 创建索引 {OrderIssuesIndex}(已存在则跳过)");
+            Console.WriteLine($"  - (2026-08-14) 给 {OrderIssuesTable} 增量补列 ClosedBy / ClosedTime / Resolution(已存在则跳过)");
+            Console.WriteLine($"  - 灌入 {_permissionSeeds.Length} 个订单管理权限码(已存在则跳过)");
+            Console.WriteLine("  - 把权限码绑给 ADMIN / OPERATOR / VIEWER(已绑定则跳过)");
             Console.Write(" 确认? 输入 YES 继续: ");
             var confirm = Console.ReadLine();
             if (!string.Equals(confirm, "YES", StringComparison.Ordinal))
@@ -152,16 +177,21 @@ public static class Program
         try
         {
             Console.WriteLine();
-            Console.WriteLine(">>> 1/3 建表");
-            await CreateTableAsync(db);
+            Console.WriteLine(">>> 1/4 建表");
+            await CreateOrderMDDetailTableAsync(db);
+            await CreateOrderIssuesTableAsync(db);
 
             Console.WriteLine();
-            Console.WriteLine(">>> 2/3 建索引");
-            await CreateIndexAsync(db);
+            Console.WriteLine(">>> 2/4 建索引");
+            await CreateOrderMDDetailIndexAsync(db);
+            await CreateOrderIssuesIndexAsync(db);
 
             Console.WriteLine();
-            Console.WriteLine(">>> 3/3 权限码 + 角色绑定");
+            Console.WriteLine(">>> 3/4 权限码");
             await SeedPermissionsAsync(db);
+
+            Console.WriteLine();
+            Console.WriteLine(">>> 4/4 角色绑定");
             await BindRolePermissionsAsync(db);
 
             Console.WriteLine();
@@ -188,17 +218,59 @@ public static class Program
     // 步骤实现(全部幂等)
     // ============================================================
 
-    private static async Task CreateTableAsync(ISqlSugarClient db)
+    private static async Task CreateOrderMDDetailTableAsync(ISqlSugarClient db)
     {
-        if (await TableExistsAsync(db, TableName))
+        if (await TableExistsAsync(db, OrderMDDetailTable))
         {
-            Console.WriteLine($"  - {TableName}:已存在,跳过");
+            Console.WriteLine($"  - {OrderMDDetailTable}:已存在,跳过");
             return;
         }
 
         // CodeFirst 只建这一张表,不会碰其它实体
         await Task.Run(() => db.CodeFirst.InitTables<OrderMDDetail>());
-        Console.WriteLine($"  ✓ {TableName}:已创建");
+        Console.WriteLine($"  ✓ {OrderMDDetailTable}:已创建");
+    }
+
+    private static async Task CreateOrderIssuesTableAsync(ISqlSugarClient db)
+    {
+        if (await TableExistsAsync(db, OrderIssuesTable))
+        {
+            Console.WriteLine($"  - {OrderIssuesTable}:已存在,跳过");
+        }
+        else
+        {
+            await Task.Run(() => db.CodeFirst.InitTables<OrderIssues>());
+            Console.WriteLine($"  ✓ {OrderIssuesTable}:已创建");
+        }
+
+        // (2026-08-14) 已存在的表也补一遍新列(ClosedBy / ClosedTime)。
+        // SqlSugar 的 CodeFirst.InitTables 不会给已有表加列,这里用 raw SQL 增量添加,幂等可重跑。
+        await EnsureOrderIssuesColumnsAsync(db);
+    }
+
+    /// <summary>
+    /// (2026-08-14) 给 OrderIssues 表增量补 ClosedBy / ClosedTime 两列(可空)。
+    /// 已存在则跳过。适用于"代码已升级、但旧表还没 ALTER"的场景。
+    /// </summary>
+    private static async Task EnsureOrderIssuesColumnsAsync(ISqlSugarClient db)
+    {
+        await AddColumnIfNotExistsAsync(db, OrderIssuesTable, "ClosedBy",  "NVARCHAR(100) NULL");
+        await AddColumnIfNotExistsAsync(db, OrderIssuesTable, "ClosedTime", "DATETIME NULL");
+        // (2026-08-14) 新增:解决方法(长文本,跟 Content 同结构)。
+        await AddColumnIfNotExistsAsync(db, OrderIssuesTable, "Resolution", "NVARCHAR(MAX) NULL");
+    }
+
+    private static async Task AddColumnIfNotExistsAsync(ISqlSugarClient db, string tableName, string columnName, string columnDef)
+    {
+        var exists = await db.Ado.GetIntAsync(
+            $"SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[{tableName}]') AND name = '{columnName}'");
+        if (exists > 0)
+        {
+            Console.WriteLine($"    - 列 {columnName}:已存在,跳过");
+            return;
+        }
+        await db.Ado.ExecuteCommandAsync($"ALTER TABLE {tableName} ADD {columnName} {columnDef}");
+        Console.WriteLine($"    + 列 {columnName}:已添加");
     }
 
     /// <summary>
@@ -206,15 +278,30 @@ public static class Program
     /// 保证一个订单最多只有一条"有效"明细;清空明细(软删)后可以重新填写。
     /// 做法与 DbMigrator 里 IX_Orders_OrderNumber 一致。
     /// </summary>
-    private static async Task CreateIndexAsync(ISqlSugarClient db)
+    private static async Task CreateOrderMDDetailIndexAsync(ISqlSugarClient db)
     {
         var sql = $@"
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{IndexName}' AND object_id = OBJECT_ID('{TableName}'))
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{OrderMDDetailIndex}' AND object_id = OBJECT_ID('{OrderMDDetailTable}'))
 BEGIN
-    CREATE UNIQUE INDEX {IndexName} ON {TableName} (OrderId) WHERE IsDeleted = 0;
+    CREATE UNIQUE INDEX {OrderMDDetailIndex} ON {OrderMDDetailTable} (OrderId) WHERE IsDeleted = 0;
 END";
         await db.Ado.ExecuteCommandAsync(sql);
-        Console.WriteLine($"  ✓ 过滤唯一索引 {IndexName} (WHERE IsDeleted = 0) 已就绪");
+        Console.WriteLine($"  ✓ 过滤唯一索引 {OrderMDDetailIndex} (WHERE IsDeleted = 0) 已就绪");
+    }
+
+    /// <summary>
+    /// (2026-08-13) OrderIssues(OrderId, IsDeleted=0) 普通索引(非唯一):同一订单可有多条问题。
+    /// 加速"按订单查问题列表"的常见查询。
+    /// </summary>
+    private static async Task CreateOrderIssuesIndexAsync(ISqlSugarClient db)
+    {
+        var sql = $@"
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{OrderIssuesIndex}' AND object_id = OBJECT_ID('{OrderIssuesTable}'))
+BEGIN
+    CREATE INDEX {OrderIssuesIndex} ON {OrderIssuesTable} (OrderId) WHERE IsDeleted = 0;
+END";
+        await db.Ado.ExecuteCommandAsync(sql);
+        Console.WriteLine($"  ✓ 索引 {OrderIssuesIndex} (WHERE IsDeleted = 0) 已就绪");
     }
 
     /// <summary>
@@ -253,7 +340,7 @@ END";
         var toInsert = _permissionSeeds.Where(p => !existingCodes.Contains(p.Code)).ToList();
         if (toInsert.Count == 0)
         {
-            Console.WriteLine("  - 3 个 OrderMDDetail.* 权限码均已存在,跳过");
+            Console.WriteLine($"  - {_permissionSeeds.Length} 个订单管理权限码均已存在,跳过");
             return;
         }
 
@@ -316,18 +403,9 @@ END";
 
     private static async Task ReportStateAsync(ISqlSugarClient db)
     {
-        var tableExists = await TableExistsAsync(db, TableName);
-        Console.WriteLine($"  表 {TableName}: {(tableExists ? "存在" : "不存在")}");
-
-        if (tableExists)
-        {
-            var rowCount = await db.Ado.GetIntAsync($"SELECT COUNT(*) FROM {TableName}");
-            Console.WriteLine($"    行数: {rowCount}");
-
-            var indexExists = await db.Ado.GetIntAsync(
-                $"SELECT COUNT(*) FROM sys.indexes WHERE name = '{IndexName}' AND object_id = OBJECT_ID('{TableName}')") > 0;
-            Console.WriteLine($"    索引 {IndexName}: {(indexExists ? "存在" : "不存在")}");
-        }
+        // (2026-08-13) 两张表的状态
+        await ReportTableStateAsync(db, OrderMDDetailTable, OrderMDDetailIndex);
+        await ReportTableStateAsync(db, OrderIssuesTable, OrderIssuesIndex);
 
         var codes = _permissionSeeds.Select(p => p.Code).ToList();
         var perms = (await db.Queryable<Permissions>().ToListAsync())
@@ -364,6 +442,43 @@ END";
     {
         var count = await db.Ado.GetIntAsync(
             $"SELECT COUNT(*) FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[{tableName}]') AND type in (N'U')");
+        return count > 0;
+    }
+
+    /// <summary>(2026-08-13) 单表的状态报告:存在性 + 行数 + 索引存在性 + (OrderIssues) 关键列存在性。</summary>
+    private static async Task ReportTableStateAsync(ISqlSugarClient db, string tableName, string indexName)
+    {
+        var tableExists = await TableExistsAsync(db, tableName);
+        Console.WriteLine($"  表 {tableName}: {(tableExists ? "存在" : "不存在")}");
+
+        if (tableExists)
+        {
+            var rowCount = await db.Ado.GetIntAsync($"SELECT COUNT(*) FROM {tableName}");
+            Console.WriteLine($"    行数: {rowCount}");
+
+            var indexExists = await db.Ado.GetIntAsync(
+                $"SELECT COUNT(*) FROM sys.indexes WHERE name = '{indexName}' AND object_id = OBJECT_ID('{tableName}')") > 0;
+            Console.WriteLine($"    索引 {indexName}: {(indexExists ? "存在" : "不存在")}");
+
+            // (2026-08-14) 仅 OrderIssues 表报 ClosedBy / ClosedTime / Resolution 关键列,
+            // 这几列缺失会导致 EF/SqlSugar 读这些字段时抛 "无效列名"。
+            if (tableName == OrderIssuesTable)
+            {
+                var closedBy   = await ColumnExistsAsync(db, tableName, "ClosedBy");
+                var closedTime = await ColumnExistsAsync(db, tableName, "ClosedTime");
+                var resolution = await ColumnExistsAsync(db, tableName, "Resolution");
+                Console.WriteLine($"    列 ClosedBy:  {(closedBy   ? "存在" : "不存在")}");
+                Console.WriteLine($"    列 ClosedTime:{(closedTime ? "存在" : "不存在")}");
+                Console.WriteLine($"    列 Resolution:{(resolution ? "存在" : "不存在")}");
+            }
+        }
+    }
+
+    /// <summary>(2026-08-14) 判断列是否存在。</summary>
+    private static async Task<bool> ColumnExistsAsync(ISqlSugarClient db, string tableName, string columnName)
+    {
+        var count = await db.Ado.GetIntAsync(
+            $"SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[{tableName}]') AND name = '{columnName}'");
         return count > 0;
     }
 

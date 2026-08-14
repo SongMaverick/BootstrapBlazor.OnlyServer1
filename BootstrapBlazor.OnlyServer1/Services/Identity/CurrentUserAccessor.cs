@@ -100,5 +100,26 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
 
             return (false, $"无权限(需要角色: {string.Join("/", roles)})");
         }
+
+        /// <summary>
+        /// (2026-08-13) 纵深防御的权限码入口 — 与 RequireRole 同款,只是校验维度是
+        /// 权限码(Claim)而非角色。比 RequireRole 更细,适合按钮级权限。
+        /// 用法:
+        ///   var (ok, err) = _currentUser.RequirePermission(PermissionCodes.OrderIssueAdd);
+        ///   if (!ok) return (false, err);
+        /// </summary>
+        public (bool ok, string? error) RequirePermission(string code)
+        {
+            if (string.IsNullOrEmpty(code))
+                return (false, "权限配置错误:未指定允许的权限码");
+
+            if (!IsAuthenticated)
+                return (false, "未登录或会话已失效,请重新登录");
+
+            if (HasPermission(code))
+                return (true, null);
+
+            return (false, $"无权限(需要权限码: {code})");
+        }
     }
 }

@@ -19,6 +19,14 @@ public static class PermissionCodes
     public const string OrderMDDetailEdit   = "OrderMDDetail.Edit";
     public const string OrderMDDetailDelete = "OrderMDDetail.Delete";
 
+    // (2026-08-13) 订单问题汇总(/order-management 行内"添加问题"/"问题汇总")
+    //   Read   — 能看到问题汇总页面
+    //   Add    — 在订单管理行点"添加问题"弹窗写新问题
+    //   EditStatus — 在问题汇总页面改 open/close
+    public const string OrderIssueRead       = "OrderIssue.Read";
+    public const string OrderIssueAdd        = "OrderIssue.Add";
+    public const string OrderIssueEditStatus = "OrderIssue.EditStatus";
+
     // 图号
     public const string DrawingNumberAllocate = "DrawingNumber.Allocate";
     public const string DrawingNumberRead     = "DrawingNumber.Read";

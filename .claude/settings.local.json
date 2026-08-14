@@ -65,7 +65,11 @@
       "Bash(awk '/2026-08-11 13:58:29/,/^2026-08-11 14:13:49/' \"F:/MXB/DrawingNumber/web_publish_20260804/logs/app-2026-08-11.log\")",
       "Bash(awk '/2026-08-10 13:40:12/,/2026-08-10 13:46:30/' \"F:/MXB/DrawingNumber/web_publish_20260804/logs/app-2026-08-10.log\")",
       "Bash(awk '/2026-08-11 13:58:29/,/^2026-08-11 14:14:00/' \"F:/MXB/DrawingNumber/web_publish_20260804/logs/app-2026-08-11.log\")",
-      "Bash(awk '/2026-08-11 14:00:24/,/^2026-08-11 14:14:00/' \"F:/MXB/DrawingNumber/web_publish_20260804/logs/app-2026-08-11.log\")"
+      "Bash(awk '/2026-08-11 14:00:24/,/^2026-08-11 14:14:00/' \"F:/MXB/DrawingNumber/web_publish_20260804/logs/app-2026-08-11.log\")",
+      "Bash(taskkill /F /PID 36960)",
+      "Bash(taskkill /F /PID 37884)",
+      "Bash(cmd //c \"taskkill /F /PID 36960 & taskkill /F /PID 37884\")",
+      "Bash(cmd //c \"taskkill /F /PID 48628 & taskkill /F /PID 34292\")"
     ]
   }
 }

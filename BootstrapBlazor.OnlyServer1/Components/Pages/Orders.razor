@@ -32,6 +32,8 @@
            EditMode="EditMode.Popup"
            ShowSkeleton="true"
            IsMultipleSelect="true"
+           SelectedRows="_selectedRows"
+           SelectedRowsChanged="OnSelectedRowsChanged"
            Height="600"
            ShowAddButton="@CurrentUser.HasPermission(PermissionCodes.OrderCreate)"
   ShowExtendEditButtonCallback="@((Models.Orders item) => CurrentUser.HasPermission(PermissionCodes.OrderEdit))"
@@ -91,6 +93,30 @@
     private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
 
     private Table<Models.Orders>? OrdersTable { get; set; }
+
+    // (2026-08-14) 通过 SelectedRowsChanged 监听勾选变化,
+    // 一旦用户勾选 >1 行就 Toast 一次,直到勾选数回到 <=1 才解除"已警告"状态,避免反复刷屏。
+    private List<Models.Orders> _selectedRows = new();
+
+    private bool _warnedThisSelection;
+
+    private void OnSelectedRowsChanged(IEnumerable<Models.Orders> rows)
+    {
+        _selectedRows = rows.ToList();
+
+        if (_selectedRows.Count > 1)
+        {
+            if (!_warnedThisSelection)
+            {
+                _warnedThisSelection = true;
+                _ = ToastService.Warning("本页面操作仅支持单选:一次只能操作一个订单,请只勾选一行");
+            }
+        }
+        else
+        {
+            _warnedThisSelection = false;
+        }
+    }
 
     private async Task OnToolbarAddDrawingNumberClick()
     {
