@@ -105,7 +105,7 @@ namespace BootstrapBlazor.OnlyServer1.Services.Identity
         /// (2026-08-13) 纵深防御的权限码入口 — 与 RequireRole 同款,只是校验维度是
         /// 权限码(Claim)而非角色。比 RequireRole 更细,适合按钮级权限。
         /// 用法:
-        ///   var (ok, err) = _currentUser.RequirePermission(PermissionCodes.OrderIssueAdd);
+        ///   var (ok, err) = _currentUser.RequirePermission(PermissionCodes.OrderInfoRead);
         ///   if (!ok) return (false, err);
         /// </summary>
         public (bool ok, string? error) RequirePermission(string code)

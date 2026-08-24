@@ -203,17 +203,14 @@ namespace BootstrapBlazor.OnlyServer1.Services
 
                 InvalidateDrawingNumberCache();
 
-                // 新建订单时,同步给「订单管理」建一条空明细行(2026-08-10)。
-                // 刻意放在事务提交之后、且吞掉所有异常:
-                //   下单是主流程,填明细是附属功能,后者失败绝不能连累前者。
-                //   例如新功能的 OrderMDDetail 表还没建(安装程序未执行),
-                //   如果放进事务里,整个下单会直接失败。
-                // 这里失败也不会丢数据:OrderMDDetailService.SaveAsync 里保留了
-                //   DetailId == 0 → INSERT 的兜底分支,用户第一次编辑明细时会自动补建。
-                //   存量订单(本功能上线前就存在的)同样走那条兜底路径。
+                // (2026-08-17 重构)新建订单时,best-effort 给「订单项目信息」建一条空行(OrderInfo)。
+                // 与之前的 OrderMDDetail 同款设计:放在事务提交之后 + 异常吞掉,
+                // 确保下单主流程不受「订单管理」表结构未就绪的影响。
+                // OrderDesignPhases / OrderImportantComponents 不自动建 —— 它们是更细颗粒度的数据,
+                // 不是每个订单都需要,用户首次手动编辑时再创建即可。
                 if (changedType == ItemChangedType.Add)
                 {
-                    await TryCreateEmptyOrderDetailAsync(order.Id, order.CreatedBy);
+                    await TryCreateEmptyOrderInfoAsync(order.Id, order.CreatedBy);
                 }
 
                 return (true, null);
@@ -226,25 +223,25 @@ namespace BootstrapBlazor.OnlyServer1.Services
         }
 
         /// <summary>
-        /// 给新建的订单补一条空的「订单管理」明细行(OrderMDDetail)。
+        /// (2026-08-17 重构)给新建的订单补一条空的「订单项目信息」行(OrderInfo)。
         ///
         /// best-effort:任何异常只记日志,不向上抛、不影响下单结果。
-        /// 幂等:已存在未删除的明细时直接返回,不会重复插入
-        /// (真正的唯一性由 IX_OrderMDDetail_OrderId (WHERE IsDeleted=0) 兜底)。
+        /// 幂等:已存在未删除的 OrderInfo 时直接返回,不会重复插入
+        /// (真正的唯一性由 IX_OrderInfo_OrderId (WHERE IsDeleted=0) 兜底)。
         /// </summary>
-        private async Task TryCreateEmptyOrderDetailAsync(int orderId, string createdBy)
+        private async Task TryCreateEmptyOrderInfoAsync(int orderId, string createdBy)
         {
             if (orderId <= 0) return;
 
             try
             {
-                var exists = await _db.Queryable<OrderMDDetail>()
-                    .Where(d => d.OrderId == orderId && !d.IsDeleted)
+                var exists = await _db.Queryable<OrderInfo>()
+                    .Where(i => i.OrderId == orderId && !i.IsDeleted)
                     .AnyAsync();
                 if (exists) return;
 
                 var now = DateTime.Now;
-                await _db.Insertable(new OrderMDDetail
+                await _db.Insertable(new OrderInfo
                 {
                     OrderId = orderId,
                     UnitCount = 1,
@@ -255,13 +252,13 @@ namespace BootstrapBlazor.OnlyServer1.Services
                     IsDeleted = false,
                 }).ExecuteCommandAsync();
 
-                _logger.LogInformation("Empty OrderMDDetail created for new order {OrderId}", orderId);
+                _logger.LogInformation("Empty OrderInfo created for new order {OrderId}", orderId);
             }
             catch (Exception ex)
             {
-                // 不影响下单;用户首次编辑明细时会由 OrderMDDetailService 兜底补建
+                // 不影响下单;用户首次编辑项目信息时由 OrderInfoService 兜底补建
                 _logger.LogError(ex,
-                    "TryCreateEmptyOrderDetailAsync failed for order {OrderId} (下单已成功,明细行将在首次编辑时补建)",
+                    "TryCreateEmptyOrderInfoAsync failed for order {OrderId} (下单已成功,OrderInfo 行将在首次编辑时补建)",
                     orderId);
             }
         }

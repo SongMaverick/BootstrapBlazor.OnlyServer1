@@ -1,4 +1,4 @@
-﻿using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models;
 using BootstrapBlazor.OnlyServer1.Models.Identity;
 using Microsoft.Extensions.Configuration;
 using SqlSugar;
@@ -9,22 +9,18 @@ namespace BootstrapBlazor.OrderManagementSetup;
 /// <summary>
 /// 「订单管理」功能的一次性安装程序(2026-08-10)。
 /// (2026-08-13) 扩展:订单问题汇总(OrderIssues)。
+/// (2026-08-17) 重构:从原 OrderMDDetail 单表拆成 3 张业务表
+///   - OrderInfo              —— 订单项目信息
+///   - OrderDesignPhases      —— 一次二次人员 + 时间
+///   - OrderImportantComponents —— 重要组件
+/// + OrderIssues(问题汇总,已存在)
+/// + 6 个新权限码(3 张表各 Read/Edit)
 ///
 /// 为什么不放进 BootstrapBlazor.DbMigrator:
 ///   DbMigrator 是已上线系统的建表 + 历史数据迁移工具,它的 --schema / --seed / --migrate
 ///   会遍历全部业务表、读 Order.sql / C0X.sql 等历史 SQL 文件重灌数据。
-///   在生产库上为了一张新表去跑它,风险面远大于收益。
-///   所以订单管理的建表/索引/权限码单独成一个进程,只碰它自己的东西:
-///     - OrderMDDetail 表(不存在才建)
-///     - IX_OrderMDDetail_OrderId 过滤唯一索引
-///     - Permissions 表里 3 个 OrderMDDetail.* 权限码
-///     - RolePermissions 里这 3 个码到 ADMIN / OPERATOR / VIEWER 的关联
-///   (2026-08-13 新增)
-///     - OrderIssues 表(不存在才建)
-///     - IX_OrderIssues_OrderId_Active 过滤索引(加速按订单查问题)
-///     - Permissions 表里 3 个 OrderIssue.* 权限码
-///     - RolePermissions 绑定到 ADMIN/OPERATOR/VIEWER
-///   绝不 DROP、不改任何已有表的结构、不动任何业务数据。
+///   在生产库上为新表去跑它,风险面远大于收益。
+///   所以订单管理的建表/索引/权限码单独成一个进程,只碰它自己的东西。
 ///
 /// 全部操作幂等,可反复执行。
 ///
@@ -42,43 +38,58 @@ namespace BootstrapBlazor.OrderManagementSetup;
 /// </summary>
 public static class Program
 {
-    private const string OrderMDDetailTable = "OrderMDDetail";
-    private const string OrderMDDetailIndex = "IX_OrderMDDetail_OrderId";
-    private const string OrderIssuesTable   = "OrderIssues";
-    private const string OrderIssuesIndex   = "IX_OrderIssues_OrderId_Active";
+    private const string OrderInfoTable                = "OrderInfo";
+    private const string OrderInfoIndex                = "IX_OrderInfo_OrderId";
+    private const string OrderDesignPhasesTable        = "OrderDesignPhases";
+    private const string OrderDesignPhasesIndex        = "IX_OrderDesignPhases_OrderId";
+    private const string OrderImportantComponentsTable = "OrderImportantComponents";
+    private const string OrderImportantComponentsIndex = "IX_OrderImportantComponents_OrderId";
+
+    private const string OrderIssuesTable = "OrderIssues";
+    private const string OrderIssuesIndex = "IX_OrderIssues_OrderId_Active";
 
     /// <summary>
-    /// 本功能引入的权限码。明细行随订单存在,不单独新增,故没有 OrderMDDetail.Create。
+    /// (2026-08-17 重构)本功能引入的权限码:
+    ///   3 张业务表 × {Read, Edit} = 6 个。
+    ///   - Edit 已足够"清空内容"语义,故没有 Delete。
+    ///   - OrderIssue.* 3 个保留(早期版本引入)。
     /// 与 BootstrapBlazor.OnlyServer1/Models/Identity/PermissionCodes.cs 一一对应。
     /// </summary>
     private static readonly Permissions[] _permissionSeeds =
     {
-        new() { Code = PermissionCodes.OrderMDDetailRead,   Name = "查看订单明细", Category = "订单管理", SortOrder = 1, IsActive = true },
-        new() { Code = PermissionCodes.OrderMDDetailEdit,   Name = "编辑订单明细", Category = "订单管理", SortOrder = 2, IsActive = true },
-        new() { Code = PermissionCodes.OrderMDDetailDelete, Name = "清空订单明细", Category = "订单管理", SortOrder = 3, IsActive = true },
-        // (2026-08-13) 订单问题汇总权限码
-        new() { Code = PermissionCodes.OrderIssueRead,       Name = "查看订单问题汇总", Category = "订单管理", SortOrder = 4, IsActive = true },
-        new() { Code = PermissionCodes.OrderIssueAdd,        Name = "添加订单问题",     Category = "订单管理", SortOrder = 5, IsActive = true },
-        new() { Code = PermissionCodes.OrderIssueEditStatus, Name = "修改订单问题状态", Category = "订单管理", SortOrder = 6, IsActive = true },
+        new() { Code = PermissionCodes.OrderInfoRead,                    Name = "查看订单项目信息",     Category = "订单管理", SortOrder = 1, IsActive = true },
+        new() { Code = PermissionCodes.OrderInfoEdit,                    Name = "编辑订单项目信息",     Category = "订单管理", SortOrder = 2, IsActive = true },
+        new() { Code = PermissionCodes.OrderDesignPhasesRead,            Name = "查看一次二次人员时间", Category = "订单管理", SortOrder = 3, IsActive = true },
+        new() { Code = PermissionCodes.OrderDesignPhasesEdit,            Name = "编辑一次二次人员时间", Category = "订单管理", SortOrder = 4, IsActive = true },
+        new() { Code = PermissionCodes.OrderImportantComponentsRead,     Name = "查看重要组件",         Category = "订单管理", SortOrder = 5, IsActive = true },
+        new() { Code = PermissionCodes.OrderImportantComponentsEdit,     Name = "编辑重要组件",         Category = "订单管理", SortOrder = 6, IsActive = true },
+        new() { Code = PermissionCodes.OrderIssueRead,                   Name = "查看订单问题汇总",     Category = "订单管理", SortOrder = 7, IsActive = true },
+        new() { Code = PermissionCodes.OrderIssueAdd,                    Name = "添加订单问题",         Category = "订单管理", SortOrder = 8, IsActive = true },
+        new() { Code = PermissionCodes.OrderIssueEditStatus,             Name = "修改订单问题状态",     Category = "订单管理", SortOrder = 9, IsActive = true },
     };
 
     /// <summary>
     /// 角色 → 权限码。Operator 与 Admin 一样可完整操作本页(用户 2026-08-10 明确要求),
     /// Viewer 只读。
-    /// (2026-08-13) 问题汇总权限同样按"Admin/Operator 全权、Viewer 只读"分配。
     /// </summary>
     private static readonly Dictionary<string, string[]> _roleMapping = new()
     {
         ["ADMIN"] = new[] {
-            PermissionCodes.OrderMDDetailRead, PermissionCodes.OrderMDDetailEdit, PermissionCodes.OrderMDDetailDelete,
+            PermissionCodes.OrderInfoRead, PermissionCodes.OrderInfoEdit,
+            PermissionCodes.OrderDesignPhasesRead, PermissionCodes.OrderDesignPhasesEdit,
+            PermissionCodes.OrderImportantComponentsRead, PermissionCodes.OrderImportantComponentsEdit,
             PermissionCodes.OrderIssueRead, PermissionCodes.OrderIssueAdd, PermissionCodes.OrderIssueEditStatus,
         },
         ["OPERATOR"] = new[] {
-            PermissionCodes.OrderMDDetailRead, PermissionCodes.OrderMDDetailEdit, PermissionCodes.OrderMDDetailDelete,
+            PermissionCodes.OrderInfoRead, PermissionCodes.OrderInfoEdit,
+            PermissionCodes.OrderDesignPhasesRead, PermissionCodes.OrderDesignPhasesEdit,
+            PermissionCodes.OrderImportantComponentsRead, PermissionCodes.OrderImportantComponentsEdit,
             PermissionCodes.OrderIssueRead, PermissionCodes.OrderIssueAdd, PermissionCodes.OrderIssueEditStatus,
         },
         ["VIEWER"] = new[] {
-            PermissionCodes.OrderMDDetailRead,
+            PermissionCodes.OrderInfoRead,
+            PermissionCodes.OrderDesignPhasesRead,
+            PermissionCodes.OrderImportantComponentsRead,
             PermissionCodes.OrderIssueRead,
         },
     };
@@ -90,7 +101,7 @@ public static class Program
         bool doProduction = args.Contains("--production");
 
         Console.WriteLine("============================================================");
-        Console.WriteLine(" 订单管理(结构设计订单明细)安装程序");
+        Console.WriteLine(" 订单管理(项目信息 / 一次二次人员时间 / 重要组件 / 问题汇总)安装程序");
         Console.WriteLine("============================================================");
 
         if (!doCheck && !doInstall)
@@ -158,11 +169,12 @@ public static class Program
             Console.WriteLine();
             Console.WriteLine("⚠⚠⚠ 生产模式 ⚠⚠⚠");
             Console.WriteLine("即将对生产数据库执行以下操作(均为新增,不删除、不修改已有数据):");
-            Console.WriteLine($"  - 创建表 {OrderMDDetailTable}(已存在则跳过)");
-            Console.WriteLine($"  - 创建过滤唯一索引 {OrderMDDetailIndex}(已存在则跳过)");
+            Console.WriteLine($"  - 创建表 {OrderInfoTable}(已存在则跳过)");
+            Console.WriteLine($"  - 创建表 {OrderDesignPhasesTable}(已存在则跳过)");
+            Console.WriteLine($"  - 创建表 {OrderImportantComponentsTable}(已存在则跳过)");
             Console.WriteLine($"  - (2026-08-13) 创建表 {OrderIssuesTable}(已存在则跳过)");
-            Console.WriteLine($"  - (2026-08-13) 创建索引 {OrderIssuesIndex}(已存在则跳过)");
             Console.WriteLine($"  - (2026-08-14) 给 {OrderIssuesTable} 增量补列 ClosedBy / ClosedTime / Resolution(已存在则跳过)");
+            Console.WriteLine($"  - 创建 4 个过滤唯一索引 {OrderInfoIndex} / {OrderDesignPhasesIndex} / {OrderImportantComponentsIndex} / {OrderIssuesIndex}(已存在则跳过)");
             Console.WriteLine($"  - 灌入 {_permissionSeeds.Length} 个订单管理权限码(已存在则跳过)");
             Console.WriteLine("  - 把权限码绑给 ADMIN / OPERATOR / VIEWER(已绑定则跳过)");
             Console.Write(" 确认? 输入 YES 继续: ");
@@ -178,12 +190,16 @@ public static class Program
         {
             Console.WriteLine();
             Console.WriteLine(">>> 1/4 建表");
-            await CreateOrderMDDetailTableAsync(db);
+            await CreateOrderInfoTableAsync(db);
+            await CreateOrderDesignPhasesTableAsync(db);
+            await CreateOrderImportantComponentsTableAsync(db);
             await CreateOrderIssuesTableAsync(db);
 
             Console.WriteLine();
             Console.WriteLine(">>> 2/4 建索引");
-            await CreateOrderMDDetailIndexAsync(db);
+            await CreateOrderInfoIndexAsync(db);
+            await CreateOrderDesignPhasesIndexAsync(db);
+            await CreateOrderImportantComponentsIndexAsync(db);
             await CreateOrderIssuesIndexAsync(db);
 
             Console.WriteLine();
@@ -215,20 +231,40 @@ public static class Program
     }
 
     // ============================================================
-    // 步骤实现(全部幂等)
+    // 建表(全部幂等)
     // ============================================================
 
-    private static async Task CreateOrderMDDetailTableAsync(ISqlSugarClient db)
+    private static async Task CreateOrderInfoTableAsync(ISqlSugarClient db)
     {
-        if (await TableExistsAsync(db, OrderMDDetailTable))
+        if (await TableExistsAsync(db, OrderInfoTable))
         {
-            Console.WriteLine($"  - {OrderMDDetailTable}:已存在,跳过");
+            Console.WriteLine($"  - {OrderInfoTable}:已存在,跳过");
             return;
         }
+        await Task.Run(() => db.CodeFirst.InitTables<OrderInfo>());
+        Console.WriteLine($"  ✓ {OrderInfoTable}:已创建");
+    }
 
-        // CodeFirst 只建这一张表,不会碰其它实体
-        await Task.Run(() => db.CodeFirst.InitTables<OrderMDDetail>());
-        Console.WriteLine($"  ✓ {OrderMDDetailTable}:已创建");
+    private static async Task CreateOrderDesignPhasesTableAsync(ISqlSugarClient db)
+    {
+        if (await TableExistsAsync(db, OrderDesignPhasesTable))
+        {
+            Console.WriteLine($"  - {OrderDesignPhasesTable}:已存在,跳过");
+            return;
+        }
+        await Task.Run(() => db.CodeFirst.InitTables<OrderDesignPhases>());
+        Console.WriteLine($"  ✓ {OrderDesignPhasesTable}:已创建");
+    }
+
+    private static async Task CreateOrderImportantComponentsTableAsync(ISqlSugarClient db)
+    {
+        if (await TableExistsAsync(db, OrderImportantComponentsTable))
+        {
+            Console.WriteLine($"  - {OrderImportantComponentsTable}:已存在,跳过");
+            return;
+        }
+        await Task.Run(() => db.CodeFirst.InitTables<OrderImportantComponents>());
+        Console.WriteLine($"  ✓ {OrderImportantComponentsTable}:已创建");
     }
 
     private static async Task CreateOrderIssuesTableAsync(ISqlSugarClient db)
@@ -249,14 +285,13 @@ public static class Program
     }
 
     /// <summary>
-    /// (2026-08-14) 给 OrderIssues 表增量补 ClosedBy / ClosedTime 两列(可空)。
+    /// (2026-08-14) 给 OrderIssues 表增量补 ClosedBy / ClosedTime / Resolution 列(可空)。
     /// 已存在则跳过。适用于"代码已升级、但旧表还没 ALTER"的场景。
     /// </summary>
     private static async Task EnsureOrderIssuesColumnsAsync(ISqlSugarClient db)
     {
         await AddColumnIfNotExistsAsync(db, OrderIssuesTable, "ClosedBy",  "NVARCHAR(100) NULL");
         await AddColumnIfNotExistsAsync(db, OrderIssuesTable, "ClosedTime", "DATETIME NULL");
-        // (2026-08-14) 新增:解决方法(长文本,跟 Content 同结构)。
         await AddColumnIfNotExistsAsync(db, OrderIssuesTable, "Resolution", "NVARCHAR(MAX) NULL");
     }
 
@@ -273,20 +308,41 @@ public static class Program
         Console.WriteLine($"    + 列 {columnName}:已添加");
     }
 
-    /// <summary>
-    /// OrderMDDetail.OrderId 用 filtered unique index(仅约束 IsDeleted=0 的活跃行):
-    /// 保证一个订单最多只有一条"有效"明细;清空明细(软删)后可以重新填写。
-    /// 做法与 DbMigrator 里 IX_Orders_OrderNumber 一致。
-    /// </summary>
-    private static async Task CreateOrderMDDetailIndexAsync(ISqlSugarClient db)
+    // ============================================================
+    // 索引(全部幂等,3 张业务表 + OrderIssues)
+    // ============================================================
+
+    private static async Task CreateOrderInfoIndexAsync(ISqlSugarClient db)
     {
         var sql = $@"
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{OrderMDDetailIndex}' AND object_id = OBJECT_ID('{OrderMDDetailTable}'))
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{OrderInfoIndex}' AND object_id = OBJECT_ID('{OrderInfoTable}'))
 BEGIN
-    CREATE UNIQUE INDEX {OrderMDDetailIndex} ON {OrderMDDetailTable} (OrderId) WHERE IsDeleted = 0;
+    CREATE UNIQUE INDEX {OrderInfoIndex} ON {OrderInfoTable} (OrderId) WHERE IsDeleted = 0;
 END";
         await db.Ado.ExecuteCommandAsync(sql);
-        Console.WriteLine($"  ✓ 过滤唯一索引 {OrderMDDetailIndex} (WHERE IsDeleted = 0) 已就绪");
+        Console.WriteLine($"  ✓ 过滤唯一索引 {OrderInfoIndex} (WHERE IsDeleted = 0) 已就绪");
+    }
+
+    private static async Task CreateOrderDesignPhasesIndexAsync(ISqlSugarClient db)
+    {
+        var sql = $@"
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{OrderDesignPhasesIndex}' AND object_id = OBJECT_ID('{OrderDesignPhasesTable}'))
+BEGIN
+    CREATE UNIQUE INDEX {OrderDesignPhasesIndex} ON {OrderDesignPhasesTable} (OrderId) WHERE IsDeleted = 0;
+END";
+        await db.Ado.ExecuteCommandAsync(sql);
+        Console.WriteLine($"  ✓ 过滤唯一索引 {OrderDesignPhasesIndex} (WHERE IsDeleted = 0) 已就绪");
+    }
+
+    private static async Task CreateOrderImportantComponentsIndexAsync(ISqlSugarClient db)
+    {
+        var sql = $@"
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = '{OrderImportantComponentsIndex}' AND object_id = OBJECT_ID('{OrderImportantComponentsTable}'))
+BEGIN
+    CREATE UNIQUE INDEX {OrderImportantComponentsIndex} ON {OrderImportantComponentsTable} (OrderId) WHERE IsDeleted = 0;
+END";
+        await db.Ado.ExecuteCommandAsync(sql);
+        Console.WriteLine($"  ✓ 过滤唯一索引 {OrderImportantComponentsIndex} (WHERE IsDeleted = 0) 已就绪");
     }
 
     /// <summary>
@@ -304,19 +360,27 @@ END";
         Console.WriteLine($"  ✓ 索引 {OrderIssuesIndex} (WHERE IsDeleted = 0) 已就绪");
     }
 
+    // ============================================================
+    // 灌权限码 + 角色绑定
+    // ============================================================
+
     /// <summary>
-    /// 灌入 3 个 OrderMDDetail.* 权限码。
+    /// 灌入 9 个权限码。
     ///
     /// 流程:
-    ///   1. 清理老的 OrderDetail.* 码(2026-08-12 重命名为 OrderMDDetail.*)
+    ///   1. 清理老的 OrderMDDetail.* 码(2026-08-17 重构前使用,本次清理)
     ///      —— 关联 RolePermissions 一起删;若有自定义角色分配老码,也会一并清理。
     ///      仅匹配我们列出的 3 个老 Code,绝不 LIKE 模糊匹配,防误删其它模块权限。
+    ///      仅匹配 OrderDetail.* 的 3 个老权限码(2026-08-12 第一次重命名时遗留)。
     ///   2. 插入 Code 不存在的新码(已存在的不动,不覆盖 Name/Category 的人工调整)。
     /// </summary>
     private static async Task SeedPermissionsAsync(ISqlSugarClient db)
     {
-        // 1. 清理老的 OrderDetail.* 码
-        var oldCodes = new[] { "OrderDetail.Read", "OrderDetail.Edit", "OrderDetail.Delete" };
+        // 1. 清理老的 OrderMDDetail.* + OrderDetail.* 码
+        var oldCodes = new[] {
+            "OrderMDDetail.Read", "OrderMDDetail.Edit", "OrderMDDetail.Delete",
+            "OrderDetail.Read", "OrderDetail.Edit", "OrderDetail.Delete",
+        };
         var oldPerms = await db.Queryable<Permissions>()
             .Where(p => oldCodes.Contains(p.Code))
             .ToListAsync();
@@ -329,7 +393,7 @@ END";
             var deletedPerms = await db.Deleteable<Permissions>()
                 .Where(p => oldIds.Contains(p.Id))
                 .ExecuteCommandAsync();
-            Console.WriteLine($"  ! 清理老的 OrderDetail.* 权限码:Permissions {deletedPerms} 个 + RolePermissions {deletedRolePerms} 条关联");
+            Console.WriteLine($"  ! 清理老的 OrderMDDetail.* / OrderDetail.* 权限码:Permissions {deletedPerms} 个 + RolePermissions {deletedRolePerms} 条关联");
         }
 
         // 2. 插入 Code 不存在的新码
@@ -403,8 +467,9 @@ END";
 
     private static async Task ReportStateAsync(ISqlSugarClient db)
     {
-        // (2026-08-13) 两张表的状态
-        await ReportTableStateAsync(db, OrderMDDetailTable, OrderMDDetailIndex);
+        await ReportTableStateAsync(db, OrderInfoTable, OrderInfoIndex);
+        await ReportTableStateAsync(db, OrderDesignPhasesTable, OrderDesignPhasesIndex);
+        await ReportTableStateAsync(db, OrderImportantComponentsTable, OrderImportantComponentsIndex);
         await ReportTableStateAsync(db, OrderIssuesTable, OrderIssuesIndex);
 
         var codes = _permissionSeeds.Select(p => p.Code).ToList();

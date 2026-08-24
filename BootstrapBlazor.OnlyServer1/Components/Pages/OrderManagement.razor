@@ -1,302 +1,251 @@
 @page "/order-management"
-@attribute [TabItemOption(Text = "订单管理")]
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Viewer)]
-@inject BootstrapBlazor.OnlyServer1.Services.OrderMDDetailService OrderMDDetailService
-@inject BootstrapBlazor.OnlyServer1.Services.OrderIssueService OrderIssueService
+@using BootstrapBlazor.OnlyServer1.Models.Identity
+@using BootstrapBlazor.OnlyServer1.Models.ViewModels
+@using PermissionCodes = BootstrapBlazor.OnlyServer1.Models.Identity.PermissionCodes
+@inject BootstrapBlazor.OnlyServer1.Services.OrderInfoService OrderInfoService
+@inject BootstrapBlazor.OnlyServer1.Services.OrderDesignPhasesService OrderDesignPhasesService
+@inject BootstrapBlazor.OnlyServer1.Services.OrderImportantComponentsService OrderImportantComponentsService
 @inject BootstrapBlazor.OnlyServer1.Services.UsersService UsersService
 @inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
 @inject Microsoft.Extensions.Logging.ILogger<OrderManagement> Logger
 @inject ToastService ToastService
-@inject NavigationManager Nav
 
 <PageTitle>订单管理</PageTitle>
 
 <div class="page-order-management">
     <h1>订单管理</h1>
     <p class="text-secondary">
-        结构设计订单排产明细。订单号 / 容量 / 额定电压 来自订单列表,本页只读;
+        按业务域拆 3 张表:项目信息 / 一次二次人员时间 / 重要组件。订单号 / 容量 / 额定电压 来自订单列表,本页只读;
         新增或删除订单请前往「订单列表」。
     </p>
 
-    @* (2026-08-13) 日期范围筛选:一次/二次图纸提交,各 2 个 DateTimePicker *@
-    <div class="card mb-3">
-        <div class="card-body py-3">
-            <div class="row g-2 align-items-end">
-                <div class="col-12 col-md-2">
-                    <DateTimePicker TValue="DateTime?" @bind-Value="_primarySubmitStart"
-                                    ViewMode="DatePickerViewMode.Date"
-                                    ShowLabel="true"
-                                    DisplayText="一次提交-起始" />
-                </div>
-                <div class="col-12 col-md-auto text-center text-muted pb-2">~</div>
-                <div class="col-12 col-md-2">
-                    <DateTimePicker TValue="DateTime?" @bind-Value="_primarySubmitEnd"
-                                    ViewMode="DatePickerViewMode.Date"
-                                    ShowLabel="true"
-                                    DisplayText="一次提交-结束" />
-                </div>
-                <div class="col-12 col-md-2">
-                    <DateTimePicker TValue="DateTime?" @bind-Value="_secondarySubmitStart"
-                                    ViewMode="DatePickerViewMode.Date"
-                                    ShowLabel="true"
-                                    DisplayText="二次提交-起始" />
-                </div>
-                <div class="col-12 col-md-auto text-center text-muted pb-2">~</div>
-                <div class="col-12 col-md-2">
-                    <DateTimePicker TValue="DateTime?" @bind-Value="_secondarySubmitEnd"
-                                    ViewMode="DatePickerViewMode.Date"
-                                    ShowLabel="true"
-                                    DisplayText="二次提交-结束" />
-                </div>
-                <div class="col-12 col-md-auto">
-                    <Button Color="Color.Primary" Icon="fa-solid fa-filter" OnClick="ApplyFilters">筛选</Button>
-                </div>
-                <div class="col-12 col-md-auto">
-                    <Button Color="Color.Secondary" Icon="fa-solid fa-xmark" OnClick="ResetFilters">重置</Button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <Table TItem="OrderMDDetailRow"
-           @ref="_table"
-           IsPagination="true"
-           PageItemsSource="@PageItemsSource"
-           RenderMode="TableRenderMode.Table"
-           IsFixedHeader="true"
-           IsStriped="true"
-           IsBordered="true"
-           OnQueryAsync="OnQueryAsync"
-           ShowSearch="true"
-           ShowToolbar="true"
-           ShowExtendButtons="false"
-           ShowAddButton="false"
-           ShowEditButton="true"
-           ShowDeleteButton="true"
-           SelectedRows="_selectedRows"
-           SelectedRowsChanged="OnSelectedRowsChanged"
-           OnSaveAsync="OnSaveAsync"
-           OnDeleteAsync="OnDeleteAsync"
-           DeleteButtonText="清空内容"
-           ConfirmDeleteContentText="确认清空所选订单的明细内容吗?订单本身不会被删除。"
-           EditMode="EditMode.Popup"
-           EditDialogSize="Size.ExtraLarge"
-           ShowSkeleton="true"
-           IsMultipleSelect="true"
-           Height="700">
-        <TableToolbarTemplate>
-            <Button Color="Color.Info"
-                    Icon="fa-solid fa-plus"
-                    OnClick="ShowAddIssueDialogFromSelection">
-                添加问题
-            </Button>
-            <Button Color="Color.Warning"
-                    Icon="fa-solid fa-list"
-                    Class="ms-2"
-                    OnClick="GoToIssuesFromSelection">
-                问题汇总
-            </Button>
-        </TableToolbarTemplate>
-        <TableColumns>
-            @* ===== 来自 Orders,只读 ===== *@
-            <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="110" Align="Alignment.Center" Sortable="true" Readonly="true" />
-            <TableColumn @bind-Field="@context.Power" Text="容量 MVA" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
-            <TableColumn @bind-Field="@context.RatedVoltage" Text="电压 kV" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
-
-            @* ===== 明细字段(每个 EditTemplate 强制 col-12 col-md-6,2 个一行) ===== *@
-            <TableColumn @bind-Field="@context.ProjectName" Text="项目名称" Width="220" Sortable="true">
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <BootstrapInput TValue="string" @bind-Value="row.ProjectName" ShowLabel="true" DisplayText="项目名称" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.MarketType" Text="国内/出口" Width="110" Align="Alignment.Center" Sortable="true">
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <Select Items="_marketTypeItems"
-                                TValue="string"
-                                @bind-Value="row.MarketType"
-                                ShowLabel="true"
-                                DisplayText="国内/出口"
-                                PlaceHolder="请选择" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.DesignTool" Text="设计工具" Width="100" Align="Alignment.Center">
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <Select Items="_designToolItems"
-                                TValue="string"
-                                @bind-Value="row.DesignTool"
-                                ShowLabel="true"
-                                DisplayText="设计工具"
-                                PlaceHolder="请选择" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.UnitCount" Text="台数" Width="80" Align="Alignment.Center" Sortable="true">
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <BootstrapInputNumber TValue="int" @bind-Value="row.UnitCount" ShowLabel="true" DisplayText="台数" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.PrimaryEngineerName" Text="负责人(一次)" Width="130" Align="Alignment.Center" Readonly="true" IsVisibleWhenEdit="false" />
-            <TableColumn @bind-Field="@context.PrimaryEngineerId" Text="负责人(一次)" Width="130" Visible="false" IsVisibleWhenEdit="true">
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <Select Items="_userItems"
-                                TValue="int?"
-                                @bind-Value="row.PrimaryEngineerId"
-                                ShowLabel="true"
-                                DisplayText="一次负责人"
-                                ShowSearch="true"
-                                PlaceHolder="请选择负责人" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.PrimarySubmitDate" Text="一次图纸提交" Width="130" Align="Alignment.Center" Sortable="true">
-                <Template Context="value">@FormatDate(value.Value)</Template>
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <DateTimePicker TValue="DateTime?"
-                                        @bind-Value="row.PrimarySubmitDate"
-                                        ViewMode="DatePickerViewMode.Date"
+    <Tab IsCard="true">
+        @* ===== Tab 1: 订单项目信息 ===== *@
+        <TabItem Text="项目信息">
+            <Table TItem="OrderInfoRow"
+                   IsPagination="true"
+                   PageItemsSource="@PageItemsSource"
+                   RenderMode="TableRenderMode.Table"
+                   IsFixedHeader="true"
+                   IsStriped="true"
+                   IsBordered="true"
+                   OnQueryAsync="OnInfoQueryAsync"
+                   ShowSearch="true"
+                   ShowToolbar="true"
+                   ShowExtendButtons="true"
+                   ShowAddButton="false"
+                   ShowEditButton="false"
+                   OnSaveAsync="OnInfoSaveAsync"
+                   EditMode="EditMode.Popup"
+                   EditDialogSize="Size.Large"
+                   ShowSkeleton="true"
+                   IsMultipleSelect="false"
+                   Height="600"
+                   ShowExtendEditButtonCallback="@(item => CurrentUser.HasPermission(PermissionCodes.OrderInfoEdit))">
+                <TableColumns>
+                    <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="110" Align="Alignment.Center" Sortable="true" Readonly="true" />
+                    <TableColumn @bind-Field="@context.Power" Text="容量 MVA" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
+                    <TableColumn @bind-Field="@context.RatedVoltage" Text="电压 kV" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
+                    <TableColumn @bind-Field="@context.ProjectName" Text="项目名称" Width="220" Sortable="true">
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-8">
+                                <BootstrapInput TValue="string" @bind-Value="row.ProjectName" ShowLabel="true" DisplayText="项目名称" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.MarketType" Text="国内/出口" Width="110" Align="Alignment.Center" Sortable="true">
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <Select Items="_marketTypeItems"
+                                        TValue="string"
+                                        @bind-Value="row.MarketType"
                                         ShowLabel="true"
-                                        DisplayText="一次提交日期" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
+                                        DisplayText="国内/出口"
+                                        PlaceHolder="请选择" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.UnitCount" Text="台数" Width="80" Align="Alignment.Center" Sortable="true">
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <BootstrapInputNumber TValue="int" @bind-Value="row.UnitCount" ShowLabel="true" DisplayText="台数" Min="1" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                </TableColumns>
+            </Table>
+        </TabItem>
 
-            <TableColumn @bind-Field="@context.PrimaryConfirmDate" Text="一次图纸确认" Width="130" Align="Alignment.Center" Sortable="true">
-                <Template Context="value">@FormatDate(value.Value)</Template>
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <DateTimePicker TValue="DateTime?"
-                                        @bind-Value="row.PrimaryConfirmDate"
-                                        ViewMode="DatePickerViewMode.Date"
+        @* ===== Tab 2: 一次二次人员时间 ===== *@
+        <TabItem Text="一次二次人员时间">
+            <Table TItem="OrderDesignPhasesRow"
+                   IsPagination="true"
+                   PageItemsSource="@PageItemsSource"
+                   RenderMode="TableRenderMode.Table"
+                   IsFixedHeader="true"
+                   IsStriped="true"
+                   IsBordered="true"
+                   OnQueryAsync="OnPhasesQueryAsync"
+                   ShowSearch="true"
+                   ShowToolbar="true"
+                   ShowExtendButtons="true"
+                   ShowAddButton="false"
+                   ShowEditButton="false"
+                   OnSaveAsync="OnPhasesSaveAsync"
+                   EditMode="EditMode.Popup"
+                   EditDialogSize="Size.ExtraLarge"
+                   ShowSkeleton="true"
+                   IsMultipleSelect="false"
+                   Height="600"
+                   ShowExtendEditButtonCallback="@(item => CurrentUser.HasPermission(PermissionCodes.OrderDesignPhasesEdit))">
+                <TableColumns>
+                    <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="110" Align="Alignment.Center" Sortable="true" Readonly="true" />
+                    <TableColumn @bind-Field="@context.Phase1EngineerName" Text="负责人(一次)" Width="130" Align="Alignment.Center" Readonly="true" IsVisibleWhenEdit="false" />
+                    <TableColumn @bind-Field="@context.Phase1EngineerId" Text="负责人(一次)" Width="130" Visible="false" IsVisibleWhenEdit="true">
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <Select Items="_userItems"
+                                        TValue="int?"
+                                        @bind-Value="row.Phase1EngineerId"
                                         ShowLabel="true"
-                                        DisplayText="一次确认日期" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.SecondaryEngineerName" Text="负责人(二次)" Width="130" Align="Alignment.Center" Readonly="true" IsVisibleWhenEdit="false" />
-            <TableColumn @bind-Field="@context.SecondaryEngineerId" Text="负责人(二次)" Width="130" Visible="false" IsVisibleWhenEdit="true">
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <Select Items="_userItems"
-                                TValue="int?"
-                                @bind-Value="row.SecondaryEngineerId"
-                                ShowLabel="true"
-                                DisplayText="二次负责人"
-                                ShowSearch="true"
-                                PlaceHolder="请选择负责人" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.SecondarySubmitDate" Text="二次图纸提交" Width="130" Align="Alignment.Center" Sortable="true">
-                <Template Context="value">@FormatDate(value.Value)</Template>
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <DateTimePicker TValue="DateTime?"
-                                        @bind-Value="row.SecondarySubmitDate"
-                                        ViewMode="DatePickerViewMode.Date"
+                                        DisplayText="一次负责人"
+                                        ShowSearch="true"
+                                        PlaceHolder="请选择" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.Phase1SubmitDate" Text="一次提交" Width="130" Align="Alignment.Center" Sortable="true">
+                        <Template Context="value">@FormatDate(value.Value)</Template>
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <DateTimePicker TValue="DateTime?"
+                                                @bind-Value="row.Phase1SubmitDate"
+                                                ViewMode="DatePickerViewMode.Date"
+                                                ShowLabel="true"
+                                                DisplayText="一次提交日期" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.Phase1ConfirmDate" Text="一次确认" Width="130" Align="Alignment.Center" Sortable="true">
+                        <Template Context="value">@FormatDate(value.Value)</Template>
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <DateTimePicker TValue="DateTime?"
+                                                @bind-Value="row.Phase1ConfirmDate"
+                                                ViewMode="DatePickerViewMode.Date"
+                                                ShowLabel="true"
+                                                DisplayText="一次确认日期" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.Phase2EngineerName" Text="负责人(二次)" Width="130" Align="Alignment.Center" Readonly="true" IsVisibleWhenEdit="false" />
+                    <TableColumn @bind-Field="@context.Phase2EngineerId" Text="负责人(二次)" Width="130" Visible="false" IsVisibleWhenEdit="true">
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <Select Items="_userItems"
+                                        TValue="int?"
+                                        @bind-Value="row.Phase2EngineerId"
                                         ShowLabel="true"
-                                        DisplayText="二次提交日期" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
+                                        DisplayText="二次负责人"
+                                        ShowSearch="true"
+                                        PlaceHolder="请选择" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.Phase2SubmitDate" Text="二次提交" Width="130" Align="Alignment.Center" Sortable="true">
+                        <Template Context="value">@FormatDate(value.Value)</Template>
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <DateTimePicker TValue="DateTime?"
+                                                @bind-Value="row.Phase2SubmitDate"
+                                                ViewMode="DatePickerViewMode.Date"
+                                                ShowLabel="true"
+                                                DisplayText="二次提交日期" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.Phase2ConfirmDate" Text="二次确认" Width="130" Align="Alignment.Center" Sortable="true">
+                        <Template Context="value">@FormatDate(value.Value)</Template>
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <DateTimePicker TValue="DateTime?"
+                                                @bind-Value="row.Phase2ConfirmDate"
+                                                ViewMode="DatePickerViewMode.Date"
+                                                ShowLabel="true"
+                                                DisplayText="二次确认日期" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                </TableColumns>
+            </Table>
+        </TabItem>
 
-            <TableColumn @bind-Field="@context.SecondaryConfirmDate" Text="二次图纸确认" Width="130" Align="Alignment.Center" Sortable="true">
-                <Template Context="value">@FormatDate(value.Value)</Template>
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <DateTimePicker TValue="DateTime?"
-                                        @bind-Value="row.SecondaryConfirmDate"
-                                        ViewMode="DatePickerViewMode.Date"
-                                        ShowLabel="true"
-                                        DisplayText="二次确认日期" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.IsSplitFrame" Text="分体/大架子" Width="110" Align="Alignment.Center" ComponentType="typeof(Switch)">
-                <Template Context="value">@RenderYesNo(value.Value)</Template>
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <Switch @bind-Value="row.IsSplitFrame" ShowLabel="true" DisplayText="分体/大架子" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.TestBushingModel" Text="试验套管型号" Width="200">
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <BootstrapInput TValue="string" @bind-Value="row.TestBushingModel" ShowLabel="true" DisplayText="试验套管型号" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.TestBushingQuantity" Text="试验套管数量" Width="120" Align="Alignment.Center">
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <BootstrapInputNumber TValue="int?" @bind-Value="row.TestBushingQuantity" ShowLabel="true" DisplayText="试验套管数量" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.SwitchCount" Text="开关数量" Width="100" Align="Alignment.Center">
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <BootstrapInputNumber TValue="int?" @bind-Value="row.SwitchCount" ShowLabel="true" DisplayText="开关数量" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            <TableColumn @bind-Field="@context.IsWeldedTankRim" Text="焊接箱沿" Width="100" Align="Alignment.Center" ComponentType="typeof(Switch)">
-                <Template Context="value">@RenderYesNo(value.Value)</Template>
-                <EditTemplate Context="row">
-                    <div class="col-12 col-md-6">
-                        <Switch @bind-Value="row.IsWeldedTankRim" ShowLabel="true" DisplayText="焊接箱沿" />
-                    </div>
-                </EditTemplate>
-            </TableColumn>
-
-            @* (2026-08-13) 订单问题汇总操作列已移除,改用表格上方工具栏的 4 个按钮(添加问题/问题汇总/编辑/清空内容),
-                  必须先在表格里勾选 1 行,按钮才会启用。*@
-        </TableColumns>
-    </Table>
-
-    @* (2026-08-13) 添加问题弹窗 *@
-    <Modal @ref="_addIssueModal" IsBackdrop="true" ShowCloseButton="true" OnCloseAsync="CloseAddIssueDialog">
-        <ModalDialog Title="@($"添加问题 — 订单 #{_currentOrderNumberForIssue}")" Size="Size.Large">
-            <BodyTemplate>
-                <div class="mb-3">
-                    <label class="form-label">问题描述(支持长文本,最多 8000 字符)</label>
-                    <textarea class="form-control"
-                              rows="8"
-                              maxlength="8000"
-                              @bind="_newIssueContent"
-                              placeholder="详细描述在此订单遇到的问题..."></textarea>
-                    <small class="text-muted">当前 @(_newIssueContent?.Length ?? 0) / 8000 字符</small>
-                </div>
-            </BodyTemplate>
-            <FooterTemplate>
-                <Button Color="Color.Primary" Icon="fa-solid fa-save" OnClick="SaveNewIssue" IsDisabled="_savingIssue">
-                    @(_savingIssue ? "保存中..." : "保存")
-                </Button>
-                <Button Color="Color.Secondary" Icon="fa-solid fa-xmark" OnClick="CloseAddIssueDialog">取消</Button>
-            </FooterTemplate>
-        </ModalDialog>
-    </Modal>
+        @* ===== Tab 3: 重要组件 ===== *@
+        <TabItem Text="重要组件">
+            <Table TItem="OrderImportantComponentsRow"
+                   IsPagination="true"
+                   PageItemsSource="@PageItemsSource"
+                   RenderMode="TableRenderMode.Table"
+                   IsFixedHeader="true"
+                   IsStriped="true"
+                   IsBordered="true"
+                   OnQueryAsync="OnComponentsQueryAsync"
+                   ShowSearch="true"
+                   ShowToolbar="true"
+                   ShowExtendButtons="true"
+                   ShowAddButton="false"
+                   ShowEditButton="false"
+                   OnSaveAsync="OnComponentsSaveAsync"
+                   EditMode="EditMode.Popup"
+                   EditDialogSize="Size.Large"
+                   ShowSkeleton="true"
+                   IsMultipleSelect="false"
+                   Height="600"
+                   ShowExtendEditButtonCallback="@(item => CurrentUser.HasPermission(PermissionCodes.OrderImportantComponentsEdit))">
+                <TableColumns>
+                    <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="110" Align="Alignment.Center" Sortable="true" Readonly="true" />
+                    <TableColumn @bind-Field="@context.IsSplitFrame" Text="分体/大架子" Width="110" Align="Alignment.Center" ComponentType="typeof(Switch)">
+                        <Template Context="value">@RenderYesNo(value.Value)</Template>
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <Switch @bind-Value="row.IsSplitFrame" ShowLabel="true" DisplayText="分体/大架子" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.IsWeldedTankRim" Text="焊接箱沿" Width="100" Align="Alignment.Center" ComponentType="typeof(Switch)">
+                        <Template Context="value">@RenderYesNo(value.Value)</Template>
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <Switch @bind-Value="row.IsWeldedTankRim" ShowLabel="true" DisplayText="焊接箱沿" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.SwitchCount" Text="开关数量" Width="100" Align="Alignment.Center" Sortable="true">
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <BootstrapInputNumber TValue="int?" @bind-Value="row.SwitchCount" ShowLabel="true" DisplayText="开关数量" Min="0" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.TestBushingModel" Text="试验套管型号" Width="200">
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-8">
+                                <BootstrapInput TValue="string" @bind-Value="row.TestBushingModel" ShowLabel="true" DisplayText="试验套管型号" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                    <TableColumn @bind-Field="@context.TestBushingQuantity" Text="试验套管数量" Width="120" Align="Alignment.Center">
+                        <EditTemplate Context="row">
+                            <div class="col-12 col-md-6">
+                                <BootstrapInputNumber TValue="int?" @bind-Value="row.TestBushingQuantity" ShowLabel="true" DisplayText="试验套管数量" Min="0" />
+                            </div>
+                        </EditTemplate>
+                    </TableColumn>
+                </TableColumns>
+            </Table>
+        </TabItem>
+    </Tab>
 </div>
 
 @code {
@@ -304,28 +253,11 @@
 
     private List<SelectedItem> _userItems = new();
 
-    // (2026-08-13) Table 组件引用(用于按钮手动触发 QueryAsync)
-    private Table<OrderMDDetailRow>? _table;
-
-    // 日期范围筛选状态(4 个 DateTimePicker 双向绑定)
-    private DateTime? _primarySubmitStart;
-    private DateTime? _primarySubmitEnd;
-    private DateTime? _secondarySubmitStart;
-    private DateTime? _secondarySubmitEnd;
-
-    // 静态选项:与 Excel「2026结构设计订单」sheet 的取值一致
     private static readonly List<SelectedItem> _marketTypeItems = new()
     {
         new SelectedItem("", "未指定"),
         new SelectedItem("国内", "国内"),
         new SelectedItem("出口", "出口"),
-    };
-
-    private static readonly List<SelectedItem> _designToolItems = new()
-    {
-        new SelectedItem("", "未指定"),
-        new SelectedItem("2D", "2D"),
-        new SelectedItem("3D", "3D"),
     };
 
     protected override async Task OnInitializedAsync()
@@ -342,60 +274,67 @@
         }
     }
 
-    private async Task<QueryData<OrderMDDetailRow>> OnQueryAsync(QueryPageOptions options)
+    // ===== 项目信息 =====
+
+    private async Task<QueryData<OrderInfoRow>> OnInfoQueryAsync(QueryPageOptions options)
     {
-        // (2026-08-13) 用带日期筛选的重载,把 4 个 DateTimePicker 状态闭包传过去
-        var result = await OrderMDDetailService.QueryAsync(options.ToPagedQuery(
-            _primarySubmitStart, _primarySubmitEnd,
-            _secondarySubmitStart, _secondarySubmitEnd));
+        var result = await OrderInfoService.QueryAsync(options.ToPagedQuery());
         return result.ToQueryData();
     }
 
-    private async Task ApplyFilters()
+    private async Task<bool> OnInfoSaveAsync(OrderInfoRow row, ItemChangedType changedType)
     {
-        // 校验:起始不能晚于结束(任一组独立校验)
-        if (_primarySubmitStart.HasValue && _primarySubmitEnd.HasValue && _primarySubmitStart > _primarySubmitEnd)
-        {
-            await ShowToast("一次提交的起始日期不能晚于结束日期", ToastCategory.Error);
-            return;
-        }
-        if (_secondarySubmitStart.HasValue && _secondarySubmitEnd.HasValue && _secondarySubmitStart > _secondarySubmitEnd)
-        {
-            await ShowToast("二次提交的起始日期不能晚于结束日期", ToastCategory.Error);
-            return;
-        }
-        await _table!.QueryAsync();
-    }
-
-    private async Task ResetFilters()
-    {
-        _primarySubmitStart = null;
-        _primarySubmitEnd = null;
-        _secondarySubmitStart = null;
-        _secondarySubmitEnd = null;
-        await _table!.QueryAsync();
-    }
-
-    private async Task<bool> OnSaveAsync(OrderMDDetailRow row, ItemChangedType changedType)
-    {
-        // 本页不新增订单,changedType 恒为 Update;Service 内部按 DetailId 决定 insert/update
-        var (ok, error) = await OrderMDDetailService.SaveAsync(row);
+        var (ok, error) = await OrderInfoService.SaveAsync(row);
         if (!ok)
         {
             await ShowToast(error ?? "保存失败", ToastCategory.Error);
             return false;
         }
-        await ShowToast("保存成功", ToastCategory.Success);
+        await ShowToast("项目信息保存成功", ToastCategory.Success);
         return true;
     }
 
-    private async Task<bool> OnDeleteAsync(IEnumerable<OrderMDDetailRow> rows)
+    // ===== 一次二次人员时间 =====
+
+    private async Task<QueryData<OrderDesignPhasesRow>> OnPhasesQueryAsync(QueryPageOptions options)
     {
-        // 语义是"清空明细内容",不是删除行,更不是删除订单
-        var ok = await OrderMDDetailService.ClearAsync(rows);
-        await ShowToast(ok ? "已清空所选订单的明细内容" : "清空失败", ok ? ToastCategory.Success : ToastCategory.Error);
-        return ok;
+        var result = await OrderDesignPhasesService.QueryAsync(options.ToPagedQuery());
+        return result.ToQueryData();
     }
+
+    private async Task<bool> OnPhasesSaveAsync(OrderDesignPhasesRow row, ItemChangedType changedType)
+    {
+        var (ok, error) = await OrderDesignPhasesService.SaveAsync(row);
+        if (!ok)
+        {
+            await ShowToast(error ?? "保存失败", ToastCategory.Error);
+            return false;
+        }
+        await ShowToast("阶段信息保存成功", ToastCategory.Success);
+        return true;
+    }
+
+    // ===== 重要组件 =====
+
+    private async Task<QueryData<OrderImportantComponentsRow>> OnComponentsQueryAsync(QueryPageOptions options)
+    {
+        var result = await OrderImportantComponentsService.QueryAsync(options.ToPagedQuery());
+        return result.ToQueryData();
+    }
+
+    private async Task<bool> OnComponentsSaveAsync(OrderImportantComponentsRow row, ItemChangedType changedType)
+    {
+        var (ok, error) = await OrderImportantComponentsService.SaveAsync(row);
+        if (!ok)
+        {
+            await ShowToast(error ?? "保存失败", ToastCategory.Error);
+            return false;
+        }
+        await ShowToast("组件信息保存成功", ToastCategory.Success);
+        return true;
+    }
+
+    // ===== 渲染辅助 =====
 
     private static string FormatDate(DateTime? value)
         => value.HasValue ? value.Value.ToString("yyyy-MM-dd") : "-";
@@ -416,129 +355,5 @@
             Content = content,
             Delay = 2000
         });
-    }
-
-    // ===== (2026-08-13) 订单问题汇总弹窗/导航 =====
-
-    private BootstrapBlazor.Components.Modal _addIssueModal = default!;
-    private bool _savingIssue;
-    private int _currentOrderIdForIssue;
-    private int _currentOrderNumberForIssue;
-    private string _newIssueContent = "";
-
-    private async Task ShowAddIssueDialog(OrderMDDetailRow row)
-    {
-        _currentOrderIdForIssue = row.OrderId;
-        _currentOrderNumberForIssue = row.OrderNumber;
-        _newIssueContent = "";
-        await _addIssueModal.Show();
-    }
-
-    private async Task CloseAddIssueDialog()
-    {
-        await _addIssueModal.Close();
-    }
-
-    private async Task SaveNewIssue()
-    {
-        if (_savingIssue) return;
-        if (string.IsNullOrWhiteSpace(_newIssueContent))
-        {
-            await ShowToast("问题描述不能为空", ToastCategory.Error);
-            return;
-        }
-
-        _savingIssue = true;
-        try
-        {
-            var (ok, error) = await OrderIssueService.CreateAsync(_currentOrderIdForIssue, _newIssueContent);
-            if (!ok)
-            {
-                await ShowToast(error ?? "保存失败", ToastCategory.Error);
-                return;
-            }
-            await ShowToast("问题已添加", ToastCategory.Success);
-            await _addIssueModal.Close();
-            _newIssueContent = "";
-        }
-        finally
-        {
-            _savingIssue = false;
-        }
-    }
-
-    private void GoToIssues(int orderId)
-    {
-        Nav.NavigateTo($"/order-issues?orderId={orderId}");
-    }
-
-    // ===== (2026-08-14) 工具栏按钮:基于 _selectedRows,Toasts 兜底 =====
-    // 编辑 / 清空内容 走 BootstrapBlazor 内置按钮(ShowEditButton=true / ShowDeleteButton=true),
-    // 内置按钮已有"必须先选 1 行"提示;自定义按钮(添加问题 / 问题汇总)不设 IsDisabled,
-    // 一律在 click handler 里校验勾选数,数量不对就 Toast,符合预期则继续。
-
-    private List<OrderMDDetailRow> _selectedRows = new();
-
-    // (2026-08-14) 防止反复勾选反复弹 Toast:从 <=1 跳到 >1 才弹一次,回到 <=1 才解锁。
-    private bool _warnedThisSelection;
-
-    private bool HasOneSelected => _selectedRows.Count == 1;
-
-    private void OnSelectedRowsChanged(IEnumerable<OrderMDDetailRow> rows)
-    {
-        _selectedRows = rows.ToList();
-
-        if (_selectedRows.Count > 1)
-        {
-            if (!_warnedThisSelection)
-            {
-                _warnedThisSelection = true;
-                _ = ToastService.Warning("本页面操作仅支持单选:一次只能操作一个订单,请只勾选一行");
-            }
-        }
-        else
-        {
-            _warnedThisSelection = false;
-        }
-    }
-
-    private async Task ShowAddIssueDialogFromSelection()
-    {
-        if (_selectedRows.Count == 0)
-        {
-            await ToastService.Warning("请先在表格中勾选一行订单");
-            return;
-        }
-        if (_selectedRows.Count > 1)
-        {
-            await ToastService.Warning("一次只能给一个订单添加问题,请只勾选一行");
-            return;
-        }
-        if (!CurrentUser.HasPermission(PermissionCodes.OrderIssueAdd))
-        {
-            await ToastService.Warning("无 OrderIssue.Add 权限");
-            return;
-        }
-        await ShowAddIssueDialog(_selectedRows[0]);
-    }
-
-    private async Task GoToIssuesFromSelection()
-    {
-        if (_selectedRows.Count == 0)
-        {
-            await ToastService.Warning("请先在表格中勾选一行订单");
-            return;
-        }
-        if (_selectedRows.Count > 1)
-        {
-            await ToastService.Warning("一次只能查看一个订单的问题汇总,请只勾选一行");
-            return;
-        }
-        if (!CurrentUser.HasPermission(PermissionCodes.OrderIssueRead))
-        {
-            await ToastService.Warning("无 OrderIssue.Read 权限");
-            return;
-        }
-        GoToIssues(_selectedRows[0].OrderId);
     }
 }

@@ -12,17 +12,22 @@ public static class PermissionCodes
     public const string OrderEdit   = "Order.Edit";
     public const string OrderDelete = "Order.Delete";
 
-    // 订单管理(结构设计订单明细,/order-management)
-    // MD = Mechanical Design,与 Models/OrderMDDetail 一致。
-    // 明细行随订单存在,不单独新增,故没有 OrderMDDetail.Create
-    public const string OrderMDDetailRead   = "OrderMDDetail.Read";
-    public const string OrderMDDetailEdit   = "OrderMDDetail.Edit";
-    public const string OrderMDDetailDelete = "OrderMDDetail.Delete";
+    // 订单管理(/order-management)
+    // (2026-08-17 重构)从原 OrderMDDetail 拆成 3 张业务表,对应 3 组权限码。
+    // 每组都只有 Read/Edit(没有 Create/Delete —— 1:1 强绑定订单,创建跟随新订单,清空内容用 Edit 即可)。
+    public const string OrderInfoRead = "OrderInfo.Read";
+    public const string OrderInfoEdit = "OrderInfo.Edit";
 
-    // (2026-08-13) 订单问题汇总(/order-management 行内"添加问题"/"问题汇总")
-    //   Read   — 能看到问题汇总页面
-    //   Add    — 在订单管理行点"添加问题"弹窗写新问题
-    //   EditStatus — 在问题汇总页面改 open/close
+    public const string OrderDesignPhasesRead = "OrderDesignPhases.Read";
+    public const string OrderDesignPhasesEdit = "OrderDesignPhases.Edit";
+
+    public const string OrderImportantComponentsRead = "OrderImportantComponents.Read";
+    public const string OrderImportantComponentsEdit = "OrderImportantComponents.Edit";
+
+    // 订单问题汇总(供 BootstrapBlazor.OrderManagementSetup 灌权限码用,主项目已无页面引用)
+    //   Read   — 看到问题汇总
+    //   Add    — 添加新问题
+    //   EditStatus — 改 open/close
     public const string OrderIssueRead       = "OrderIssue.Read";
     public const string OrderIssueAdd        = "OrderIssue.Add";
     public const string OrderIssueEditStatus = "OrderIssue.EditStatus";
