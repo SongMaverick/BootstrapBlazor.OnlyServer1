@@ -118,6 +118,51 @@ public class OrderDesignPhasesService
         }
     }
 
+    /// <summary>
+    /// 按订单号取单条阶段信息行。给主从布局(/order-management)右侧用:
+    /// 列表已确认订单存在,所以走 Orders LEFT JOIN OrderDesignPhases LEFT JOIN Users x2;
+    /// 若该订单尚无 OrderDesignPhases,PhasesId=0,业务字段为默认值,保存时按 upsert 处理。
+    /// 订单不存在或被删除时返回 null。
+    /// </summary>
+    public Task<OrderDesignPhasesRow?> GetByOrderIdAsync(int orderId)
+    {
+        if (orderId <= 0) return Task.FromResult<OrderDesignPhasesRow?>(null);
+
+        try
+        {
+            var row = _db.Queryable<Orders>()
+                .LeftJoin<OrderDesignPhases>((o, p) => o.Id == p.OrderId && !p.IsDeleted)
+                .LeftJoin<Users>((o, p, u1) => p.Phase1EngineerId == u1.Id)
+                .LeftJoin<Users>((o, p, u1, u2) => p.Phase2EngineerId == u2.Id)
+                .Where(o => o.Id == orderId && !o.IsDeleted)
+                .Select((o, p, u1, u2) => new OrderDesignPhasesRow
+                {
+                    PhasesId = p.Id,
+                    OrderId = o.Id,
+                    Phase1EngineerId = p.Phase1EngineerId,
+                    Phase1SubmitDate = p.Phase1SubmitDate,
+                    Phase1ConfirmDate = p.Phase1ConfirmDate,
+                    Phase2EngineerId = p.Phase2EngineerId,
+                    Phase2SubmitDate = p.Phase2SubmitDate,
+                    Phase2ConfirmDate = p.Phase2ConfirmDate,
+                    OrderNumber = o.OrderNumber,
+                    Power = o.Power,
+                    RatedVoltage = o.RatedVoltage,
+                    IsReactor = o.IsReactor,
+                    Phase1EngineerName = u1.Name,
+                    Phase2EngineerName = u2.Name,
+                })
+                .First();
+
+            return Task.FromResult<OrderDesignPhasesRow?>(row);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting OrderDesignPhases by orderId {OrderId}", orderId);
+            return Task.FromResult<OrderDesignPhasesRow?>(null);
+        }
+    }
+
     // ===== 保存(upsert) =====
 
     public async Task<(bool ok, string? error)> SaveAsync(OrderDesignPhasesRow row)

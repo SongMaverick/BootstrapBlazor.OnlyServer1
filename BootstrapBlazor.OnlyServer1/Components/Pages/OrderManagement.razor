@@ -1,255 +1,691 @@
 @page "/order-management"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Viewer)]
+@using BootstrapBlazor.OnlyServer1.Models
 @using BootstrapBlazor.OnlyServer1.Models.Identity
 @using BootstrapBlazor.OnlyServer1.Models.ViewModels
 @using PermissionCodes = BootstrapBlazor.OnlyServer1.Models.Identity.PermissionCodes
+@inject BootstrapBlazor.OnlyServer1.Services.OrdersService OrdersService
 @inject BootstrapBlazor.OnlyServer1.Services.OrderInfoService OrderInfoService
 @inject BootstrapBlazor.OnlyServer1.Services.OrderDesignPhasesService OrderDesignPhasesService
 @inject BootstrapBlazor.OnlyServer1.Services.OrderImportantComponentsService OrderImportantComponentsService
+@inject BootstrapBlazor.OnlyServer1.Services.OrderIssueService OrderIssueService
 @inject BootstrapBlazor.OnlyServer1.Services.UsersService UsersService
 @inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
 @inject Microsoft.Extensions.Logging.ILogger<OrderManagement> Logger
 @inject ToastService ToastService
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject NavigationManager Nav
 
 <PageTitle>订单管理</PageTitle>
 
 <div class="page-order-management">
     <h1>订单管理</h1>
     <p class="text-secondary">
-        按业务域拆 3 张表:项目信息 / 一次二次人员时间 / 重要组件。订单号 / 容量 / 额定电压 来自订单列表,本页只读;
-        新增或删除订单请前往「订单列表」。
+        主从布局:左侧选订单,右侧按业务域分 4 块(项目信息 / 一次二次人员时间 / 重要组件 / 问题汇总)维护。
+        订单号 / 容量 / 额定电压 / 是否电抗器 在「订单列表」维护,此处只读;新增或删除订单请前往「订单列表」。
     </p>
 
-    <Tab IsCard="true">
-        @* ===== Tab 1: 订单项目信息 ===== *@
-        <TabItem Text="项目信息">
-            <Table TItem="OrderInfoRow"
-                   IsPagination="true"
-                   PageItemsSource="@PageItemsSource"
-                   RenderMode="TableRenderMode.Table"
-                   IsFixedHeader="true"
-                   IsStriped="true"
-                   IsBordered="true"
-                   OnQueryAsync="OnInfoQueryAsync"
-                   ShowSearch="true"
-                   ShowToolbar="true"
-                   ShowExtendButtons="true"
-                   ShowAddButton="false"
-                   ShowEditButton="false"
-                   OnSaveAsync="OnInfoSaveAsync"
-                   EditMode="EditMode.Popup"
-                   EditDialogSize="Size.Large"
-                   ShowSkeleton="true"
-                   IsMultipleSelect="false"
-                   Height="600"
-                   ShowExtendEditButtonCallback="@(item => CurrentUser.HasPermission(PermissionCodes.OrderInfoEdit))">
-                <TableColumns>
-                    <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="110" Align="Alignment.Center" Sortable="true" Readonly="true" />
-                    <TableColumn @bind-Field="@context.Power" Text="容量 MVA" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
-                    <TableColumn @bind-Field="@context.RatedVoltage" Text="电压 kV" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
-                    <TableColumn @bind-Field="@context.ProjectName" Text="项目名称" Width="220" Sortable="true">
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-8">
-                                <BootstrapInput TValue="string" @bind-Value="row.ProjectName" ShowLabel="true" DisplayText="项目名称" />
-                            </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.MarketType" Text="国内/出口" Width="110" Align="Alignment.Center" Sortable="true">
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <Select Items="_marketTypeItems"
-                                        TValue="string"
-                                        @bind-Value="row.MarketType"
-                                        ShowLabel="true"
-                                        DisplayText="国内/出口"
-                                        PlaceHolder="请选择" />
-                            </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.UnitCount" Text="台数" Width="80" Align="Alignment.Center" Sortable="true">
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <BootstrapInputNumber TValue="int" @bind-Value="row.UnitCount" ShowLabel="true" DisplayText="台数" Min="1" />
-                            </div>
-                        </EditTemplate>
-                    </TableColumn>
-                </TableColumns>
-            </Table>
-        </TabItem>
+    <div class="row g-3">
+        @* ===== 左侧:订单主表 ===== *@
+        <div class="col-12 col-lg-4">
+            <Card IsShadow="true">
+                <HeaderTemplate>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <span><i class="fa-solid fa-list me-1"></i>订单列表</span>
+                        @if (_selectedOrder != null)
+                        {
+                            <span class="text-muted small">已选 #@_selectedOrder.OrderNumber</span>
+                        }
+                    </div>
+                </HeaderTemplate>
+                <BodyTemplate>
+                    @* 订单号快速跳转:输入精确订单号 → 回车/查找 → 命中后右侧加载详情,主表也滚动到该行(主表分页不强制跳页,行可能不在当前页;但 SelectedRows 状态会刷新) *@
+                    <div class="d-flex mb-2" style="gap: 0.5rem;">
+                        <BootstrapInput TValue="string" @bind-Value="_orderNumberSearch"
+                                        ShowLabel="false"
+                                        PlaceHolder="输入订单号跳转(精确匹配)"
+                                        IsDisabled="@_searchingOrder"
+                                        OnEnterAsync="@(value => OnSearchOrderAsync())"
+                                        style="flex: 1;" />
+                        <Button Color="Color.Primary" Icon="fa-solid fa-magnifying-glass"
+                                IsAsync="true" IsDisabled="@_searchingOrder"
+                                OnClick="OnSearchOrderAsync">
+                            查找
+                        </Button>
+                    </div>
 
-        @* ===== Tab 2: 一次二次人员时间 ===== *@
-        <TabItem Text="一次二次人员时间">
-            <Table TItem="OrderDesignPhasesRow"
-                   IsPagination="true"
-                   PageItemsSource="@PageItemsSource"
-                   RenderMode="TableRenderMode.Table"
-                   IsFixedHeader="true"
-                   IsStriped="true"
-                   IsBordered="true"
-                   OnQueryAsync="OnPhasesQueryAsync"
-                   ShowSearch="true"
-                   ShowToolbar="true"
-                   ShowExtendButtons="true"
-                   ShowAddButton="false"
-                   ShowEditButton="false"
-                   OnSaveAsync="OnPhasesSaveAsync"
-                   EditMode="EditMode.Popup"
-                   EditDialogSize="Size.ExtraLarge"
-                   ShowSkeleton="true"
-                   IsMultipleSelect="false"
-                   Height="600"
-                   ShowExtendEditButtonCallback="@(item => CurrentUser.HasPermission(PermissionCodes.OrderDesignPhasesEdit))">
-                <TableColumns>
-                    <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="110" Align="Alignment.Center" Sortable="true" Readonly="true" />
-                    <TableColumn @bind-Field="@context.Phase1EngineerName" Text="负责人(一次)" Width="130" Align="Alignment.Center" Readonly="true" IsVisibleWhenEdit="false" />
-                    <TableColumn @bind-Field="@context.Phase1EngineerId" Text="负责人(一次)" Width="130" Visible="false" IsVisibleWhenEdit="true">
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <Select Items="_userItems"
-                                        TValue="int?"
-                                        @bind-Value="row.Phase1EngineerId"
-                                        ShowLabel="true"
-                                        DisplayText="一次负责人"
-                                        ShowSearch="true"
-                                        PlaceHolder="请选择" />
-                            </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.Phase1SubmitDate" Text="一次提交" Width="130" Align="Alignment.Center" Sortable="true">
-                        <Template Context="value">@FormatDate(value.Value)</Template>
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <DateTimePicker TValue="DateTime?"
-                                                @bind-Value="row.Phase1SubmitDate"
-                                                ViewMode="DatePickerViewMode.Date"
-                                                ShowLabel="true"
-                                                DisplayText="一次提交日期" />
-                            </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.Phase1ConfirmDate" Text="一次确认" Width="130" Align="Alignment.Center" Sortable="true">
-                        <Template Context="value">@FormatDate(value.Value)</Template>
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <DateTimePicker TValue="DateTime?"
-                                                @bind-Value="row.Phase1ConfirmDate"
-                                                ViewMode="DatePickerViewMode.Date"
-                                                ShowLabel="true"
-                                                DisplayText="一次确认日期" />
-                            </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.Phase2EngineerName" Text="负责人(二次)" Width="130" Align="Alignment.Center" Readonly="true" IsVisibleWhenEdit="false" />
-                    <TableColumn @bind-Field="@context.Phase2EngineerId" Text="负责人(二次)" Width="130" Visible="false" IsVisibleWhenEdit="true">
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <Select Items="_userItems"
-                                        TValue="int?"
-                                        @bind-Value="row.Phase2EngineerId"
-                                        ShowLabel="true"
-                                        DisplayText="二次负责人"
-                                        ShowSearch="true"
-                                        PlaceHolder="请选择" />
-                            </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.Phase2SubmitDate" Text="二次提交" Width="130" Align="Alignment.Center" Sortable="true">
-                        <Template Context="value">@FormatDate(value.Value)</Template>
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <DateTimePicker TValue="DateTime?"
-                                                @bind-Value="row.Phase2SubmitDate"
-                                                ViewMode="DatePickerViewMode.Date"
-                                                ShowLabel="true"
-                                                DisplayText="二次提交日期" />
-                            </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.Phase2ConfirmDate" Text="二次确认" Width="130" Align="Alignment.Center" Sortable="true">
-                        <Template Context="value">@FormatDate(value.Value)</Template>
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <DateTimePicker TValue="DateTime?"
-                                                @bind-Value="row.Phase2ConfirmDate"
-                                                ViewMode="DatePickerViewMode.Date"
-                                                ShowLabel="true"
-                                                DisplayText="二次确认日期" />
-                            </div>
-                        </EditTemplate>
-                    </TableColumn>
-                </TableColumns>
-            </Table>
-        </TabItem>
+                    <Table TItem="Models.Orders"
+                           IsPagination="true"
+                           PageItemsSource="@MasterPageItemsSource"
+                           RenderMode="TableRenderMode.Table"
+                           IsFixedHeader="true"
+                           IsStriped="true"
+                           IsBordered="true"
+                           OnQueryAsync="OnMasterQueryAsync"
+                           ShowSearch="true"
+                           ShowToolbar="false"
+                           ShowAddButton="false"
+                           ShowEditButton="false"
+                           ShowDeleteButton="false"
+                           ShowExtendButtons="false"
+                           ShowSkeleton="true"
+                           IsMultipleSelect="false"
+                           SelectedRows="_masterSelected"
+                           SelectedRowsChanged="OnMasterSelectedRowsChanged"
+                           ClickToSelect="true"
+                           Height="600">
+                        <TableColumns>
+                            <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="100" Align="Alignment.Center" Sortable="true" Readonly="true" />
+                            <TableColumn @bind-Field="@context.Power" Text="容量" Width="80" Align="Alignment.Center" Readonly="true" />
+                            <TableColumn @bind-Field="@context.RatedVoltage" Text="电压" Width="80" Align="Alignment.Center" Readonly="true" />
+                            <TableColumn @bind-Field="@context.IsReactor" Text="类型" Width="80" Align="Alignment.Center" Readonly="true">
+                                <Template Context="value">
+                                    @if (value.Value)
+                                    {
+                                        <Badge Color="Color.None" IsPill="true" class="badge-reactor">电抗</Badge>
+                                    }
+                                    else
+                                    {
+                                        <Badge Color="Color.None" IsPill="true" class="badge-transformer">变压</Badge>
+                                    }
+                                </Template>
+                            </TableColumn>
+                        </TableColumns>
+                    </Table>
+                </BodyTemplate>
+            </Card>
+        </div>
 
-        @* ===== Tab 3: 重要组件 ===== *@
-        <TabItem Text="重要组件">
-            <Table TItem="OrderImportantComponentsRow"
-                   IsPagination="true"
-                   PageItemsSource="@PageItemsSource"
-                   RenderMode="TableRenderMode.Table"
-                   IsFixedHeader="true"
-                   IsStriped="true"
-                   IsBordered="true"
-                   OnQueryAsync="OnComponentsQueryAsync"
-                   ShowSearch="true"
-                   ShowToolbar="true"
-                   ShowExtendButtons="true"
-                   ShowAddButton="false"
-                   ShowEditButton="false"
-                   OnSaveAsync="OnComponentsSaveAsync"
-                   EditMode="EditMode.Popup"
-                   EditDialogSize="Size.Large"
-                   ShowSkeleton="true"
-                   IsMultipleSelect="false"
-                   Height="600"
-                   ShowExtendEditButtonCallback="@(item => CurrentUser.HasPermission(PermissionCodes.OrderImportantComponentsEdit))">
-                <TableColumns>
-                    <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="110" Align="Alignment.Center" Sortable="true" Readonly="true" />
-                    <TableColumn @bind-Field="@context.IsSplitFrame" Text="分体/大架子" Width="110" Align="Alignment.Center" ComponentType="typeof(Switch)">
-                        <Template Context="value">@RenderYesNo(value.Value)</Template>
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <Switch @bind-Value="row.IsSplitFrame" ShowLabel="true" DisplayText="分体/大架子" />
+        @* ===== 右侧:订单详情 ===== *@
+        <div class="col-12 col-lg-8">
+            @if (_selectedOrder == null)
+            {
+                <div class="alert alert-info" role="alert">
+                    请从左侧选择一个订单,右侧将加载并可编辑项目信息 / 一次二次人员时间 / 重要组件 / 问题汇总。
+                </div>
+            }
+            else
+            {
+                @* ===== 摘要 ===== *@
+                <Card IsShadow="true" class="mb-3">
+                    <BodyTemplate>
+                        <div class="d-flex flex-wrap align-items-center" style="gap: 1.5rem;">
+                            <div>
+                                <div class="text-muted small">订单号</div>
+                                <div class="fs-4 fw-bold">@_selectedOrder.OrderNumber</div>
                             </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.IsWeldedTankRim" Text="焊接箱沿" Width="100" Align="Alignment.Center" ComponentType="typeof(Switch)">
-                        <Template Context="value">@RenderYesNo(value.Value)</Template>
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <Switch @bind-Value="row.IsWeldedTankRim" ShowLabel="true" DisplayText="焊接箱沿" />
+                            <div>
+                                <div class="text-muted small">容量</div>
+                                <div class="fs-5">@_selectedOrder.Power kVA</div>
                             </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.SwitchCount" Text="开关数量" Width="100" Align="Alignment.Center" Sortable="true">
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <BootstrapInputNumber TValue="int?" @bind-Value="row.SwitchCount" ShowLabel="true" DisplayText="开关数量" Min="0" />
+                            <div>
+                                <div class="text-muted small">额定电压</div>
+                                <div class="fs-5">@_selectedOrder.RatedVoltage kV</div>
                             </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.TestBushingModel" Text="试验套管型号" Width="200">
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-8">
-                                <BootstrapInput TValue="string" @bind-Value="row.TestBushingModel" ShowLabel="true" DisplayText="试验套管型号" />
+                            <div>
+                                <div class="text-muted small">类型</div>
+                                @if (_selectedOrder.IsReactor)
+                                {
+                                    <Badge Color="Color.None" IsPill="true" class="badge-reactor">
+                                        <i class="fa-solid fa-bolt"></i>
+                                        <span class="ms-1">电抗器</span>
+                                    </Badge>
+                                }
+                                else
+                                {
+                                    <Badge Color="Color.None" IsPill="true" class="badge-transformer">
+                                        <i class="fa-solid fa-battery-full"></i>
+                                        <span class="ms-1">变压器</span>
+                                    </Badge>
+                                }
                             </div>
-                        </EditTemplate>
-                    </TableColumn>
-                    <TableColumn @bind-Field="@context.TestBushingQuantity" Text="试验套管数量" Width="120" Align="Alignment.Center">
-                        <EditTemplate Context="row">
-                            <div class="col-12 col-md-6">
-                                <BootstrapInputNumber TValue="int?" @bind-Value="row.TestBushingQuantity" ShowLabel="true" DisplayText="试验套管数量" Min="0" />
+                            <div class="ms-auto text-end text-muted small">
+                                <div>创建者:@_selectedOrder.CreatedBy</div>
+                                <div>创建时间:@_selectedOrder.CreatedTime.ToString("yyyy-MM-dd HH:mm")</div>
                             </div>
-                        </EditTemplate>
-                    </TableColumn>
-                </TableColumns>
-            </Table>
-        </TabItem>
-    </Tab>
+                        </div>
+                    </BodyTemplate>
+                </Card>
+
+                @* ===== Card 1:项目信息 ===== *@
+                <Card IsShadow="true" class="mb-3">
+                    <HeaderTemplate>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span><i class="fa-solid fa-folder-open me-1"></i>项目信息</span>
+                            @if (_infoRow == null)
+                            {
+                                <Badge Color="Color.Warning">未填写</Badge>
+                            }
+                            else if (_infoRow.InfoId > 0)
+                            {
+                                <Badge Color="Color.Success">已填写</Badge>
+                            }
+                            else
+                            {
+                                <Badge Color="Color.Warning">未填写</Badge>
+                            }
+                        </div>
+                    </HeaderTemplate>
+                    <BodyTemplate>
+                        @if (_loadingDetail && _infoRow == null)
+                        {
+                            <div class="text-center py-3"><Spinner Color="Color.Primary" /></div>
+                        }
+                        else if (_infoRow != null)
+                        {
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <BootstrapInput TValue="string" @bind-Value="_infoRow.ProjectName"
+                                                    ShowLabel="true" DisplayText="项目名称"
+                                                    PlaceHolder="请输入项目名称"
+                                                    IsDisabled="@(!CanEditInfo)" />
+                                </div>
+                                <div class="col-12 col-md-3">
+                                    <Select Items="_marketTypeItems"
+                                            TValue="string"
+                                            @bind-Value="_infoRow.MarketType"
+                                            ShowLabel="true" DisplayText="国内/出口"
+                                            PlaceHolder="请选择"
+                                            IsDisabled="@(!CanEditInfo)" />
+                                </div>
+                                <div class="col-12 col-md-3">
+                                    <BootstrapInputNumber TValue="int" @bind-Value="_infoRow.UnitCount"
+                                                           ShowLabel="true" DisplayText="台数"
+                                                           Min="1"
+                                                           IsDisabled="@(!CanEditInfo)" />
+                                </div>
+                            </div>
+                            @if (CanEditInfo)
+                            {
+                                <div class="mt-3 d-flex justify-content-end">
+                                    <Button Color="Color.Primary" Icon="fa-solid fa-save"
+                                            IsAsync="true" IsDisabled="@_savingInfo"
+                                            OnClick="SaveInfoAsync">
+                                        保存项目信息
+                                    </Button>
+                                </div>
+                            }
+                        }
+                    </BodyTemplate>
+                </Card>
+
+                @* ===== Card 2:一次二次人员时间 ===== *@
+                <Card IsShadow="true" class="mb-3">
+                    <HeaderTemplate>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span><i class="fa-solid fa-people-group me-1"></i>一次二次人员时间</span>
+                            @if (_phasesRow != null && _phasesRow.PhasesId > 0)
+                            {
+                                <Badge Color="Color.Success">已填写</Badge>
+                            }
+                            else
+                            {
+                                <Badge Color="Color.Warning">未填写</Badge>
+                            }
+                        </div>
+                    </HeaderTemplate>
+                    <BodyTemplate>
+                        @if (_loadingDetail && _phasesRow == null)
+                        {
+                            <div class="text-center py-3"><Spinner Color="Color.Primary" /></div>
+                        }
+                        else if (_phasesRow != null)
+                        {
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <Select Items="_userItems"
+                                            TValue="int?"
+                                            @bind-Value="_phasesRow.Phase1EngineerId"
+                                            ShowLabel="true" DisplayText="一次负责人"
+                                            ShowSearch="true" PlaceHolder="请选择"
+                                            IsDisabled="@(!CanEditPhases)" />
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <DateTimePicker TValue="DateTime?"
+                                                    @bind-Value="_phasesRow.Phase1SubmitDate"
+                                                    ViewMode="DatePickerViewMode.Date"
+                                                    ShowLabel="true" DisplayText="一次提交日期"
+                                                    IsDisabled="@(!CanEditPhases)" />
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <DateTimePicker TValue="DateTime?"
+                                                    @bind-Value="_phasesRow.Phase1ConfirmDate"
+                                                    ViewMode="DatePickerViewMode.Date"
+                                                    ShowLabel="true" DisplayText="一次确认日期"
+                                                    IsDisabled="@(!CanEditPhases)" />
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <Select Items="_userItems"
+                                            TValue="int?"
+                                            @bind-Value="_phasesRow.Phase2EngineerId"
+                                            ShowLabel="true" DisplayText="二次负责人"
+                                            ShowSearch="true" PlaceHolder="请选择"
+                                            IsDisabled="@(!CanEditPhases)" />
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <DateTimePicker TValue="DateTime?"
+                                                    @bind-Value="_phasesRow.Phase2SubmitDate"
+                                                    ViewMode="DatePickerViewMode.Date"
+                                                    ShowLabel="true" DisplayText="二次提交日期"
+                                                    IsDisabled="@(!CanEditPhases)" />
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <DateTimePicker TValue="DateTime?"
+                                                    @bind-Value="_phasesRow.Phase2ConfirmDate"
+                                                    ViewMode="DatePickerViewMode.Date"
+                                                    ShowLabel="true" DisplayText="二次确认日期"
+                                                    IsDisabled="@(!CanEditPhases)" />
+                                </div>
+                            </div>
+                            @if (CanEditPhases)
+                            {
+                                <div class="mt-3 d-flex justify-content-end">
+                                    <Button Color="Color.Primary" Icon="fa-solid fa-save"
+                                            IsAsync="true" IsDisabled="@_savingPhases"
+                                            OnClick="SavePhasesAsync">
+                                        保存阶段信息
+                                    </Button>
+                                </div>
+                            }
+                        }
+                    </BodyTemplate>
+                </Card>
+
+                @* ===== Card 3:重要组件 ===== *@
+                <Card IsShadow="true" class="mb-3">
+                    <HeaderTemplate>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span><i class="fa-solid fa-cogs me-1"></i>重要组件</span>
+                            @if (_componentsRow != null && _componentsRow.ComponentsId > 0)
+                            {
+                                <Badge Color="Color.Success">已填写</Badge>
+                            }
+                            else
+                            {
+                                <Badge Color="Color.Warning">未填写</Badge>
+                            }
+                        </div>
+                    </HeaderTemplate>
+                    <BodyTemplate>
+                        @if (_loadingDetail && _componentsRow == null)
+                        {
+                            <div class="text-center py-3"><Spinner Color="Color.Primary" /></div>
+                        }
+                        else if (_componentsRow != null)
+                        {
+                            <div class="row g-3">
+                                <div class="col-12 col-md-3 d-flex align-items-end">
+                                    <Switch @bind-Value="_componentsRow.IsSplitFrame"
+                                            ShowLabel="true" DisplayText="分体/大架子"
+                                            IsDisabled="@(!CanEditComponents)" />
+                                </div>
+                                <div class="col-12 col-md-3 d-flex align-items-end">
+                                    <Switch @bind-Value="_componentsRow.IsWeldedTankRim"
+                                            ShowLabel="true" DisplayText="焊接箱沿"
+                                            IsDisabled="@(!CanEditComponents)" />
+                                </div>
+                                <div class="col-6 col-md-2">
+                                    <BootstrapInputNumber TValue="int?" @bind-Value="_componentsRow.SwitchCount"
+                                                           ShowLabel="true" DisplayText="开关数量" Min="0"
+                                                           IsDisabled="@(!CanEditComponents)" />
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <BootstrapInput TValue="string" @bind-Value="_componentsRow.TestBushingModel"
+                                                    ShowLabel="true" DisplayText="试验套管型号"
+                                                    PlaceHolder="请输入型号"
+                                                    IsDisabled="@(!CanEditComponents)" />
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    <BootstrapInputNumber TValue="int?" @bind-Value="_componentsRow.TestBushingQuantity"
+                                                           ShowLabel="true" DisplayText="试验套管数量" Min="0"
+                                                           IsDisabled="@(!CanEditComponents)" />
+                                </div>
+                            </div>
+                            @if (CanEditComponents)
+                            {
+                                <div class="mt-3 d-flex justify-content-end">
+                                    <Button Color="Color.Primary" Icon="fa-solid fa-save"
+                                            IsAsync="true" IsDisabled="@_savingComponents"
+                                            OnClick="SaveComponentsAsync">
+                                        保存组件信息
+                                    </Button>
+                                </div>
+                            }
+                        }
+                    </BodyTemplate>
+                </Card>
+
+                @* ===== Card 4:问题汇总(2026-08-25 从独立页整合进来;2026-08-27 改为「预览最近 5 条 + 查看全部」折叠,
+                                  避免问题数变多时把右侧详情页顶到很长) ===== *@
+                <Card IsShadow="true" class="mb-3">
+                    <HeaderTemplate>
+                        <div class="d-flex align-items-center justify-content-between" style="gap: 1rem;">
+                            @* (2026-08-27) 标题改为可点击链接,跳转到该订单的独立问题汇总页 *@
+                            <a href="@($"/order-issues/{_selectedOrder.Id}")"
+                               class="text-reset text-decoration-none"
+                               style="font-weight: inherit;">
+                                <i class="fa-solid fa-circle-exclamation me-1"></i>问题汇总
+                                <i class="fa-solid fa-up-right-from-square ms-1 small text-muted" title="在新页查看"></i>
+                            </a>
+                            <div class="d-flex align-items-center" style="gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
+                                @if (_issues == null)
+                                {
+                                    <Badge Color="Color.Secondary">加载中</Badge>
+                                }
+                                else
+                                {
+                                    var openCount = _issues.Count(i => i.Status == IssueStatus.Open);
+                                    var closeCount = _issues.Count(i => i.Status == IssueStatus.Close);
+                                    <Badge Color="Color.Danger" class="me-1">@openCount open</Badge>
+                                    <Badge Color="Color.Success" class="me-1">@closeCount close</Badge>
+                                }
+                                @if (CanAddIssue)
+                                {
+                                    <Button Color="Color.Primary" Icon="fa-solid fa-plus" Size="Size.Small"
+                                            OnClick="ShowAddIssueDialog">
+                                        新建
+                                    </Button>
+                                }
+                                @if (CanSolveIssue)
+                                {
+                                    <Button Color="Color.Success" Icon="fa-solid fa-check" Size="Size.Small"
+                                            OnClick="ShowResolutionDialogFromSelection">
+                                        填写解决方法
+                                    </Button>
+                                }
+                                @if (_showAllIssues && !HasOneIssueSelected && _issueSelected.Count > 1)
+                                {
+                                    <span class="text-warning small align-self-center">
+                                        <i class="fa-solid fa-triangle-exclamation me-1"></i>一次只能操作一个问题
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    </HeaderTemplate>
+                    <BodyTemplate>
+                        @if (_loadingDetail && _issues == null)
+                        {
+                            <div class="text-center py-3"><Spinner Color="Color.Primary" /></div>
+                        }
+                        else if (_issues == null || _issues.Count == 0)
+                        {
+                            <div class="text-center text-muted py-3">
+                                <i class="fa-solid fa-circle-check me-1"></i>该订单暂无问题记录
+                            </div>
+                        }
+                        else if (_showAllIssues)
+                        {
+                            @* === 全量 Table(原逻辑,内含分页 / 状态切换 / 选行等) === *@
+                            <Table TItem="OrderIssues"
+                                   @ref="_issuesTable"
+                                   @key="_issuesReloadCounter"
+                                   IsPagination="true"
+                                   PageItemsSource="@IssuesPageItemsSource"
+                                   RenderMode="TableRenderMode.Table"
+                                   IsFixedHeader="true"
+                                   IsStriped="true"
+                                   IsBordered="true"
+                                   OnQueryAsync="OnIssuesQueryAsync"
+                                   ShowSearch="false"
+                                   ShowToolbar="false"
+                                   ShowAddButton="false"
+                                   ShowEditButton="false"
+                                   ShowDeleteButton="false"
+                                   ShowExtendButtons="false"
+                                   ShowSkeleton="true"
+                                   IsMultipleSelect="false"
+                                   ClickToSelect="true"
+                                   SelectedRows="_issueSelected"
+                                   SelectedRowsChanged="OnIssueSelectedRowsChanged"
+                                   Height="350">
+                                <TableColumns>
+                                    <TableColumn @bind-Field="@context.Id" Text="Id" Width="60" Align="Alignment.Center" Readonly="true" />
+                                    <TableColumn @bind-Field="@context.Content" Text="问题描述">
+                                        <Template Context="row">
+                                            <div style="white-space: pre-wrap; max-width: 360px; max-height: 100px; overflow-y: auto; word-break: break-word;">@row.Row.Content</div>
+                                        </Template>
+                                    </TableColumn>
+                                    <TableColumn @bind-Field="@context.Resolution" Text="解决方法" Width="200">
+                                        <Template Context="row">
+                                            @if (string.IsNullOrWhiteSpace(row.Row.Resolution))
+                                            {
+                                                <span class="text-secondary">—</span>
+                                            }
+                                            else
+                                            {
+                                                <div style="white-space: pre-wrap; max-height: 60px; overflow-y: auto; word-break: break-word;">@row.Row.Resolution</div>
+                                            }
+                                        </Template>
+                                    </TableColumn>
+                                    <TableColumn @bind-Field="@context.Status" Text="状态" Width="120" Align="Alignment.Center">
+                                        <Template Context="row">
+                                            <select class="@GetIssueStatusClass(row.Row.Status)"
+                                                    style="min-width: 90px; font-weight: 600;"
+                                                    value="@row.Row.Status"
+                                                    disabled="@(row.Row.Status == IssueStatus.Close || !CanEditIssueStatus)"
+                                                    @onchange="@(async (ChangeEventArgs e) => await OnIssueStatusChanged(row.Row, e.Value?.ToString() ?? ""))">
+                                                @foreach (var item in _issueStatusItems)
+                                                {
+                                                    <option value="@item.Value">@item.Text</option>
+                                                }
+                                            </select>
+                                        </Template>
+                                    </TableColumn>
+                                    <TableColumn @bind-Field="@context.CreatedBy" Text="创建人" Width="100" Align="Alignment.Center" Readonly="true" />
+                                    <TableColumn @bind-Field="@context.CreatedTime" Text="创建时间" Width="140" Align="Alignment.Center" Readonly="true">
+                                        <Template Context="row">@row.Row.CreatedTime.ToString("yyyy-MM-dd HH:mm")</Template>
+                                    </TableColumn>
+                                    <TableColumn @bind-Field="@context.ClosedBy" Text="关闭人" Width="100" Align="Alignment.Center" Readonly="true">
+                                        <Template Context="row">@(row.Row.ClosedBy ?? "—")</Template>
+                                    </TableColumn>
+                                    <TableColumn @bind-Field="@context.ClosedTime" Text="关闭时间" Width="140" Align="Alignment.Center" Readonly="true">
+                                        <Template Context="row">@(row.Row.ClosedTime?.ToString("yyyy-MM-dd HH:mm") ?? "—")</Template>
+                                    </TableColumn>
+                                </TableColumns>
+                            </Table>
+                            <div class="text-center mt-3">
+                                <Button Color="Color.Secondary" IsOutline="true" Icon="fa-solid fa-chevron-up" Size="Size.Small"
+                                        OnClick="@(() => _showAllIssues = false)">
+                                    收起(只显示最近 5 条)
+                                </Button>
+                            </div>
+                        }
+                        else
+                        {
+                            @* === 预览:最近 5 条(精简视图,内容截断 + 状态徽章) === *@
+                            <div class="issues-preview">
+                                @foreach (var issue in _issuesPreview)
+                                {
+                                    <div class="d-flex align-items-center"
+                                         style="padding: 0.6rem 0.5rem; border-bottom: 1px solid #e9ecef; gap: 0.75rem; cursor: pointer; border-radius: 4px; transition: background-color 0.15s;"
+                                         @onclick="@(() => OpenIssueDrawer(issue))">
+                                        @if (issue.Status == IssueStatus.Open)
+                                        {
+                                            <Badge Color="Color.Danger" IsPill="true" style="min-width: 56px; text-align: center; flex-shrink: 0;">open</Badge>
+                                        }
+                                        else if (issue.Status == IssueStatus.Close)
+                                        {
+                                            <Badge Color="Color.Success" IsPill="true" style="min-width: 56px; text-align: center; flex-shrink: 0;">close</Badge>
+                                        }
+                                        <div class="flex-fill" style="min-width: 0;">
+                                            <div style="white-space: pre-wrap; max-height: 60px; overflow-y: auto; word-break: break-word; color: #212529;">
+                                                @TruncateIssueContent(issue.Content, 120)
+                                            </div>
+                                            <div class="text-muted small" style="margin-top: 0.25rem;">
+                                                #@issue.Id · @issue.CreatedBy · @issue.CreatedTime.ToString("yyyy-MM-dd HH:mm")
+                                            </div>
+                                        </div>
+                                        <i class="fa-solid fa-chevron-right text-muted" style="flex-shrink: 0;"></i>
+                                    </div>
+                                }
+                            </div>
+                            @if (_issues.Count > 5)
+                            {
+                                <div class="text-center mt-3">
+                                    <Button Color="Color.Primary" IsOutline="true" Icon="fa-solid fa-chevron-down" Size="Size.Small"
+                                            OnClick="@(() => _showAllIssues = true)">
+                                        查看全部问题(共 @_issues.Count 条) →
+                                    </Button>
+                                </div>
+                            }
+                        }
+                    </BodyTemplate>
+                </Card>
+
+                @* (2026-08-27 晚) 单条问题详情 Drawer:点预览行打开,提供完整内容 + 状态切换 + 解决方法 + close *@
+                <Drawer Placement="Placement.Right" @bind-IsOpen="@_issueDrawerVisible" IsBackdrop="true" Size="Size.Large">
+                    @if (_currentIssueForDrawer != null)
+                    {
+                        var drawerIssue = _currentIssueForDrawer;
+                        var isOpen = drawerIssue.Status == IssueStatus.Open;
+                        <div class="d-flex flex-column" style="height: 100%;">
+                            <div class="px-3 py-2 border-bottom">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span class="fw-bold">
+                                        <i class="fa-solid fa-circle-exclamation me-1"></i>问题 #@drawerIssue.Id
+                                    </span>
+                                    @if (isOpen)
+                                    {
+                                        <Badge Color="Color.Danger" IsPill="true">open</Badge>
+                                    }
+                                    else
+                                    {
+                                        <Badge Color="Color.Success" IsPill="true">close</Badge>
+                                    }
+                                </div>
+                                <div class="text-muted small">@_selectedOrder?.OrderNumber</div>
+                            </div>
+                            <div class="flex-fill p-3" style="overflow-y: auto;">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">问题描述</label>
+                                    <div style="white-space: pre-wrap; word-break: break-word; background: #f8f9fa; padding: 0.75rem; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+                                        @(drawerIssue.Content ?? "")
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">解决方法</label>
+                                    @if (string.IsNullOrWhiteSpace(drawerIssue.Resolution))
+                                    {
+                                        <div class="text-secondary fst-italic">尚未填写</div>
+                                    }
+                                    else
+                                    {
+                                        <div style="white-space: pre-wrap; word-break: break-word; background: #f8f9fa; padding: 0.75rem; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+                                            @drawerIssue.Resolution
+                                        </div>
+                                    }
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">状态</label>
+                                    @if (isOpen && CanEditIssueStatus)
+                                    {
+                                        <select class="@GetIssueStatusClass(drawerIssue.Status)"
+                                                style="min-width: 120px; font-weight: 600;"
+                                                value="@drawerIssue.Status"
+                                                @onchange="OnDrawerStatusChanged">
+                                            @foreach (var item in _issueStatusItems)
+                                            {
+                                                <option value="@item.Value">@item.Text</option>
+                                            }
+                                        </select>
+                                        <div class="form-text">open → close 前请先填写解决方法</div>
+                                    }
+                                    else if (isOpen)
+                                    {
+                                        <Badge Color="Color.Danger" IsPill="true">open</Badge>
+                                        <div class="form-text text-warning">无 OrderIssue.EditStatus 权限,无法切换状态</div>
+                                    }
+                                    else
+                                    {
+                                        <Badge Color="Color.Success" IsPill="true">close</Badge>
+                                        <div class="form-text">已关闭,无法再修改状态</div>
+                                    }
+                                </div>
+                                <hr />
+                                <div class="text-muted small">
+                                    <div><i class="fa-solid fa-user-plus me-1"></i>创建人:@drawerIssue.CreatedBy</div>
+                                    <div><i class="fa-solid fa-clock me-1"></i>创建时间:@drawerIssue.CreatedTime.ToString("yyyy-MM-dd HH:mm")</div>
+                                    @if (!isOpen)
+                                    {
+                                        <div class="mt-1"><i class="fa-solid fa-user-check me-1"></i>关闭人:@(drawerIssue.ClosedBy ?? "—")</div>
+                                        <div><i class="fa-solid fa-lock me-1"></i>关闭时间:@(drawerIssue.ClosedTime?.ToString("yyyy-MM-dd HH:mm") ?? "—")</div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="px-3 py-2 border-top d-flex justify-content-end" style="gap: 0.5rem;">
+                                @if (isOpen && CanEditIssueStatus)
+                                {
+                                    <Button Color="Color.Success" Icon="fa-solid fa-check" Size="Size.Small"
+                                            OnClick="ShowResolutionDialogFromDrawer">
+                                        填写解决方法
+                                    </Button>
+                                }
+                                <Button Color="Color.Secondary" Icon="fa-solid fa-xmark" Size="Size.Small"
+                                        OnClick="CloseIssueDrawer">
+                                    关闭
+                                </Button>
+                            </div>
+                        </div>
+                    }
+                </Drawer>
+
+                @* 新建问题 Modal *@
+                <Modal @ref="_addIssueModal" IsBackdrop="true" ShowCloseButton="true">
+                    <ModalDialog Title="@($"新建问题 — 订单 #{_selectedOrder?.OrderNumber}")" Size="Size.Large">
+                        <BodyTemplate>
+                            <div class="mb-3">
+                                <label class="form-label">问题描述(支持长文本,最多 8000 字符)</label>
+                                <textarea class="form-control" rows="8" maxlength="8000"
+                                          @bind="_newIssueContent"
+                                          placeholder="详细描述在此订单遇到的问题..."></textarea>
+                                <small class="text-muted">当前 @(_newIssueContent?.Length ?? 0) / 8000 字符</small>
+                            </div>
+                        </BodyTemplate>
+                        <FooterTemplate>
+                            <Button Color="Color.Primary" Icon="fa-solid fa-save" OnClick="SaveNewIssue" IsDisabled="_savingIssue">
+                                @(_savingIssue ? "保存中..." : "保存")
+                            </Button>
+                            <Button Color="Color.Secondary" Icon="fa-solid fa-xmark" OnClick="CloseAddIssueDialog">取消</Button>
+                        </FooterTemplate>
+                    </ModalDialog>
+                </Modal>
+
+                @* 填写解决方法 Modal *@
+                <Modal @ref="_resolutionModal" IsBackdrop="true" ShowCloseButton="true">
+                    <ModalDialog Title="@($"填写解决方法 — 问题 #{_currentIssueForResolution?.Id}")" Size="Size.Large">
+                        <BodyTemplate>
+                            @if (_currentIssueForResolution != null)
+                            {
+                                <div class="mb-3">
+                                    <label class="form-label text-secondary">原问题</label>
+                                    <div style="white-space: pre-wrap; max-height: 160px; overflow-y: auto; background: #f8f9fa; padding: 8px 12px; border-radius: 4px; font-size: 0.95em;">
+                                        @_currentIssueForResolution.Content
+                                    </div>
+                                </div>
+                            }
+                            <div class="mb-3">
+                                <label class="form-label">解决方法 <span class="text-danger">*</span></label>
+                                <textarea class="form-control" rows="6" maxlength="8000"
+                                          @bind="_newResolution"
+                                          placeholder="详细描述解决方法(close 时会被校验)..."></textarea>
+                                <small class="text-muted">当前 @(_newResolution?.Length ?? 0) / 8000 字符</small>
+                            </div>
+                        </BodyTemplate>
+                        <FooterTemplate>
+                            <Button Color="Color.Primary" Icon="fa-solid fa-save" OnClick="SaveResolution" IsDisabled="_savingResolution">
+                                @(_savingResolution ? "保存中..." : "保存")
+                            </Button>
+                            <Button Color="Color.Secondary" Icon="fa-solid fa-xmark" OnClick="CloseResolutionModal">取消</Button>
+                        </FooterTemplate>
+                    </ModalDialog>
+                </Modal>
+            }
+        </div>
+    </div>
 </div>
 
 @code {
-    private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
+    private static IEnumerable<int> MasterPageItemsSource => new int[] { 10, 20, 40 };
 
     private List<SelectedItem> _userItems = new();
 
@@ -260,12 +696,112 @@
         new SelectedItem("出口", "出口"),
     };
 
+    // (2026-08-25) 主从布局状态。_masterSelected 只用于 SelectedRowsChanged 回传,
+    // 业务态走 _selectedOrder;同一行重复点击不重载。
+    private List<Models.Orders> _masterSelected = new();
+    private Models.Orders? _selectedOrder;
+
+    private OrderInfoRow? _infoRow;
+    private OrderDesignPhasesRow? _phasesRow;
+    private OrderImportantComponentsRow? _componentsRow;
+
+    private bool _loadingDetail;
+    private bool _savingInfo;
+    private bool _savingPhases;
+    private bool _savingComponents;
+
+    // (2026-08-25) 订单号快速跳转
+    private string _orderNumberSearch = "";
+    private bool _searchingOrder;
+
+    // (2026-08-25) 问题汇总(Card 4)状态
+    private List<OrderIssues>? _issues;
+    private List<OrderIssues> _issueSelected = new();
+    private bool _savingIssue;
+    private bool _savingResolution;
+    private string _newIssueContent = "";
+    private string _newResolution = "";
+    private OrderIssues? _currentIssueForResolution;
+    private BootstrapBlazor.Components.Modal _addIssueModal = default!;
+    private BootstrapBlazor.Components.Modal _resolutionModal = default!;
+    private BootstrapBlazor.Components.Table<OrderIssues>? _issuesTable;
+    // Table @key:变更后强制 Blazor 销毁旧实例重建,绕过 Table 内部缓存。
+    // 配合 _issuesTable.QueryAsync() + StateHasChanged() 三重保险。
+    private int _issuesReloadCounter;
+    // (2026-08-27) Card 4 视图模式:false = 预览最近 5 条(true = 全量 Table + 分页)
+    private bool _showAllIssues;
+
+    // (2026-08-27) 预览用的最近 5 条(按创建时间倒序)。Computed property,
+    // 避免在 @else 内嵌 @{} 触发 Razor RZ1010。
+    private List<OrderIssues> _issuesPreview =>
+        (_issues ?? new()).OrderByDescending(i => i.CreatedTime).Take(5).ToList();
+
+    // (2026-08-27) 预览行内容截断 + 空值保护(Content 是 nullable)。
+    private static string TruncateIssueContent(string? content, int maxLen)
+    {
+        var s = content ?? "";
+        return s.Length > maxLen ? s.Substring(0, maxLen) + "…" : s;
+    }
+
+    // (2026-08-27 晚) 单条问题详情抽屉:点预览行打开,提供完整内容 / 解决方法 / 状态切换 / close
+    private bool _issueDrawerVisible;
+    private OrderIssues? _currentIssueForDrawer;
+
+    private void OpenIssueDrawer(OrderIssues issue)
+    {
+        _currentIssueForDrawer = issue;
+        _issueDrawerVisible = true;
+    }
+
+    private void CloseIssueDrawer()
+    {
+        _issueDrawerVisible = false;
+        // 保留 _currentIssueForDrawer,关闭动画期间还能读;下次 OpenIssueDrawer 会覆盖
+    }
+
+    // 抽屉里的状态切换(同全表的 OnIssueStatusChanged,但要刷新 _currentIssueForDrawer)
+    private async Task OnDrawerStatusChanged(ChangeEventArgs e)
+    {
+        if (_currentIssueForDrawer == null) return;
+        var newStatus = e.Value?.ToString() ?? "";
+        await OnIssueStatusChanged(_currentIssueForDrawer, newStatus);
+        // ReloadIssuesAsync 已经在 OnIssueStatusChanged 末尾调用,
+        // 但 _currentIssueForDrawer 引用还是旧对象 — 让它从最新 _issues 重新指向
+        if (_currentIssueForDrawer != null)
+        {
+            var refreshed = _issues?.FirstOrDefault(i => i.Id == _currentIssueForDrawer.Id);
+            _currentIssueForDrawer = refreshed;
+        }
+    }
+
+    private static readonly List<SelectedItem> _issueStatusItems = new()
+    {
+        new SelectedItem(IssueStatus.Open, "open"),
+        new SelectedItem(IssueStatus.Close, "close"),
+    };
+
+    private static IEnumerable<int> IssuesPageItemsSource => new int[] { 5, 10, 20 };
+
+    private bool CanEditInfo => CurrentUser.HasPermission(PermissionCodes.OrderInfoEdit);
+    private bool CanEditPhases => CurrentUser.HasPermission(PermissionCodes.OrderDesignPhasesEdit);
+    private bool CanEditComponents => CurrentUser.HasPermission(PermissionCodes.OrderImportantComponentsEdit);
+    private bool CanAddIssue => CurrentUser.HasPermission(PermissionCodes.OrderIssueAdd);
+    private bool CanEditIssueStatus => CurrentUser.HasPermission(PermissionCodes.OrderIssueEditStatus);
+    private bool HasOneIssueSelected => _issueSelected.Count == 1;
+    private bool CanSolveIssue => HasOneIssueSelected && CanEditIssueStatus;
+
     protected override async Task OnInitializedAsync()
     {
         try
         {
             var users = await UsersService.GetSelectItemsAsync();
             _userItems = users.ToSelectedItems();
+            // (2026-08-27) BootstrapBlazor Select 在 TValue="int?" 且 value=null 时,
+            // 若 Items 列表中没有 Value="" 的项,会回退到第 0 项显示(不是 PlaceHolder)。
+            // 这里 _phasesRow.Phase1/2EngineerId 默认是 null,导致未选负责人时
+            // 错误显示用户表排序第一的名字。插一个空值项("" → null)绑住 null,显示「请选择」。
+            // 同页 _marketTypeItems 已用相同模式。
+            _userItems.Insert(0, new SelectedItem("", "请选择"));
         }
         catch (Exception ex)
         {
@@ -274,78 +810,400 @@
         }
     }
 
-    // ===== 项目信息 =====
+    // ===== 主表 =====
 
-    private async Task<QueryData<OrderInfoRow>> OnInfoQueryAsync(QueryPageOptions options)
+    private async Task<QueryData<Models.Orders>> OnMasterQueryAsync(QueryPageOptions options)
     {
-        var result = await OrderInfoService.QueryAsync(options.ToPagedQuery());
+        var result = await OrdersService.QueryAsync(options.ToPagedQuery());
         return result.ToQueryData();
     }
 
-    private async Task<bool> OnInfoSaveAsync(OrderInfoRow row, ItemChangedType changedType)
+    private async Task OnMasterSelectedRowsChanged(IEnumerable<Models.Orders> rows)
     {
-        var (ok, error) = await OrderInfoService.SaveAsync(row);
-        if (!ok)
+        _masterSelected = rows.ToList();
+        var first = _masterSelected.FirstOrDefault();
+        if (first == null)
         {
-            await ShowToast(error ?? "保存失败", ToastCategory.Error);
-            return false;
+            _selectedOrder = null;
+            return;
         }
-        await ShowToast("项目信息保存成功", ToastCategory.Success);
-        return true;
-    }
-
-    // ===== 一次二次人员时间 =====
-
-    private async Task<QueryData<OrderDesignPhasesRow>> OnPhasesQueryAsync(QueryPageOptions options)
-    {
-        var result = await OrderDesignPhasesService.QueryAsync(options.ToPagedQuery());
-        return result.ToQueryData();
-    }
-
-    private async Task<bool> OnPhasesSaveAsync(OrderDesignPhasesRow row, ItemChangedType changedType)
-    {
-        var (ok, error) = await OrderDesignPhasesService.SaveAsync(row);
-        if (!ok)
+        if (_selectedOrder?.Id == first.Id)
         {
-            await ShowToast(error ?? "保存失败", ToastCategory.Error);
-            return false;
+            return; // 同一行重复点击,不重载
         }
-        await ShowToast("阶段信息保存成功", ToastCategory.Success);
-        return true;
+        _selectedOrder = first;
+        await LoadDetailAsync(first.Id);
     }
 
-    // ===== 重要组件 =====
-
-    private async Task<QueryData<OrderImportantComponentsRow>> OnComponentsQueryAsync(QueryPageOptions options)
+    /// <summary>
+    /// 按订单号精确跳转。命中后:右侧加载详情,主表 SelectedRows 同步刷新,
+    /// 但分页不强制跳页 — 行可能不在当前页(刷新表格查询条件即可拉到对应页)。
+    /// 未命中给 Toast 警告,不清空当前已选项。
+    /// </summary>
+    private async Task OnSearchOrderAsync()
     {
-        var result = await OrderImportantComponentsService.QueryAsync(options.ToPagedQuery());
-        return result.ToQueryData();
-    }
-
-    private async Task<bool> OnComponentsSaveAsync(OrderImportantComponentsRow row, ItemChangedType changedType)
-    {
-        var (ok, error) = await OrderImportantComponentsService.SaveAsync(row);
-        if (!ok)
+        var raw = _orderNumberSearch?.Trim() ?? "";
+        if (string.IsNullOrEmpty(raw))
         {
-            await ShowToast(error ?? "保存失败", ToastCategory.Error);
-            return false;
+            await ShowToast("请输入订单号", ToastCategory.Warning);
+            return;
         }
-        await ShowToast("组件信息保存成功", ToastCategory.Success);
-        return true;
+        if (!int.TryParse(raw, out var orderNumber) || orderNumber <= 0)
+        {
+            await ShowToast("订单号必须为正整数", ToastCategory.Warning);
+            return;
+        }
+
+        _searchingOrder = true;
+        try
+        {
+            var found = await OrdersService.FindByOrderNumberAsync(orderNumber);
+            if (found == null)
+            {
+                await ShowToast($"未找到订单号 {orderNumber}(可能已被删除)", ToastCategory.Warning);
+                return;
+            }
+
+            // 同步主表选中状态;左侧 Table 当前页可能不含该行,
+            // 但右侧详情已正确加载(详情来自 OrderId 直接查 3 个明细服务,不依赖主表分页)。
+            _masterSelected = new List<Models.Orders> { found };
+            _selectedOrder = found;
+            await LoadDetailAsync(found.Id);
+            await ShowToast($"已定位到订单 {found.OrderNumber}", ToastCategory.Success);
+        }
+        finally
+        {
+            _searchingOrder = false;
+        }
     }
 
-    // ===== 渲染辅助 =====
-
-    private static string FormatDate(DateTime? value)
-        => value.HasValue ? value.Value.ToString("yyyy-MM-dd") : "-";
-
-    private static RenderFragment RenderYesNo(bool value) => builder =>
+    private async Task LoadDetailAsync(int orderId)
     {
-        builder.OpenElement(0, "span");
-        builder.AddAttribute(1, "class", value ? "text-success fw-bold" : "text-secondary");
-        builder.AddContent(2, value ? "是" : "否");
-        builder.CloseElement();
+        _loadingDetail = true;
+        _infoRow = null;
+        _phasesRow = null;
+        _componentsRow = null;
+        _issues = null;
+        _issueSelected = new();
+        // (2026-08-27) 切订单时收起问题汇总全量视图,恢复为预览
+        _showAllIssues = false;
+
+        try
+        {
+            var infoTask = OrderInfoService.GetByOrderIdAsync(orderId);
+            var phasesTask = OrderDesignPhasesService.GetByOrderIdAsync(orderId);
+            var compTask = OrderImportantComponentsService.GetByOrderIdAsync(orderId);
+            // 问题汇总一次性取全量(不分页 — 单订单问题数通常不多;若订单下问题数百条再考虑分页)。
+            var issuesTask = OrderIssueService.QueryByOrderIdAsync(orderId, new PagedQuery { PageIndex = 1, PageItems = 1000 });
+            await Task.WhenAll(infoTask, phasesTask, compTask, issuesTask);
+
+            _infoRow = infoTask.Result ?? EmptyInfoRow(orderId);
+            _phasesRow = phasesTask.Result ?? EmptyPhasesRow(orderId);
+            _componentsRow = compTask.Result ?? EmptyComponentsRow(orderId);
+            _issues = issuesTask.Result.Items ?? new();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "LoadDetailAsync failed for orderId={OrderId}", orderId);
+            _infoRow ??= EmptyInfoRow(orderId);
+            _phasesRow ??= EmptyPhasesRow(orderId);
+            _componentsRow ??= EmptyComponentsRow(orderId);
+            _issues ??= new();
+        }
+        finally
+        {
+            _loadingDetail = false;
+        }
+    }
+
+    private static OrderInfoRow EmptyInfoRow(int orderId) => new()
+    {
+        OrderId = orderId,
+        UnitCount = 1,
     };
+
+    private static OrderDesignPhasesRow EmptyPhasesRow(int orderId) => new()
+    {
+        OrderId = orderId,
+    };
+
+    private static OrderImportantComponentsRow EmptyComponentsRow(int orderId) => new()
+    {
+        OrderId = orderId,
+    };
+
+    // ===== 保存 =====
+
+    private async Task SaveInfoAsync()
+    {
+        if (_infoRow == null || _selectedOrder == null) return;
+        _savingInfo = true;
+        try
+        {
+            // OrderId 来自当前选中订单,InfoRow 仅承载业务字段,OrderNumber/Power/Voltage 取自有表连接
+            _infoRow.OrderId = _selectedOrder.Id;
+            var (ok, err) = await OrderInfoService.SaveAsync(_infoRow);
+            if (!ok)
+            {
+                await ShowToast(err ?? "保存失败", ToastCategory.Error);
+                return;
+            }
+            await ShowToast("项目信息保存成功", ToastCategory.Success);
+        }
+        finally
+        {
+            _savingInfo = false;
+        }
+    }
+
+    private async Task SavePhasesAsync()
+    {
+        if (_phasesRow == null || _selectedOrder == null) return;
+        _savingPhases = true;
+        try
+        {
+            _phasesRow.OrderId = _selectedOrder.Id;
+            var (ok, err) = await OrderDesignPhasesService.SaveAsync(_phasesRow);
+            if (!ok)
+            {
+                await ShowToast(err ?? "保存失败", ToastCategory.Error);
+                return;
+            }
+            await ShowToast("阶段信息保存成功", ToastCategory.Success);
+        }
+        finally
+        {
+            _savingPhases = false;
+        }
+    }
+
+    private async Task SaveComponentsAsync()
+    {
+        if (_componentsRow == null || _selectedOrder == null) return;
+        _savingComponents = true;
+        try
+        {
+            _componentsRow.OrderId = _selectedOrder.Id;
+            var (ok, err) = await OrderImportantComponentsService.SaveAsync(_componentsRow);
+            if (!ok)
+            {
+                await ShowToast(err ?? "保存失败", ToastCategory.Error);
+                return;
+            }
+            await ShowToast("组件信息保存成功", ToastCategory.Success);
+        }
+        finally
+        {
+            _savingComponents = false;
+        }
+    }
+
+    // ===== 问题汇总 =====
+
+    private async Task<QueryData<OrderIssues>> OnIssuesQueryAsync(QueryPageOptions options)
+    {
+        if (_selectedOrder == null || _issues == null)
+        {
+            return new QueryData<OrderIssues>
+            {
+                Items = new List<OrderIssues>(),
+                TotalCount = 0,
+            };
+        }
+        // 一次拉到全量(_issues 已含 1000 条上限),手动按 PageItems 切片,避免每翻一页都打数据库。
+        var all = _issues;
+        var page = all.Skip((options.PageIndex - 1) * options.PageItems).Take(options.PageItems).ToList();
+        return await Task.FromResult(new QueryData<OrderIssues>
+        {
+            Items = page,
+            TotalCount = all.Count,
+            IsFiltered = false,
+            IsSorted = false,
+            IsSearch = false,
+        });
+    }
+
+    private void OnIssueSelectedRowsChanged(IEnumerable<OrderIssues> rows)
+    {
+        _issueSelected = rows.ToList();
+    }
+
+    private async Task ShowAddIssueDialog()
+    {
+        if (!CanAddIssue) return;
+        _newIssueContent = "";
+        await _addIssueModal.Show();
+    }
+
+    private async Task CloseAddIssueDialog()
+    {
+        await _addIssueModal.Close();
+    }
+
+    private async Task SaveNewIssue()
+    {
+        if (_savingIssue || _selectedOrder == null) return;
+        if (string.IsNullOrWhiteSpace(_newIssueContent))
+        {
+            await ShowToast("问题描述不能为空", ToastCategory.Error);
+            return;
+        }
+
+        _savingIssue = true;
+        try
+        {
+            var (ok, error) = await OrderIssueService.CreateAsync(_selectedOrder.Id, _newIssueContent);
+            if (!ok)
+            {
+                await ShowToast(error ?? "保存失败", ToastCategory.Error);
+                return;
+            }
+            await ShowToast("问题已添加", ToastCategory.Success);
+            await _addIssueModal.Close();
+            _newIssueContent = "";
+            await ReloadIssuesAsync();
+        }
+        finally
+        {
+            _savingIssue = false;
+        }
+    }
+
+    private async Task ShowResolutionDialogFromSelection()
+    {
+        if (!HasOneIssueSelected) return;
+        await ShowResolutionDialogAsync(_issueSelected[0]);
+    }
+
+    // (2026-08-27 晚) 抽屉里的「填写解决方法」按钮入口:用 _currentIssueForDrawer 作 source
+    private async Task ShowResolutionDialogFromDrawer()
+    {
+        if (_currentIssueForDrawer == null) return;
+        await ShowResolutionDialogAsync(_currentIssueForDrawer);
+    }
+
+    // (2026-08-27 晚) 提取公共弹窗逻辑:Header 按钮(基于 _issueSelected)和抽屉按钮(基于 _currentIssueForDrawer)都复用
+    private async Task ShowResolutionDialogAsync(OrderIssues issue)
+    {
+        if (issue == null) return;
+        if (!CanEditIssueStatus)
+        {
+            await ShowToast("无 OrderIssue.EditStatus 权限", ToastCategory.Warning);
+            return;
+        }
+        _currentIssueForResolution = issue;
+        _newResolution = issue.Resolution ?? "";
+        await _resolutionModal.Show();
+    }
+
+    private async Task CloseResolutionModal()
+    {
+        await _resolutionModal.Close();
+    }
+
+    private async Task SaveResolution()
+    {
+        if (_currentIssueForResolution == null || _savingResolution) return;
+        if (string.IsNullOrWhiteSpace(_newResolution))
+        {
+            await ShowToast("解决方法不能为空", ToastCategory.Error);
+            return;
+        }
+
+        _savingResolution = true;
+        try
+        {
+            var (ok, error) = await OrderIssueService.SaveResolutionAsync(
+                _currentIssueForResolution.Id, _newResolution);
+            if (!ok)
+            {
+                await ShowToast(error ?? "保存失败", ToastCategory.Error);
+                return;
+            }
+            await ShowToast("解决方法已保存", ToastCategory.Success);
+            await _resolutionModal.Close();
+            await ReloadIssuesAsync();
+        }
+        finally
+        {
+            _savingResolution = false;
+        }
+    }
+
+    /// <summary>
+    /// (从 OrderIssueList 移植)行内状态变更:open → close。
+    /// close 前要求 Resolution 非空 + JS confirm 二次确认。
+    /// </summary>
+    private async Task OnIssueStatusChanged(OrderIssues issue, string newStatus)
+    {
+        if (string.IsNullOrEmpty(newStatus) || newStatus == issue.Status) return;
+
+        if (issue.Status == IssueStatus.Close)
+        {
+            await ShowToast("已关闭的问题不能再修改状态", ToastCategory.Warning);
+            return;
+        }
+        if (newStatus != IssueStatus.Close)
+        {
+            await ShowToast("只能从 open 切换到 close", ToastCategory.Warning);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(issue.Resolution))
+        {
+            await ShowToast("请先填写解决方法(工具栏「填写解决方法」按钮)", ToastCategory.Warning);
+            return;
+        }
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            "确认关闭此问题?\n\n关闭后将无法再修改状态,关闭人 / 关闭时间会被记录。");
+        if (!confirmed) return;
+
+        var (ok, error) = await OrderIssueService.UpdateStatusAsync(issue.Id, newStatus);
+        if (!ok)
+        {
+            await ShowToast(error ?? "关闭失败", ToastCategory.Error);
+            return;
+        }
+
+        await ShowToast("已关闭", ToastCategory.Success);
+        await ReloadIssuesAsync();
+    }
+
+    private async Task ReloadIssuesAsync()
+    {
+        if (_selectedOrder == null) return;
+        var result = await OrderIssueService.QueryByOrderIdAsync(
+            _selectedOrder.Id, new PagedQuery { PageIndex = 1, PageItems = 1000 });
+        _issues = result.Items ?? new();
+        _issueSelected = new();
+
+        // (2026-08-27 晚) 抽屉如果开着,让它重新指向最新对象,否则抽屉里还会显示旧 Resolution / Status
+        if (_currentIssueForDrawer != null)
+        {
+            _currentIssueForDrawer = _issues.FirstOrDefault(i => i.Id == _currentIssueForDrawer.Id);
+        }
+
+        // 三重保险确保 Table 立即刷新:
+        //   1) QueryAsync() — 让 Table 重新调 OnIssuesQueryAsync(options) 拿新数据
+        //   2) @key 计数器 +1 — 即使前两步被 BootstrapBlazor 内部缓存吃掉,也会强制重建 Table 实例
+        //   3) StateHasChanged() — 兜底重渲染
+        // (单用任意一种都遇到过不刷新,所以三个一起上)
+        if (_issuesTable != null)
+        {
+            await _issuesTable.QueryAsync();
+        }
+        _issuesReloadCounter++;
+        StateHasChanged();
+    }
+
+    private static string GetIssueStatusClass(string status) => status switch
+    {
+        IssueStatus.Open => "form-select form-select-sm text-danger bg-danger bg-opacity-10 border-danger",
+        IssueStatus.Close => "form-select form-select-sm text-success bg-success bg-opacity-10 border-success",
+        _ => "form-select form-select-sm",
+    };
+
+    // ===== Toast =====
 
     private async Task ShowToast(string content, ToastCategory category)
     {

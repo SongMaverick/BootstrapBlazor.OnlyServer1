@@ -107,6 +107,46 @@ public class OrderImportantComponentsService
         }
     }
 
+    /// <summary>
+    /// 按订单号取单条组件特征行。给主从布局(/order-management)右侧用:
+    /// 列表已确认订单存在,所以走 Orders LEFT JOIN OrderImportantComponents;
+    /// 若该订单尚无 OrderImportantComponents,ComponentsId=0,业务字段为默认值,保存时按 upsert 处理。
+    /// 订单不存在或被删除时返回 null。
+    /// </summary>
+    public Task<OrderImportantComponentsRow?> GetByOrderIdAsync(int orderId)
+    {
+        if (orderId <= 0) return Task.FromResult<OrderImportantComponentsRow?>(null);
+
+        try
+        {
+            var row = _db.Queryable<Orders>()
+                .LeftJoin<OrderImportantComponents>((o, c) => o.Id == c.OrderId && !c.IsDeleted)
+                .Where(o => o.Id == orderId && !o.IsDeleted)
+                .Select((o, c) => new OrderImportantComponentsRow
+                {
+                    ComponentsId = c.Id,
+                    OrderId = o.Id,
+                    IsSplitFrame = c.IsSplitFrame,
+                    IsWeldedTankRim = c.IsWeldedTankRim,
+                    SwitchCount = c.SwitchCount,
+                    TestBushingModel = c.TestBushingModel,
+                    TestBushingQuantity = c.TestBushingQuantity,
+                    OrderNumber = o.OrderNumber,
+                    Power = o.Power,
+                    RatedVoltage = o.RatedVoltage,
+                    IsReactor = o.IsReactor,
+                })
+                .First();
+
+            return Task.FromResult<OrderImportantComponentsRow?>(row);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting OrderImportantComponents by orderId {OrderId}", orderId);
+            return Task.FromResult<OrderImportantComponentsRow?>(null);
+        }
+    }
+
     // ===== 保存(upsert) =====
 
     public async Task<(bool ok, string? error)> SaveAsync(OrderImportantComponentsRow row)

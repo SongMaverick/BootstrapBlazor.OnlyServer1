@@ -85,6 +85,26 @@ namespace BootstrapBlazor.OnlyServer1.Services
             }
         }
 
+        /// <summary>
+        /// 按订单号精确查一条订单。给 /order-management 的"按订单号跳转"用。
+        /// orderNumber 无效或未命中返回 null,已软删订单不返回。
+        /// </summary>
+        public async Task<Orders?> FindByOrderNumberAsync(int orderNumber)
+        {
+            if (orderNumber <= 0) return null;
+            try
+            {
+                return await _db.Queryable<Orders>()
+                    .Where(o => o.OrderNumber == orderNumber && !o.IsDeleted)
+                    .FirstAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error finding order by OrderNumber {OrderNumber}", orderNumber);
+                return null;
+            }
+        }
+
         // ===== 保存(默认隔离级 + UNIQUE INDEX 去重) =====
 
         /// <summary>

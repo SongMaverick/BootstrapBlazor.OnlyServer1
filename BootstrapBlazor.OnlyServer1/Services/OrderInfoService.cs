@@ -122,6 +122,49 @@ public class OrderInfoService
         }
     }
 
+    /// <summary>
+    /// 按订单号取单条项目信息行。给主从布局(/order-management)右侧用:
+    /// 列表已确认订单存在,所以走 Orders LEFT JOIN OrderInfo;
+    /// 若该订单尚无 OrderInfo,InfoId=0,业务字段为默认值,保存时按 upsert 处理。
+    /// 订单不存在或被删除时返回 null。
+    /// </summary>
+    public Task<OrderInfoRow?> GetByOrderIdAsync(int orderId)
+    {
+        if (orderId <= 0) return Task.FromResult<OrderInfoRow?>(null);
+
+        try
+        {
+            var row = _db.Queryable<Orders>()
+                .LeftJoin<OrderInfo>((o, i) => o.Id == i.OrderId && !i.IsDeleted)
+                .Where(o => o.Id == orderId && !o.IsDeleted)
+                .Select((o, i) => new OrderInfoRow
+                {
+                    InfoId = i.Id,
+                    OrderId = o.Id,
+                    ProjectName = i.ProjectName,
+                    MarketType = i.MarketType,
+                    UnitCount = i.UnitCount,
+                    OrderNumber = o.OrderNumber,
+                    Power = o.Power,
+                    RatedVoltage = o.RatedVoltage,
+                    IsReactor = o.IsReactor,
+                })
+                .First();
+
+            // 没有 OrderInfo 行时 UnitCount 会被 join 成 0,展示上按 1 台处理
+            if (row != null && row.InfoId == 0 && row.UnitCount == 0)
+            {
+                row.UnitCount = 1;
+            }
+            return Task.FromResult<OrderInfoRow?>(row);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting OrderInfo by orderId {OrderId}", orderId);
+            return Task.FromResult<OrderInfoRow?>(null);
+        }
+    }
+
     // ===== 保存(upsert) =====
 
     /// <summary>

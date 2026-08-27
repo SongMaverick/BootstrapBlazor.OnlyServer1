@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using NLog;
 using NLog.Web;
+using QuestPDF.Infrastructure;
 using SqlSugar;
 
 // ============================================================
@@ -167,6 +168,8 @@ builder.Services.AddScoped<OrdersService>();
 builder.Services.AddScoped<OrderInfoService>();
 builder.Services.AddScoped<OrderDesignPhasesService>();
 builder.Services.AddScoped<OrderImportantComponentsService>();
+builder.Services.AddScoped<OrderIssueService>();
+builder.Services.AddScoped<OrderIssuePdfService>();
 builder.Services.AddScoped<UsersService>();
 builder.Services.AddScoped<DepartmentsService>();
 builder.Services.AddScoped<PermissionsService>();
@@ -180,6 +183,16 @@ builder.Services.Configure<BootstrapBlazor.OnlyServer1.Models.BusinessRules.Draw
     builder.Configuration.GetSection("BusinessRules:DrawingType"));
 
 builder.Services.Configure<HubOptions>(option => option.MaximumReceiveMessageSize = 64 * 1024);
+
+// ============================================================
+// (2026-08-27) QuestPDF License
+//   - Community:年收入 < $1M USD 公司免费 + 个人免费 + 学生免费
+//   - Professional:需付费
+//   当前用户(西门子济南变压器)未明确规模,先 Community。
+//   QuestPDF 2024.x 必须在 GeneratePdf() 之前设置,否则抛 InvalidOperationException。
+//   切 Professional 时改 LicenseType.Professional 并填 LicenseKey。
+// ============================================================
+QuestPDF.Settings.License = LicenseType.Community;
 
 // ResponseCompression:压缩 Blazor Server 的 SignalR / 静态资源传输
 builder.Services.AddResponseCompression(options =>
@@ -246,6 +259,45 @@ app.MapGet("/Account/Login", (HttpContext ctx) => Results.Redirect("/login" + ct
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.MapControllers();
+
+// ============================================================
+// (2026-08-27) 订单问题汇总 PDF 下载端点
+//   路由:GET /api/orders/{orderId:int}/issues-pdf
+//   - 已登录用户凭 Identity Cookie 直接下载(走 .RequireAuthorization())
+//   - 未登录 → 302 重定向到 /login
+//   - 订单不存在 → 404(避免泄露存在性)
+//   - 生成失败 → 500 + 简单文案(详细错误进 NLog)
+//   Razor 页调用:Nav.NavigateTo(url, forceLoad: true)
+//     forceLoad: true 走完整 HTTP,触发浏览器 Content-Disposition: attachment 下载流程
+// ============================================================
+app.MapGet("/api/orders/{orderId:int}/issues-pdf", async (
+    int orderId,
+    BootstrapBlazor.OnlyServer1.Services.OrderIssuePdfService pdfService,
+    HttpContext ctx,
+    ILogger<BootstrapBlazor.OnlyServer1.Services.OrderIssuePdfService> logger) =>
+{
+    try
+    {
+        var pdf = await pdfService.GenerateOrderIssuesPdfAsync(orderId);
+        if (pdf == null)
+        {
+            ctx.Response.StatusCode = 404;
+            await ctx.Response.WriteAsync($"订单 #{orderId} 不存在或已删除");
+            return;
+        }
+        ctx.Response.ContentType = "application/pdf";
+        ctx.Response.Headers.ContentDisposition =
+            $"attachment; filename=\"Order{orderId}-Issues-{DateTime.Now:yyyyMMddHHmm}.pdf\"";
+        ctx.Response.ContentLength = pdf.Length;
+        await ctx.Response.Body.WriteAsync(pdf);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "PDF export failed for OrderId={OrderId}", orderId);
+        ctx.Response.StatusCode = 500;
+        await ctx.Response.WriteAsync("生成 PDF 失败,请重试");
+    }
+}).RequireAuthorization();
 
 // 应用停止时,强制 flush NLog 队列(避免最后一批日志丢失)
 var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
