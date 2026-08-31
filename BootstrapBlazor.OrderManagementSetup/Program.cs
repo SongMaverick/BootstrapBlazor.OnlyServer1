@@ -1,4 +1,4 @@
-using BootstrapBlazor.OnlyServer1.Models;
+﻿using BootstrapBlazor.OnlyServer1.Models;
 using BootstrapBlazor.OnlyServer1.Models.Identity;
 using Microsoft.Extensions.Configuration;
 using SqlSugar;
@@ -121,9 +121,12 @@ public static class Program
 
         //生产环境
         //var connStr = config.GetConnectionString("sqlServerConnection");
+        //生产测试环境
+        var connStr = config.GetConnectionString("sqlServerConnectionTest");
         //测试环境
-        var connStr = config.GetConnectionString("sqlServerConnectionStringOffice");
-        if (string.IsNullOrWhiteSpace(connStr))
+        //var connStr = config.GetConnectionString("sqlServerConnectionStringOffice");
+
+        if(string.IsNullOrWhiteSpace(connStr))
         {
             Console.Error.WriteLine("错误:appsettings.json 中未配置 ConnectionStrings.sqlServerConnection");
             return 1;

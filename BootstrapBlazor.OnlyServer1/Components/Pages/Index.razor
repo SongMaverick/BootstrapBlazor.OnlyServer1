@@ -1,10 +1,51 @@
 ﻿@page "/"
 @attribute [TabItemOption(Text = "首页", Closable = false)]
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject BootstrapBlazor.OnlyServer1.Data.SqlSugarSetup SqlSugar
 
 <PageTitle>首页</PageTitle>
 
 <h1>欢迎使用结构设计信息平台</h1>
-<p>2026-8-7 信息平台首次释放 V1.0.0，包括编号本功能 </p>
+
+@if(!string.IsNullOrEmpty(_dbName) && _dbName.Equals("stclmd")) {
+    //开发机
+    <div style="background:#f5f5f5; padding:12px 16px; border-left:4px solid #0d6efd; margin:12px 0;">
+        <div>🖥️ 服务器:<strong>@_dbServer</strong></div>
+        <div>💾 数据库:<strong>@_dbName</strong></div>
+    </div>
+} else if(!string.IsNullOrEmpty(_dbName) && _dbName.Equals("stcl_md_test")) {
+    <div style="background:#f5f5f5; padding:12px 16px; border-left:4px solid #0d6efd; margin:12px 0;">
+        生产测试环境
+    </div>
+}
+
+
+<p>2026-8-7 信息平台首次释放 V1.0.0,包括编号本功能 </p>
 <p>2026-8-10 信息平台新增订单管理功能 V1.1.0 </p>
+
+@code {
+    private string _dbServer = "";
+    private string _dbName = "";
+
+    protected override void OnInitialized()
+    {
+        var cs = SqlSugar.Db.CurrentConnectionConfig.ConnectionString ?? "";
+
+        try
+        {
+            var b = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = cs };
+            _dbServer = b.ContainsKey("Server")
+                ? b["Server"]?.ToString() ?? ""
+                : (b.ContainsKey("Data Source") ? b["Data Source"]?.ToString() ?? "" : "(未取到)");
+            _dbName = b.ContainsKey("Database")
+                ? b["Database"]?.ToString() ?? ""
+                : (b.ContainsKey("Initial Catalog") ? b["Initial Catalog"]?.ToString() ?? "" : "(未取到)");
+        }
+        catch
+        {
+            _dbServer = "(解析失败)";
+            _dbName = "(解析失败)";
+        }
+    }
+}
 
