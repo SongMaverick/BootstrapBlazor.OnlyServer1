@@ -1,6 +1,11 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using BootstrapBlazor.OnlyServer1.Models.BusinessRules;
-using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
+using BootstrapBlazor.OnlyServer1.Services.Drawing;
 using Microsoft.Extensions.Options;
 
 namespace BootstrapBlazor.OnlyServer1.Tests.BusinessRules;

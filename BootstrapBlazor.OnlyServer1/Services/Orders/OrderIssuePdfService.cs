@@ -1,10 +1,15 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using Colors = QuestPDF.Helpers.Colors;
 
-namespace BootstrapBlazor.OnlyServer1.Services;
+namespace BootstrapBlazor.OnlyServer1.Services.OrderManagement;
 
 /// <summary>
 /// (2026-08-27) 订单问题汇总 PDF 生成器。
@@ -79,7 +84,7 @@ public class OrderIssuePdfService
         }).GeneratePdf();
     }
 
-    private static void ComposeHeader(IContainer container, Models.Orders order)
+    private static void ComposeHeader(IContainer container, Orders order)
     {
         container.Column(col =>
         {

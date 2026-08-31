@@ -1,4 +1,4 @@
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Common;
 
 /// <summary>
 /// 通用分页查询参数。Service 层用此 DTO,UI 框架无关。

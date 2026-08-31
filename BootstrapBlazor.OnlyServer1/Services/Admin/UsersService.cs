@@ -1,11 +1,16 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services
+namespace BootstrapBlazor.OnlyServer1.Services.Admin
 {
     /// <summary>
     /// 用户 Service:封装 UserManagement.razor 的数据访问 + 改密码逻辑。

@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 
-namespace BootstrapBlazor.OnlyServer1.Services
+namespace BootstrapBlazor.OnlyServer1.Services.OrderManagement
 {
     /// <summary>
     /// 按 OrderId 维度提供进程内互斥锁。

@@ -1,6 +1,6 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Common;
 
 /// <summary>
 /// NLog 数据库 target 输出表。

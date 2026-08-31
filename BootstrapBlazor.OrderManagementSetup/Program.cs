@@ -1,5 +1,6 @@
 ﻿using BootstrapBlazor.OnlyServer1.Models;
 using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using Microsoft.Extensions.Configuration;
 using SqlSugar;
 using System.Configuration;

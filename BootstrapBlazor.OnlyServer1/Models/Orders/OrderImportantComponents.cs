@@ -1,6 +1,6 @@
 ﻿using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 
 /// <summary>
 /// 订单重要组件特征(订单管理 - 业务域 3/3)。

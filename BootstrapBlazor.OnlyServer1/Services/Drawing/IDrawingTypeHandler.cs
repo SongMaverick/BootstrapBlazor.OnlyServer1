@@ -1,7 +1,12 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
+namespace BootstrapBlazor.OnlyServer1.Services.Drawing
 {
     /// <summary>
     /// 每种 drawingType 的具体行为(查/改/插)。C01..C09 各实现一次。

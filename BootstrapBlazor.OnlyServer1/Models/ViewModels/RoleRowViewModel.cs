@@ -1,5 +1,10 @@
 using BootstrapBlazor.OnlyServer1.Models;
-using ModelRoles = BootstrapBlazor.OnlyServer1.Models.Roles;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
+using ModelRoles = BootstrapBlazor.OnlyServer1.Models.Identity.Roles;
 
 namespace BootstrapBlazor.OnlyServer1.Models.ViewModels
 {
@@ -9,7 +14,7 @@ namespace BootstrapBlazor.OnlyServer1.Models.ViewModels
     /// </summary>
     public class RoleRowViewModel
     {
-        public BootstrapBlazor.OnlyServer1.Models.Roles Role { get; set; } = new();
+        public BootstrapBlazor.OnlyServer1.Models.Identity.Roles Role { get; set; } = new();
         public int UserCount { get; set; }
         public int PermissionCount { get; set; }
     }

@@ -1,4 +1,4 @@
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Common;
 
 /// <summary>
 /// 排序方向。独立于 BootstrapBlazor 的同名枚举(BootstrapBlazor.Components.SortOrder),

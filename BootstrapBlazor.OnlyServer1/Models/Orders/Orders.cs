@@ -1,6 +1,6 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 
 public class Orders
 {

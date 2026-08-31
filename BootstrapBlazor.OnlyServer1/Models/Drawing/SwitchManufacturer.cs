@@ -1,6 +1,6 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Drawing;
 
 /// <summary>
 /// 开关厂家实体。Orders.TapChangerManufacturerId / SwitchManufacturerId 引用本表 Id。

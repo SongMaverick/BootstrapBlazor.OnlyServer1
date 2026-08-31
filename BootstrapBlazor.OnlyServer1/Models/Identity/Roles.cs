@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Identity;
 
 /// <summary>
 /// 角色实体,继承 ASP.NET Core IdentityRole&lt;int&gt;。

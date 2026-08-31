@@ -1,12 +1,13 @@
 @page "/order-issues/{OrderId:int}"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Viewer)]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin + "," + RoleNames.Operator + "," + RoleNames.Viewer)]
 @using BootstrapBlazor.OnlyServer1.Models
 @using BootstrapBlazor.OnlyServer1.Models.Identity
 @using BootstrapBlazor.OnlyServer1.Models.ViewModels
 @using PermissionCodes = BootstrapBlazor.OnlyServer1.Models.Identity.PermissionCodes
-@inject BootstrapBlazor.OnlyServer1.Services.OrdersService OrdersService
-@inject BootstrapBlazor.OnlyServer1.Services.OrderIssueService OrderIssueService
-@inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
+@using OrderEntity = BootstrapBlazor.OnlyServer1.Models.OrderManagement.Orders
+@inject OrdersService OrdersService
+@inject OrderIssueService OrderIssueService
+@inject CurrentUserAccessor CurrentUser
 @inject Microsoft.Extensions.Logging.ILogger<OrderIssuesDetail> Logger
 @inject ToastService ToastService
 @inject Microsoft.JSInterop.IJSRuntime JS
@@ -257,8 +258,8 @@
 @code {
     [Parameter] public int OrderId { get; set; }
 
-    // (2026-08-27) 同命名空间里有 Orders.razor 页面生成的 class 会优先解析,这里必须显式 Models.Orders
-    private Models.Orders? _order;
+    // (2026-08-27) 同命名空间里有 Orders.razor 页面生成的 class 会优先解析,这里必须显式 Orders
+    private OrderEntity? _order;
     private List<OrderIssues>? _issues;
     private List<OrderIssues> _issueSelected = new();
 

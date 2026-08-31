@@ -1,16 +1,17 @@
 @page "/order-management"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Viewer)]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin + "," + RoleNames.Operator + "," + RoleNames.Viewer)]
 @using BootstrapBlazor.OnlyServer1.Models
 @using BootstrapBlazor.OnlyServer1.Models.Identity
 @using BootstrapBlazor.OnlyServer1.Models.ViewModels
 @using PermissionCodes = BootstrapBlazor.OnlyServer1.Models.Identity.PermissionCodes
-@inject BootstrapBlazor.OnlyServer1.Services.OrdersService OrdersService
-@inject BootstrapBlazor.OnlyServer1.Services.OrderInfoService OrderInfoService
-@inject BootstrapBlazor.OnlyServer1.Services.OrderDesignPhasesService OrderDesignPhasesService
-@inject BootstrapBlazor.OnlyServer1.Services.OrderImportantComponentsService OrderImportantComponentsService
-@inject BootstrapBlazor.OnlyServer1.Services.OrderIssueService OrderIssueService
-@inject BootstrapBlazor.OnlyServer1.Services.UsersService UsersService
-@inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
+@using OrderEntity = BootstrapBlazor.OnlyServer1.Models.OrderManagement.Orders
+@inject OrdersService OrdersService
+@inject OrderInfoService OrderInfoService
+@inject OrderDesignPhasesService OrderDesignPhasesService
+@inject OrderImportantComponentsService OrderImportantComponentsService
+@inject OrderIssueService OrderIssueService
+@inject UsersService UsersService
+@inject CurrentUserAccessor CurrentUser
 @inject Microsoft.Extensions.Logging.ILogger<OrderManagement> Logger
 @inject ToastService ToastService
 @inject Microsoft.JSInterop.IJSRuntime JS
@@ -54,7 +55,7 @@
                         </Button>
                     </div>
 
-                    <Table TItem="Models.Orders"
+                    <Table TItem="OrderEntity"
                            IsPagination="true"
                            PageItemsSource="@MasterPageItemsSource"
                            RenderMode="TableRenderMode.Table"
@@ -698,8 +699,8 @@
 
     // (2026-08-25) 主从布局状态。_masterSelected 只用于 SelectedRowsChanged 回传,
     // 业务态走 _selectedOrder;同一行重复点击不重载。
-    private List<Models.Orders> _masterSelected = new();
-    private Models.Orders? _selectedOrder;
+    private List<OrderEntity> _masterSelected = new();
+    private OrderEntity? _selectedOrder;
 
     private OrderInfoRow? _infoRow;
     private OrderDesignPhasesRow? _phasesRow;
@@ -812,13 +813,13 @@
 
     // ===== 主表 =====
 
-    private async Task<QueryData<Models.Orders>> OnMasterQueryAsync(QueryPageOptions options)
+    private async Task<QueryData<OrderEntity>> OnMasterQueryAsync(QueryPageOptions options)
     {
         var result = await OrdersService.QueryAsync(options.ToPagedQuery());
         return result.ToQueryData();
     }
 
-    private async Task OnMasterSelectedRowsChanged(IEnumerable<Models.Orders> rows)
+    private async Task OnMasterSelectedRowsChanged(IEnumerable<OrderEntity> rows)
     {
         _masterSelected = rows.ToList();
         var first = _masterSelected.FirstOrDefault();
@@ -866,7 +867,7 @@
 
             // 同步主表选中状态;左侧 Table 当前页可能不含该行,
             // 但右侧详情已正确加载(详情来自 OrderId 直接查 3 个明细服务,不依赖主表分页)。
-            _masterSelected = new List<Models.Orders> { found };
+            _masterSelected = new List<OrderEntity> { found };
             _selectedOrder = found;
             await LoadDetailAsync(found.Id);
             await ShowToast($"已定位到订单 {found.OrderNumber}", ToastCategory.Success);

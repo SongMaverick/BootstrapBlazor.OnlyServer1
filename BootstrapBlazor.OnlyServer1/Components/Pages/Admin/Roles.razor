@@ -1,9 +1,9 @@
 @page "/roles"
 @attribute [TabItemOption(Text = "角色权限")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin)]
-@using BootstrapBlazor.OnlyServer1.Services.Identity
-@inject BootstrapBlazor.OnlyServer1.Services.RolesService RolesService
-@inject BootstrapBlazor.OnlyServer1.Services.PermissionsService PermissionsService
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin)]
+@using RoleEntity = BootstrapBlazor.OnlyServer1.Models.Identity.Roles
+@inject RolesService RolesService
+@inject PermissionsService PermissionsService
 @inject ToastService ToastService
 
 <PageTitle>角色权限</PageTitle>
@@ -136,7 +136,7 @@
                         }
                         else
                         {
-                            <Table TItem="Models.Users" Items="@_members" IsBordered="true" IsStriped="true">
+                            <Table TItem="Users" Items="@_members" IsBordered="true" IsStriped="true">
                                 <TableColumns>
                                     <TableColumn @bind-Field="@context.Id" Width="80" />
                                     <TableColumn @bind-Field="@context.Name" />
@@ -206,7 +206,7 @@
     }
 
     private Task<RoleRowViewModel> OnAddAsync()
-        => Task.FromResult(new RoleRowViewModel { Role = new BootstrapBlazor.OnlyServer1.Models.Roles() });
+        => Task.FromResult(new RoleRowViewModel { Role = new RoleEntity() });
 
     private async Task<bool> OnSaveAsync(RoleRowViewModel row, ItemChangedType changedType)
     {
@@ -241,7 +241,7 @@
     private bool _permDialogVisible;
     private int _editingRoleId;
     private string _editingRoleName = "";
-    private Dictionary<string, List<Models.Permissions>> _groupedPerms = new();
+    private Dictionary<string, List<Permissions>> _groupedPerms = new();
     private HashSet<int> _selectedPermIds = new();
     private bool _permSaving;
 
@@ -310,7 +310,7 @@
 
     // ===== 成员列表弹窗 =====
     private bool _membersDialogVisible;
-    private List<Models.Users> _members = new();
+    private List<Users> _members = new();
 
     private async Task OpenMembersDialogAsync(int roleId, string roleName)
     {

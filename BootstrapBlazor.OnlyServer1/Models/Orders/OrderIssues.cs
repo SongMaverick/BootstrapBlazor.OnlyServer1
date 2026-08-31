@@ -1,6 +1,6 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 
 /// <summary>
 /// (2026-08-13) 订单问题汇总。每条记录对应某订单的一个问题/障碍,长文本描述 + open/close 状态。

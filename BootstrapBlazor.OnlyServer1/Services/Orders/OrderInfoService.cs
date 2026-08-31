@@ -1,10 +1,15 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Models.ViewModels;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services;
+namespace BootstrapBlazor.OnlyServer1.Services.OrderManagement;
 
 /// <summary>
 /// (2026-08-17 重构)「订单项目信息」Service:OrderInfo 表的读写(订单管理业务域 1/3)。

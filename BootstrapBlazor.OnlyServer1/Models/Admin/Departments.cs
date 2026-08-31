@@ -1,6 +1,6 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Admin;
 
 /// <summary>
 /// 部门实体。Users.DepartmentId 引用本表 Id。

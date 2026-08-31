@@ -1,13 +1,13 @@
 ﻿using System.Text;
 using BootstrapBlazor.OnlyServer1.Components;
 using BootstrapBlazor.OnlyServer1.Data;
-using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Models.BusinessRules;
-using BootstrapBlazor.OnlyServer1.Services;
-using BootstrapBlazor.OnlyServer1.Services.DrawingNames;
-using BootstrapBlazor.OnlyServer1.Services.DrawingNumbers;
-using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
+using BootstrapBlazor.OnlyServer1.Services.Admin;
+using BootstrapBlazor.OnlyServer1.Services.Common;
+using BootstrapBlazor.OnlyServer1.Services.Drawing;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
+using BootstrapBlazor.OnlyServer1.Services.OrderManagement;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
@@ -272,9 +272,9 @@ app.MapControllers();
 // ============================================================
 app.MapGet("/api/orders/{orderId:int}/issues-pdf", async (
     int orderId,
-    BootstrapBlazor.OnlyServer1.Services.OrderIssuePdfService pdfService,
+    BootstrapBlazor.OnlyServer1.Services.OrderManagement.OrderIssuePdfService pdfService,
     HttpContext ctx,
-    ILogger<BootstrapBlazor.OnlyServer1.Services.OrderIssuePdfService> logger) =>
+    ILogger<BootstrapBlazor.OnlyServer1.Services.OrderManagement.OrderIssuePdfService> logger) =>
 {
     try
     {

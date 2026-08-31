@@ -1,4 +1,4 @@
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Common;
 
 /// <summary>
 /// 通用下拉/选择项。Service 层用它表达"值/文本"对,UI 层再映射为

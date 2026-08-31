@@ -1,9 +1,8 @@
 @page "/drawing-names"
 @attribute [TabItemOption(Text = "图名列表")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator)]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin + "," + RoleNames.Operator)]
 @using BootstrapBlazor.OnlyServer1.Services
 @using BootstrapBlazor.OnlyServer1.Models
-@using BootstrapBlazor.OnlyServer1.Services.Identity
 @inject DrawingNameService? DrawingNameService
 @inject CurrentUserAccessor CurrentUser
 @inject Microsoft.Extensions.Logging.ILogger<DrawingNameList> Logger

@@ -1,11 +1,11 @@
 @page "/user-management"
 @attribute [TabItemOption(Text = "人员列表")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator)]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin + "," + RoleNames.Operator)]
 @using Microsoft.Extensions.Options
-@inject BootstrapBlazor.OnlyServer1.Services.UsersService UsersService
-@inject BootstrapBlazor.OnlyServer1.Services.DepartmentsService DepartmentsService
-@inject BootstrapBlazor.OnlyServer1.Services.RolesService RolesService
-@inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
+@inject UsersService UsersService
+@inject DepartmentsService DepartmentsService
+@inject RolesService RolesService
+@inject CurrentUserAccessor CurrentUser
 @inject ToastService ToastService
 @inject Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Identity.IdentityOptions> IdentityOptions
 @inject Microsoft.Extensions.Logging.ILogger<UserManagement> _logger
@@ -16,7 +16,7 @@
     <h1>人员列表</h1>
 
     <Table @ref="_tableRef"
-           TItem="Models.Users"
+           TItem="Users"
            IsPagination="true"
            PageItemsSource="@PageItemsSource"
            RenderMode="TableRenderMode.Table"
@@ -234,19 +234,19 @@
         }
     }
 
-    private async Task<QueryData<Models.Users>> OnQueryAsync(QueryPageOptions options)
+    private async Task<QueryData<Users>> OnQueryAsync(QueryPageOptions options)
     {
         // (2026-08-07) Operator / Viewer 看不到 ADMIN 角色用户(超管隐于日常运营视角);
         // Admin 自己仍可见全部,方便多超管场景下的管理与交接。
-        var hideAdmin = !CurrentUser.IsInAnyRole(BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin);
+        var hideAdmin = !CurrentUser.IsInAnyRole(RoleNames.Admin);
         var result = await UsersService.QueryAsync(options.ToPagedQuery(), hideAdmin);
         return result.ToQueryData();
     }
 
-    private Task<Models.Users> OnAddAsync()
+    private Task<Users> OnAddAsync()
         => UsersService.NewUserAsync();
 
-    private async Task<bool> OnSaveAsync(Models.Users user, ItemChangedType changedType)
+    private async Task<bool> OnSaveAsync(Users user, ItemChangedType changedType)
     {
         if (changedType == ItemChangedType.Add)
         {
@@ -281,7 +281,7 @@
         }
     }
 
-    private async Task<bool> OnDeleteAsync(IEnumerable<Models.Users> users)
+    private async Task<bool> OnDeleteAsync(IEnumerable<Users> users)
     {
         var (ok, error) = await UsersService.SoftDeleteAsync(users);
         if (!ok && !string.IsNullOrEmpty(error))
@@ -293,10 +293,10 @@
 
     // ===== 新增用户弹窗 =====
     private bool _showAddPasswordModal;
-    private Models.Users? _pendingAddUser;
+    private Users? _pendingAddUser;
     // (2026-08-11) Table 引用 —— 角色绑定完成后手动触发 QueryAsync 刷新,
     //   让 RoleNames(LEFT JOIN 查出来的视图列)显示出来
-    private BootstrapBlazor.Components.Table<Models.Users>? _tableRef;
+    private BootstrapBlazor.Components.Table<Users>? _tableRef;
     // (2026-08-11) 移除 _pendingPassword / _pendingPasswordConfirm —— 密码统一默认 123456,
     //   与 DbMigrator 迁移 Users.sql 时一致,用户登录后自行修改。
     private List<SelectedItem> _pendingAddSelectedRoles = new();   // MultiSelect 绑定的是 SelectedItem 集合,提交时再转 int

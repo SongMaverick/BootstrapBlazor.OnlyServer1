@@ -1,6 +1,11 @@
 using BootstrapBlazor.Components;
 using BootstrapBlazor.OnlyServer1.Helpers;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 
 namespace BootstrapBlazor.OnlyServer1.Tests.Helpers;
 
@@ -138,9 +143,9 @@ public class PagedQueryMapperTests
     [Fact]
     public void ToDomain_ItemChangedTypeConvert()
     {
-        Assert.Equal(Models.ItemChangedType.Add,
+        Assert.Equal(Models.Common.ItemChangedType.Add,
             BootstrapBlazor.Components.ItemChangedType.Add.ToDomain());
-        Assert.Equal(Models.ItemChangedType.Update,
+        Assert.Equal(Models.Common.ItemChangedType.Update,
             BootstrapBlazor.Components.ItemChangedType.Update.ToDomain());
     }
 
@@ -148,8 +153,8 @@ public class PagedQueryMapperTests
     public void ToBootstrapBlazor_ItemChangedTypeConvert()
     {
         Assert.Equal(BootstrapBlazor.Components.ItemChangedType.Add,
-            Models.ItemChangedType.Add.ToBootstrapBlazor());
+            Models.Common.ItemChangedType.Add.ToBootstrapBlazor());
         Assert.Equal(BootstrapBlazor.Components.ItemChangedType.Update,
-            Models.ItemChangedType.Update.ToBootstrapBlazor());
+            Models.Common.ItemChangedType.Update.ToBootstrapBlazor());
     }
 }

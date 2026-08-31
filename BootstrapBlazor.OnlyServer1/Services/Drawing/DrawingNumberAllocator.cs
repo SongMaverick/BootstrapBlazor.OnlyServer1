@@ -1,10 +1,14 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
 using BootstrapBlazor.OnlyServer1.Models.Identity;
-using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services
+namespace BootstrapBlazor.OnlyServer1.Services.Drawing
 {
     /// <summary>
     /// 图号分配器:为指定 drawingType 原子地分配下一个可用的 DrawingNumber。

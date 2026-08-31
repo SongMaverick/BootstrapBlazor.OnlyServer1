@@ -1,8 +1,13 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services.DrawingNames;
+namespace BootstrapBlazor.OnlyServer1.Services.Drawing;
 
 /// <summary>
 /// 图名(DrawingNames 表)CRUD。
@@ -35,9 +40,9 @@ public class DrawingNameService
     ///   - includeDeleted = false(默认):排除已软删(下拉/添加用)
     ///   - includeDeleted = true:含已软删(管理页"图名列表"用)
     /// </summary>
-    public async Task<List<BootstrapBlazor.OnlyServer1.Models.DrawingNames>> GetAllAsync(bool includeDeleted = false)
+    public async Task<List<BootstrapBlazor.OnlyServer1.Models.Drawing.DrawingNames>> GetAllAsync(bool includeDeleted = false)
     {
-        var query = _db.Queryable<BootstrapBlazor.OnlyServer1.Models.DrawingNames>();
+        var query = _db.Queryable<BootstrapBlazor.OnlyServer1.Models.Drawing.DrawingNames>();
         if (!includeDeleted)
         {
             query = query.Where(dn => !dn.IsDeleted);
@@ -51,7 +56,7 @@ public class DrawingNameService
     /// </summary>
     public async Task<List<string>> GetDistinctPartsAsync()
     {
-        var list = await _db.Queryable<BootstrapBlazor.OnlyServer1.Models.DrawingNames>()
+        var list = await _db.Queryable<BootstrapBlazor.OnlyServer1.Models.Drawing.DrawingNames>()
             .Where(dn => !string.IsNullOrWhiteSpace(dn.Part))
             .Select(dn => dn.Part)
             .Distinct()
@@ -93,7 +98,7 @@ public class DrawingNameService
 
         var currentUserName = _currentUser.GetDisplayName() ?? "System";
 
-        var newName = new BootstrapBlazor.OnlyServer1.Models.DrawingNames
+        var newName = new BootstrapBlazor.OnlyServer1.Models.Drawing.DrawingNames
         {
             Part = part,
             ComponentName = componentName.Trim(),
@@ -141,8 +146,8 @@ public class DrawingNameService
         {
             string userName = _currentUser.GetDisplayName() ?? "System";
 
-            var result = await _db.Updateable<BootstrapBlazor.OnlyServer1.Models.DrawingNames>()
-                .SetColumns(it => new BootstrapBlazor.OnlyServer1.Models.DrawingNames
+            var result = await _db.Updateable<BootstrapBlazor.OnlyServer1.Models.Drawing.DrawingNames>()
+                .SetColumns(it => new BootstrapBlazor.OnlyServer1.Models.Drawing.DrawingNames
                 {
                     IsDeleted = true,
                     UpdatedBy = userName,

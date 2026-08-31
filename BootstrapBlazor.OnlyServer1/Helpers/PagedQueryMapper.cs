@@ -1,5 +1,10 @@
 using BootstrapBlazor.Components;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 
 namespace BootstrapBlazor.OnlyServer1.Helpers;
 
@@ -17,7 +22,7 @@ public static class PagedQueryMapper
         {
             SearchText = options.SearchText,
             SortName = options.SortName,
-            SortOrder = options.SortOrder == SortOrder.Asc ? Models.SortDirection.Asc : Models.SortDirection.Desc,
+            SortOrder = options.SortOrder == SortOrder.Asc ? BootstrapBlazor.OnlyServer1.Models.Common.SortDirection.Asc : BootstrapBlazor.OnlyServer1.Models.Common.SortDirection.Desc,
             PageIndex = options.PageIndex <= 0 ? 1 : options.PageIndex,
             PageItems = options.PageItems <= 0 ? 20 : options.PageItems,
             FilterCount = options.Filters?.Count ?? 0,
@@ -37,7 +42,7 @@ public static class PagedQueryMapper
         {
             SearchText = options.SearchText,
             SortName = options.SortName,
-            SortOrder = options.SortOrder == SortOrder.Asc ? Models.SortDirection.Asc : Models.SortDirection.Desc,
+            SortOrder = options.SortOrder == SortOrder.Asc ? BootstrapBlazor.OnlyServer1.Models.Common.SortDirection.Asc : BootstrapBlazor.OnlyServer1.Models.Common.SortDirection.Desc,
             PageIndex = options.PageIndex <= 0 ? 1 : options.PageIndex,
             PageItems = options.PageItems <= 0 ? 20 : options.PageItems,
             FilterCount =
@@ -80,20 +85,20 @@ public static class PagedQueryMapper
         return items.Select(i => i.ToSelectedItem()).ToList();
     }
 
-    /// <summary>BootstrapBlazor ItemChangedType → 通用 Models.ItemChangedType</summary>
-    public static Models.ItemChangedType ToDomain(this BootstrapBlazor.Components.ItemChangedType t)
+    /// <summary>BootstrapBlazor ItemChangedType → 通用 BootstrapBlazor.OnlyServer1.Models.Common.ItemChangedType</summary>
+    public static BootstrapBlazor.OnlyServer1.Models.Common.ItemChangedType ToDomain(this BootstrapBlazor.Components.ItemChangedType t)
     {
         ArgumentNullException.ThrowIfNull(t);
         return t == BootstrapBlazor.Components.ItemChangedType.Add
-            ? Models.ItemChangedType.Add
-            : Models.ItemChangedType.Update;
+            ? BootstrapBlazor.OnlyServer1.Models.Common.ItemChangedType.Add
+            : BootstrapBlazor.OnlyServer1.Models.Common.ItemChangedType.Update;
     }
 
-    /// <summary>通用 Models.ItemChangedType → BootstrapBlazor ItemChangedType</summary>
-    public static BootstrapBlazor.Components.ItemChangedType ToBootstrapBlazor(this Models.ItemChangedType t)
+    /// <summary>通用 BootstrapBlazor.OnlyServer1.Models.Common.ItemChangedType → BootstrapBlazor ItemChangedType</summary>
+    public static BootstrapBlazor.Components.ItemChangedType ToBootstrapBlazor(this BootstrapBlazor.OnlyServer1.Models.Common.ItemChangedType t)
     {
         ArgumentNullException.ThrowIfNull(t);
-        return t == Models.ItemChangedType.Add
+        return t == BootstrapBlazor.OnlyServer1.Models.Common.ItemChangedType.Add
             ? BootstrapBlazor.Components.ItemChangedType.Add
             : BootstrapBlazor.Components.ItemChangedType.Update;
     }

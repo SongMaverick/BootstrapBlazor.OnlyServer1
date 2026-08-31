@@ -1,6 +1,6 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Identity;
 
 /// <summary>
 /// 权限码主表。每个权限码是一个"操作权限点",由代码静态定义并通过 DbMigrator 灌入。

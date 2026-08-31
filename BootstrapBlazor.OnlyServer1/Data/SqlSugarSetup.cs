@@ -1,5 +1,10 @@
 ﻿using SqlSugar;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 
 namespace BootstrapBlazor.OnlyServer1.Data
 {
@@ -20,9 +25,9 @@ namespace BootstrapBlazor.OnlyServer1.Data
             //生产环境连接字符串
             //var connectionString = configuration.GetConnectionString("sqlServerConnection");
             //生产环境测试连接字符串
-            var connectionString = configuration.GetConnectionString("sqlServerConnectionTest");
+            //var connectionString = configuration.GetConnectionString("sqlServerConnectionTest");
             //测试环境连接字符串
-            //var connectionString = configuration.GetConnectionString("sqlServerConnectionStringOffice");
+            var connectionString = configuration.GetConnectionString("sqlServerConnectionStringOffice");
             
             var config = new ConnectionConfig
             {

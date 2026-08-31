@@ -1,6 +1,6 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Drawing;
 
 /// <summary>
 /// 图号序列表 — 每种 drawingType(C01..C09) 一行,记录当前已分配到的最大 DrawingNumber。

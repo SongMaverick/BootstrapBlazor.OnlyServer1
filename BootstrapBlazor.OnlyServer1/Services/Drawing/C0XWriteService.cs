@@ -1,10 +1,15 @@
 using System.Diagnostics;
 using BootstrapBlazor.OnlyServer1.Models;
-using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
+using BootstrapBlazor.OnlyServer1.Services.OrderManagement;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services.DrawingNumbers;
+namespace BootstrapBlazor.OnlyServer1.Services.Drawing;
 
 /// <summary>
 /// 9 张 C0X 表(C01~C09)的写入逻辑。

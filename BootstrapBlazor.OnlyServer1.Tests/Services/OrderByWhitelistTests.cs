@@ -1,7 +1,17 @@
 using System.Reflection;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using BootstrapBlazor.OnlyServer1.Services;
-using BootstrapBlazor.OnlyServer1.Services.DrawingNames;
+using BootstrapBlazor.OnlyServer1.Services.Admin;
+using BootstrapBlazor.OnlyServer1.Services.Common;
+using BootstrapBlazor.OnlyServer1.Services.Drawing;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
+using BootstrapBlazor.OnlyServer1.Services.OrderManagement;
+using BootstrapBlazor.OnlyServer1.Services.Drawing;
 
 namespace BootstrapBlazor.OnlyServer1.Tests.Services;
 

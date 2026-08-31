@@ -1,6 +1,6 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 
 /// <summary>
 /// 订单关联表 - 用于存储旧订单ID和新订单ID的映射关系

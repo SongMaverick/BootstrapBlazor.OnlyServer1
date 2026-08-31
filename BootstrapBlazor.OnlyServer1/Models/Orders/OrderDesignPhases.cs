@@ -1,6 +1,6 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 
 /// <summary>
 /// 订单设计阶段人员 + 时间(订单管理 - 业务域 2/3)。

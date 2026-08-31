@@ -1,5 +1,10 @@
 using System.Security.Claims;
 using BootstrapBlazor.OnlyServer1.Services;
+using BootstrapBlazor.OnlyServer1.Services.Admin;
+using BootstrapBlazor.OnlyServer1.Services.Common;
+using BootstrapBlazor.OnlyServer1.Services.Drawing;
+using BootstrapBlazor.OnlyServer1.Services.Identity;
+using BootstrapBlazor.OnlyServer1.Services.OrderManagement;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 

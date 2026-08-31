@@ -1,8 +1,8 @@
 @page "/user-roles"
 @attribute [TabItemOption(Text = "用户角色")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin)]
-@inject BootstrapBlazor.OnlyServer1.Services.RolesService RolesService
-@inject BootstrapBlazor.OnlyServer1.Services.UsersService UsersService
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin)]
+@inject RolesService RolesService
+@inject UsersService UsersService
 @inject ToastService ToastService
 
 <PageTitle>用户角色</PageTitle>

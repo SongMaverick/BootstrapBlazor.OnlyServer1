@@ -1,8 +1,8 @@
 @page "/department-management"
 @attribute [TabItemOption(Text = "部门管理")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin)]
-@inject BootstrapBlazor.OnlyServer1.Services.DepartmentsService DepartmentsService
-@inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin)]
+@inject DepartmentsService DepartmentsService
+@inject CurrentUserAccessor CurrentUser
 @inject ToastService ToastService
 
 <PageTitle>部门管理</PageTitle>
@@ -10,7 +10,7 @@
 <div class="page-department">
     <h1>部门管理</h1>
 
-    <Table TItem="Models.Departments"
+    <Table TItem="Departments"
            IsPagination="true"
            PageItemsSource="@PageItemsSource"
            RenderMode="TableRenderMode.Table"
@@ -48,20 +48,20 @@
 @code {
     private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
 
-    private async Task<QueryData<Models.Departments>> OnQueryAsync(QueryPageOptions options)
+    private async Task<QueryData<Departments>> OnQueryAsync(QueryPageOptions options)
     {
         var result = await DepartmentsService.QueryAsync(options.ToPagedQuery());
         return result.ToQueryData();
     }
 
-    private Task<Models.Departments> OnAddAsync()
-        => Task.FromResult(new Models.Departments
+    private Task<Departments> OnAddAsync()
+        => Task.FromResult(new Departments
         {
             IsActive = true,
             CreatedTime = DateTime.Now
         });
 
-    private async Task<bool> OnSaveAsync(Models.Departments dept, ItemChangedType changedType)
+    private async Task<bool> OnSaveAsync(Departments dept, ItemChangedType changedType)
     {
         var (ok, error) = await DepartmentsService.SaveAsync(dept);
         if (!ok)
@@ -73,7 +73,7 @@
         return true;
     }
 
-    private async Task<bool> OnDeleteAsync(IEnumerable<Models.Departments> depts)
+    private async Task<bool> OnDeleteAsync(IEnumerable<Departments> depts)
     {
         var ok = await DepartmentsService.SoftDeleteAsync(depts);
         if (ok)

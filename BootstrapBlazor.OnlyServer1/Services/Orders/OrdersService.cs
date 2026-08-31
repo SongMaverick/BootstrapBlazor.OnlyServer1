@@ -1,14 +1,18 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
 using BootstrapBlazor.OnlyServer1.Models.Identity;
-using BootstrapBlazor.OnlyServer1.Services.DrawingNumbers;
-using BootstrapBlazor.OnlyServer1.Services.DrawingTypes;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
+using BootstrapBlazor.OnlyServer1.Services.Common;
+using BootstrapBlazor.OnlyServer1.Services.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
-using BootstrapBlazor.OnlyServer1.Services.Queries;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services
+namespace BootstrapBlazor.OnlyServer1.Services.OrderManagement
 {
     /// <summary>
     /// 订单 Service:封装 Orders.razor 的全部数据访问 + SERIALIZABLE 事务去重 + 缓存。

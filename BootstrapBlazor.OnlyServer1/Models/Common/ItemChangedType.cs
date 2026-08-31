@@ -1,4 +1,4 @@
-namespace BootstrapBlazor.OnlyServer1.Models;
+namespace BootstrapBlazor.OnlyServer1.Models.Common;
 
 /// <summary>
 /// Service 层对"新增/修改"语义的轻量枚举。

@@ -1,10 +1,11 @@
 @page "/orders"
 @attribute [TabItemOption(Text = "订单列表")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Viewer)]
-@inject BootstrapBlazor.OnlyServer1.Services.OrdersService OrdersService
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin + "," + RoleNames.Operator + "," + RoleNames.Viewer)]
+@using OrderEntity = BootstrapBlazor.OnlyServer1.Models.OrderManagement.Orders
+@inject OrdersService OrdersService
 @inject C0XQueryService? DrawingNumberQuery
-@inject Microsoft.Extensions.Logging.ILogger<Orders> Logger
-@inject BootstrapBlazor.OnlyServer1.Services.Identity.CurrentUserAccessor CurrentUser
+@inject Microsoft.Extensions.Logging.ILogger<OrderEntity> Logger
+@inject CurrentUserAccessor CurrentUser
 @inject ToastService ToastService
 @inject NavigationManager NavigationManager
 
@@ -13,7 +14,7 @@
 <div class="page-orders">
     <h1>订单列表</h1>
 
-    <Table TItem="Models.Orders"
+    <Table TItem="OrderEntity"
            IsPagination="true"
            PageItemsSource="@PageItemsSource"
            RenderMode="TableRenderMode.Table"
@@ -36,13 +37,13 @@
            SelectedRowsChanged="OnSelectedRowsChanged"
            Height="600"
            ShowAddButton="@CurrentUser.HasPermission(PermissionCodes.OrderCreate)"
-  ShowExtendEditButtonCallback="@((Models.Orders item) => CurrentUser.HasPermission(PermissionCodes.OrderEdit))"
-            DisableExtendEditButtonCallback="@((Models.Orders item) => HasDrawingNumber(item))"
-            DisableExtendDeleteButtonCallback="@((Models.Orders item) => !CurrentUser.HasPermission(PermissionCodes.OrderDelete) || HasDrawingNumber(item))"
+  ShowExtendEditButtonCallback="@((OrderEntity item) => CurrentUser.HasPermission(PermissionCodes.OrderEdit))"
+            DisableExtendEditButtonCallback="@((OrderEntity item) => HasDrawingNumber(item))"
+            DisableExtendDeleteButtonCallback="@((OrderEntity item) => !CurrentUser.HasPermission(PermissionCodes.OrderDelete) || HasDrawingNumber(item))"
             @ref="OrdersTable">
         <TableColumns>
             <TableColumn @bind-Field="@context.Id" Text="编号" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" IsVisibleWhenAdd="false" />
-            <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="120" Align="Alignment.Center" Sortable="true" ReadonlyCallback="@((Models.Orders item) => item.Id > 0)" />
+            <TableColumn @bind-Field="@context.OrderNumber" Text="订单号" Width="120" Align="Alignment.Center" Sortable="true" ReadonlyCallback="@((OrderEntity item) => item.Id > 0)" />
             <TableColumn @bind-Field="@context.Power" Text="容量" Width="100" Align="Alignment.Center" Sortable="true" />
             <TableColumn @bind-Field="@context.RatedVoltage" Text="额定电压" Width="120" Align="Alignment.Center" Sortable="true" />
             <TableColumn @bind-Field="@context.IsReactor" Text="电抗器" Width="100" Align="Alignment.Center" Sortable="true">
@@ -92,15 +93,15 @@
 @code {
     private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
 
-    private Table<Models.Orders>? OrdersTable { get; set; }
+    private Table<OrderEntity>? OrdersTable { get; set; }
 
     // (2026-08-14) 通过 SelectedRowsChanged 监听勾选变化,
     // 一旦用户勾选 >1 行就 Toast 一次,直到勾选数回到 <=1 才解除"已警告"状态,避免反复刷屏。
-    private List<Models.Orders> _selectedRows = new();
+    private List<OrderEntity> _selectedRows = new();
 
     private bool _warnedThisSelection;
 
-    private void OnSelectedRowsChanged(IEnumerable<Models.Orders> rows)
+    private void OnSelectedRowsChanged(IEnumerable<OrderEntity> rows)
     {
         _selectedRows = rows.ToList();
 
@@ -166,7 +167,7 @@
         NavigationManager.NavigateTo($"/order-drawing-numbers/{items[0].Id}");
     }
 
-    private async Task<QueryData<Models.Orders>> OnQueryAsync(QueryPageOptions options)
+    private async Task<QueryData<OrderEntity>> OnQueryAsync(QueryPageOptions options)
     {
         var result = await OrdersService.QueryAsync(options.ToPagedQuery());
         // 预热本页订单的"是否有图号"缓存(由 OrdersService 内部按 drawingType 分组批量查)
@@ -174,12 +175,12 @@
         return result.ToQueryData();
     }
 
-    private Task<Models.Orders> OnAddAsync()
+    private Task<OrderEntity> OnAddAsync()
     {
         // 用当前登录用户的姓名预填创建者;未登录时使用空字符串占位,由 SaveAsync 的后续流程处理
         var currentUserName = CurrentUser.GetDisplayName() ?? string.Empty;
 
-        return Task.FromResult(new Models.Orders()
+        return Task.FromResult(new OrderEntity()
         {
             CreatedTime = DateTime.Now,
             UpdatedTime = DateTime.Now,
@@ -190,7 +191,7 @@
         });
     }
 
-    private async Task<bool> OnSaveAsync(Models.Orders order, ItemChangedType changedType)
+    private async Task<bool> OnSaveAsync(OrderEntity order, ItemChangedType changedType)
     {
         var (ok, error) = await OrdersService.SaveAsync(order, changedType.ToDomain());
         if (!ok && !string.IsNullOrEmpty(error))
@@ -200,7 +201,7 @@
         return ok;
     }
 
-    private async Task<bool> OnDeleteAsync(IEnumerable<Models.Orders> orders)
+    private async Task<bool> OnDeleteAsync(IEnumerable<OrderEntity> orders)
     {
         return await OrdersService.SoftDeleteAsync(orders);
     }
@@ -210,7 +211,7 @@
     /// 直接读 OrdersService 缓存;缓存未命中时返回 false(允许编辑),
     /// 真实状态在 PreloadHasDrawingNumberCacheAsync 完成后通过 StateHasChanged 刷新。
     /// </summary>
-    private bool HasDrawingNumber(Models.Orders item)
+    private bool HasDrawingNumber(OrderEntity item)
     {
         if (item == null) return false;
         return OrdersService.TryGetHasDrawingNumber(item.Id, out var has) && has;

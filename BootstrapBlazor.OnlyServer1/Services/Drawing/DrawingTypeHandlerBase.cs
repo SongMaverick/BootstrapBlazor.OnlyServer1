@@ -1,7 +1,12 @@
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services.DrawingTypes
+namespace BootstrapBlazor.OnlyServer1.Services.Drawing
 {
     /// <summary>
     /// DrawingType handler 抽象基类 — 用泛型消除 9 个 handler 之间的样板代码。

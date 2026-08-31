@@ -1,9 +1,9 @@
 @page "/order-drawing-numbers/{orderId:int}"
 @attribute [TabItemOption(Text = "订单图号列表")]
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Admin + "," + BootstrapBlazor.OnlyServer1.Models.Identity.RoleNames.Operator)]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin + "," + RoleNames.Operator)]
 @using BootstrapBlazor.OnlyServer1.Services
 @using BootstrapBlazor.OnlyServer1.Models
-@using BootstrapBlazor.OnlyServer1.Services.Identity
+@using OrderEntity = BootstrapBlazor.OnlyServer1.Models.OrderManagement.Orders
 @inject C0XQueryService? DrawingNumberQuery
 @inject C0XWriteService? DrawingNumberWrite
 @inject OrdersService OrdersService
@@ -165,7 +165,7 @@
     [Parameter]
     public int OrderId { get; set; }
 
-    private BootstrapBlazor.OnlyServer1.Models.Orders? _order;
+    private OrderEntity? _order;
     private List<DrawingNumberViewModel> _drawingNumbers = new List<DrawingNumberViewModel>();
 
     // 修改弹窗状态

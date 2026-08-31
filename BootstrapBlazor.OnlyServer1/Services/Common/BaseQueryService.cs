@@ -1,8 +1,13 @@
 using System.Linq.Expressions;
 using BootstrapBlazor.OnlyServer1.Models;
+using BootstrapBlazor.OnlyServer1.Models.Admin;
+using BootstrapBlazor.OnlyServer1.Models.Common;
+using BootstrapBlazor.OnlyServer1.Models.Drawing;
+using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services.Queries;
+namespace BootstrapBlazor.OnlyServer1.Services.Common;
 
 /// <summary>
 /// 通用列表查询基类。
