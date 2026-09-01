@@ -1,0 +1,117 @@
+@page "/tap-changer-manufacturers"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin)]
+@inject TapChangerManufacturerService TapChangerManufacturerService
+@inject CurrentUserAccessor CurrentUser
+@inject ToastService ToastService
+
+<PageTitle>分接开关厂家管理</PageTitle>
+
+<div class="page-tap-changer-manufacturers">
+    <h1>分接开关厂家管理</h1>
+
+    <Table TItem="TapChangerManufacturer"
+           IsPagination="true"
+           PageItemsSource="@PageItemsSource"
+           RenderMode="TableRenderMode.Table"
+           IsFixedHeader="true"
+           IsStriped="true"
+           IsBordered="true"
+           OnQueryAsync="OnQueryAsync"
+           ShowSearch="true"
+           ShowToolbar="true"
+           ShowExtendButtons="true"
+           OnAddAsync="OnAddAsync"
+           OnSaveAsync="OnSaveAsync"
+           OnDeleteAsync="OnDeleteAsync"
+           EditMode="EditMode.Popup"
+           ShowSkeleton="true"
+           IsMultipleSelect="true"
+           Height="700"
+           ShowAddButton="@CurrentUser.HasPermission(PermissionCodes.TapChangerManufacturerCreate)"
+           ShowDeleteButton="@CurrentUser.HasPermission(PermissionCodes.TapChangerManufacturerDelete)">
+        <TableColumns>
+            <TableColumn @bind-Field="@context.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.Name" Width="200" Sortable="true" />
+            <TableColumn @bind-Field="@context.IsActive" Width="100" Align="Alignment.Center" ComponentType="typeof(Switch)" />
+            <TableColumn @bind-Field="@context.CreatedTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
+                <Template Context="value">
+                    @value.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                </Template>
+            </TableColumn>
+        </TableColumns>
+    </Table>
+</div>
+
+@code {
+    private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
+
+    private async Task<QueryData<TapChangerManufacturer>> OnQueryAsync(QueryPageOptions options)
+    {
+        // 管理页显示全部(包括停用、含已软删——以 Id>0 过滤)
+        var list = await TapChangerManufacturerService.GetAllIncludingInactiveAsync();
+        return new QueryData<TapChangerManufacturer>
+        {
+            TotalCount = list.Count,
+            Items = list,
+            IsSorted = false,
+            IsFiltered = false,
+            IsSearch = false,
+        };
+    }
+
+    private Task<TapChangerManufacturer> OnAddAsync()
+        => Task.FromResult(new TapChangerManufacturer
+        {
+            IsActive = true,
+            CreatedTime = DateTime.Now,
+        });
+
+    private async Task<bool> OnSaveAsync(TapChangerManufacturer item, ItemChangedType changedType)
+    {
+        if (changedType == ItemChangedType.Add)
+        {
+            var (ok, error, _) = await TapChangerManufacturerService.CreateAsync(item.Name ?? "");
+            if (!ok)
+            {
+                await ShowToast(error ?? "新增失败", ToastCategory.Error);
+                return false;
+            }
+            await ShowToast("新增成功", ToastCategory.Success);
+            return true;
+        }
+
+        var (uOk, uErr) = await TapChangerManufacturerService.UpdateAsync(item.Id, item.Name ?? "");
+        if (!uOk)
+        {
+            await ShowToast(uErr ?? "保存失败", ToastCategory.Error);
+            return false;
+        }
+        await ShowToast("保存成功", ToastCategory.Success);
+        return true;
+    }
+
+    private async Task<bool> OnDeleteAsync(IEnumerable<TapChangerManufacturer> items)
+    {
+        foreach (var item in items)
+        {
+            var (ok, err) = await TapChangerManufacturerService.DeleteAsync(item.Id);
+            if (!ok)
+            {
+                await ShowToast(err ?? $"删除「{item.Name}」失败", ToastCategory.Error);
+                return false;
+            }
+        }
+        await ShowToast("已删除", ToastCategory.Success);
+        return true;
+    }
+
+    private async Task ShowToast(string content, ToastCategory category)
+    {
+        await ToastService.Show(new ToastOption
+        {
+            Category = category,
+            Content = content,
+            Delay = 2000
+        });
+    }
+}

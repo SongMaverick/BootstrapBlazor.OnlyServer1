@@ -8,6 +8,7 @@ using BootstrapBlazor.OnlyServer1.Services.Common;
 using BootstrapBlazor.OnlyServer1.Services.Drawing;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using BootstrapBlazor.OnlyServer1.Services.OrderManagement;
+using BootstrapBlazor.OnlyServer1.Services.TapChanger;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
@@ -174,6 +175,8 @@ builder.Services.AddScoped<UsersService>();
 builder.Services.AddScoped<DepartmentsService>();
 builder.Services.AddScoped<PermissionsService>();
 builder.Services.AddScoped<RolesService>();
+builder.Services.AddScoped<TapChangerManufacturerService>();
+builder.Services.AddScoped<TapChangerModelService>();
 
 builder.Services.AddSingleton<IDrawingTypeRegistry, DrawingTypeRegistry>();
 builder.Services.AddSingleton<OrderLockProvider>();

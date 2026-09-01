@@ -1,32 +1,29 @@
 using BootstrapBlazor.Components;
 using BootstrapBlazor.OnlyServer1.Models;
-using BootstrapBlazor.OnlyServer1.Models.Admin;
 using BootstrapBlazor.OnlyServer1.Models.Common;
-using BootstrapBlazor.OnlyServer1.Models.Drawing;
 using BootstrapBlazor.OnlyServer1.Models.Identity;
-using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
-using BootstrapBlazor.OnlyServer1.Models.Identity;
+using BootstrapBlazor.OnlyServer1.Models.TapChanger;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Services.Admin;
+namespace BootstrapBlazor.OnlyServer1.Services.TapChanger;
 
 /// <summary>
-/// (2026-08-15) 开关厂家 Service。
+/// 有载分接开关厂家 Service(2026-09-01 重建)。
 ///
-/// 范围最小:只负责 SwitchManufacturers 表的 CRUD + 下拉项。
+/// 范围最小:只负责 TapChangerManufacturers 表的 CRUD + 下拉项。
 /// 创建/更新/删除 走 Admin 角色校验(纵深防御,沿用项目惯例)。
 /// </summary>
-public class SwitchManufacturerService
+public class TapChangerManufacturerService
 {
     private readonly ISqlSugarClient _db;
     private readonly CurrentUserAccessor _currentUser;
-    private readonly ILogger<SwitchManufacturerService> _logger;
+    private readonly ILogger<TapChangerManufacturerService> _logger;
 
-    public SwitchManufacturerService(
+    public TapChangerManufacturerService(
         ISqlSugarClient db,
         CurrentUserAccessor currentUser,
-        ILogger<SwitchManufacturerService> logger)
+        ILogger<TapChangerManufacturerService> logger)
     {
         _db = db;
         _currentUser = currentUser;
@@ -34,18 +31,18 @@ public class SwitchManufacturerService
     }
 
     /// <summary>取所有未删除、且启用的厂家(按 Name 升序)。</summary>
-    public Task<List<SwitchManufacturer>> GetAllAsync()
+    public Task<List<TapChangerManufacturer>> GetAllAsync()
     {
-        return _db.Queryable<SwitchManufacturer>()
+        return _db.Queryable<TapChangerManufacturer>()
             .Where(m => !m.IsDeleted && m.IsActive)
             .OrderBy(m => m.Name)
             .ToListAsync();
     }
 
     /// <summary>取所有未删除的厂家(含停用项)—— 给管理页用。</summary>
-    public Task<List<SwitchManufacturer>> GetAllIncludingInactiveAsync()
+    public Task<List<TapChangerManufacturer>> GetAllIncludingInactiveAsync()
     {
-        return _db.Queryable<SwitchManufacturer>()
+        return _db.Queryable<TapChangerManufacturer>()
             .Where(m => !m.IsDeleted)
             .OrderBy(m => m.IsActive, OrderByType.Desc)
             .OrderBy(m => m.Name)
@@ -62,7 +59,7 @@ public class SwitchManufacturerService
     }
 
     /// <summary>
-    /// 新建厂家。Name 必填且 Trim 后非空;同名(IsDeleted=0)拒绝。
+    /// 新建厂家。Name 必填且 Trim 后非空;大小写无关去重(IsDeleted=0)。
     /// 失败时 error 是用户可读的中文消息。
     /// </summary>
     public async Task<(bool ok, string? error, int? id)> CreateAsync(string name)
@@ -71,7 +68,7 @@ public class SwitchManufacturerService
         if (!authOk)
         {
             _logger.LogWarning(
-                "SwitchManufacturerService.CreateAsync denied: callerId={CallerId} reason={Reason}",
+                "TapChangerManufacturerService.CreateAsync denied: callerId={CallerId} reason={Reason}",
                 _currentUser.GetUserId(), authErr);
             return (false, authErr, null);
         }
@@ -84,26 +81,31 @@ public class SwitchManufacturerService
 
         try
         {
-            var existing = await _db.Queryable<SwitchManufacturer>()
+            var existing = await _db.Queryable<TapChangerManufacturer>()
                 .Where(m => m.NormalizedName == normalized && !m.IsDeleted)
                 .FirstAsync();
             if (existing != null) return (false, $"厂家「{trimmed}」已存在", null);
 
-            var entity = new SwitchManufacturer
+            var now = DateTime.Now;
+            var userId = _currentUser.GetDisplayName() ?? "System";
+            var entity = new TapChangerManufacturer
             {
                 Name = trimmed,
                 NormalizedName = normalized,
                 IsActive = true,
-                CreatedTime = DateTime.Now,
+                CreatedBy = userId,
+                CreatedTime = now,
+                UpdatedBy = userId,
+                UpdatedTime = now,
                 IsDeleted = false,
             };
             var newId = await _db.Insertable(entity).ExecuteReturnIdentityAsync();
-            _logger.LogInformation("SwitchManufacturer created: id={Id} name={Name}", newId, trimmed);
+            _logger.LogInformation("TapChangerManufacturer created: id={Id} name={Name}", newId, trimmed);
             return (true, null, newId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating SwitchManufacturer name={Name}", trimmed);
+            _logger.LogError(ex, "Error creating TapChangerManufacturer name={Name}", trimmed);
             return (false, "保存失败,请重试", null);
         }
     }
@@ -115,7 +117,7 @@ public class SwitchManufacturerService
         if (!authOk)
         {
             _logger.LogWarning(
-                "SwitchManufacturerService.UpdateAsync denied: callerId={CallerId} reason={Reason}",
+                "TapChangerManufacturerService.UpdateAsync denied: callerId={CallerId} reason={Reason}",
                 _currentUser.GetUserId(), authErr);
             return (false, authErr);
         }
@@ -128,26 +130,62 @@ public class SwitchManufacturerService
 
         try
         {
-            var entity = await _db.Queryable<SwitchManufacturer>()
+            var entity = await _db.Queryable<TapChangerManufacturer>()
                 .Where(m => m.Id == id && !m.IsDeleted)
                 .FirstAsync();
             if (entity == null) return (false, "厂家不存在或已被删除");
 
-            var dup = await _db.Queryable<SwitchManufacturer>()
+            var dup = await _db.Queryable<TapChangerManufacturer>()
                 .Where(m => m.NormalizedName == normalized && !m.IsDeleted && m.Id != id)
                 .FirstAsync();
             if (dup != null) return (false, $"厂家「{trimmed}」已被其他条目占用");
 
             entity.Name = trimmed;
             entity.NormalizedName = normalized;
+            entity.UpdatedBy = _currentUser.GetDisplayName();
+            entity.UpdatedTime = DateTime.Now;
             await _db.Updateable(entity).ExecuteCommandAsync();
-            _logger.LogInformation("SwitchManufacturer renamed: id={Id} newName={Name}", id, trimmed);
+            _logger.LogInformation("TapChangerManufacturer renamed: id={Id} newName={Name}", id, trimmed);
             return (true, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating SwitchManufacturer id={Id}", id);
+            _logger.LogError(ex, "Error updating TapChangerManufacturer id={Id}", id);
             return (false, "保存失败,请重试");
+        }
+    }
+
+    /// <summary>启停切换(只翻 IsActive,不改 NormalizedName)。</summary>
+    public async Task<(bool ok, string? error)> SetActiveAsync(int id, bool isActive)
+    {
+        var (authOk, authErr) = _currentUser.RequireRole(RoleNames.Admin);
+        if (!authOk)
+        {
+            _logger.LogWarning(
+                "TapChangerManufacturerService.SetActiveAsync denied: callerId={CallerId} reason={Reason}",
+                _currentUser.GetUserId(), authErr);
+            return (false, authErr);
+        }
+
+        try
+        {
+            var rows = await _db.Updateable<TapChangerManufacturer>()
+                .SetColumns(m => new TapChangerManufacturer
+                {
+                    IsActive = isActive,
+                    UpdatedBy = _currentUser.GetDisplayName(),
+                    UpdatedTime = DateTime.Now,
+                })
+                .Where(m => m.Id == id && !m.IsDeleted)
+                .ExecuteCommandAsync();
+            if (rows == 0) return (false, "厂家不存在或已被删除");
+            _logger.LogInformation("TapChangerManufacturer active toggled: id={Id} isActive={IsActive}", id, isActive);
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error toggling TapChangerManufacturer active id={Id}", id);
+            return (false, "操作失败,请重试");
         }
     }
 
@@ -158,24 +196,29 @@ public class SwitchManufacturerService
         if (!authOk)
         {
             _logger.LogWarning(
-                "SwitchManufacturerService.DeleteAsync denied: callerId={CallerId} reason={Reason}",
+                "TapChangerManufacturerService.DeleteAsync denied: callerId={CallerId} reason={Reason}",
                 _currentUser.GetUserId(), authErr);
             return (false, authErr);
         }
 
         try
         {
-            var rows = await _db.Updateable<SwitchManufacturer>()
-                .SetColumns(m => new SwitchManufacturer { IsDeleted = true })
+            var rows = await _db.Updateable<TapChangerManufacturer>()
+                .SetColumns(m => new TapChangerManufacturer
+                {
+                    IsDeleted = true,
+                    UpdatedBy = _currentUser.GetDisplayName(),
+                    UpdatedTime = DateTime.Now,
+                })
                 .Where(m => m.Id == id && !m.IsDeleted)
                 .ExecuteCommandAsync();
             if (rows == 0) return (false, "厂家不存在或已被删除");
-            _logger.LogInformation("SwitchManufacturer soft-deleted: id={Id}", id);
+            _logger.LogInformation("TapChangerManufacturer soft-deleted: id={Id}", id);
             return (true, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting SwitchManufacturer id={Id}", id);
+            _logger.LogError(ex, "Error deleting TapChangerManufacturer id={Id}", id);
             return (false, "删除失败,请重试");
         }
     }

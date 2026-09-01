@@ -1,14 +1,17 @@
 using SqlSugar;
 
-namespace BootstrapBlazor.OnlyServer1.Models.Drawing;
+namespace BootstrapBlazor.OnlyServer1.Models.TapChanger;
 
 /// <summary>
-/// 开关厂家实体。Orders.TapChangerManufacturerId / SwitchManufacturerId 引用本表 Id。
-/// NormalizedName 用于 UNIQUE 索引(类似 Departments / Identity Roles 模式)。
-/// FK ON DELETE NO ACTION(默认):有订单引用时禁止硬删,仅可软删(IsDeleted=true)。
+/// 有载分接开关(Tap-Changer)厂家字典。
+/// NormalizedName 用于大小写无关的 UNIQUE 索引(UpperInvariant),
+/// 名字不同的"常州西电"和"常州 西电"会被视作同一条记录。
+/// 软删(IsDeleted=true)与启停(IsActive)是两条不同的链路:
+///   IsActive  — 字典级启停,下拉项中是否可选
+///   IsDeleted — 是否在管理页里出现
 /// </summary>
-[SugarTable("SwitchManufacturers")]
-public class SwitchManufacturer
+[SugarTable("TapChangerManufacturers")]
+public class TapChangerManufacturer
 {
     [SugarColumn(IsPrimaryKey = true, IsIdentity = true)]
     public int Id { get; set; }
@@ -21,7 +24,7 @@ public class SwitchManufacturer
 
     public bool IsActive { get; set; } = true;
 
-    /// <summary>创建人(审计字段,沿用项目惯例)。</summary>
+    /// <summary>创建人(审计字段)。</summary>
     [SugarColumn(IsNullable = true, Length = 100)]
     public string? CreatedBy { get; set; }
 

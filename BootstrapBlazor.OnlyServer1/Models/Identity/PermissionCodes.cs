@@ -47,4 +47,16 @@ public static class PermissionCodes
     // 图名
     public const string DrawingNameCreate = "DrawingName.Create";
     public const string DrawingNameDelete = "DrawingName.Delete";
+
+    // 有载分接开关厂家(/tap-changer-manufacturers 管理页 + 业务下拉项)
+    public const string TapChangerManufacturerCreate = "TapChangerManufacturer.Create";
+    public const string TapChangerManufacturerRead   = "TapChangerManufacturer.Read";
+    public const string TapChangerManufacturerEdit   = "TapChangerManufacturer.Edit";
+    public const string TapChangerManufacturerDelete = "TapChangerManufacturer.Delete";
+
+    // 有载分接开关型号(/tap-changer-models 管理页,FK ManufacturerId → TapChangerManufacturers)
+    public const string TapChangerModelCreate = "TapChangerModel.Create";
+    public const string TapChangerModelRead   = "TapChangerModel.Read";
+    public const string TapChangerModelEdit   = "TapChangerModel.Edit";
+    public const string TapChangerModelDelete = "TapChangerModel.Delete";
 }

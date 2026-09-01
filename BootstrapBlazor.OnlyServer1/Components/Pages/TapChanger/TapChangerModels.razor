@@ -1,0 +1,212 @@
+@page "/tap-changer-models"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin)]
+@inject TapChangerModelService TapChangerModelService
+@inject TapChangerManufacturerService TapChangerManufacturerService
+@inject CurrentUserAccessor CurrentUser
+@inject ToastService ToastService
+
+<PageTitle>分接开关型号管理</PageTitle>
+
+<div class="page-tap-changer-models">
+    <h1>分接开关型号管理</h1>
+
+    <Table TItem="TapChangerModel"
+           IsPagination="true"
+           PageItemsSource="@PageItemsSource"
+           RenderMode="TableRenderMode.Table"
+           IsFixedHeader="true"
+           IsStriped="true"
+           IsBordered="true"
+           OnQueryAsync="OnQueryAsync"
+           ShowSearch="true"
+           ShowToolbar="true"
+           ShowExtendButtons="true"
+           OnAddAsync="OnAddAsync"
+           OnSaveAsync="OnSaveAsync"
+           OnDeleteAsync="OnDeleteAsync"
+           EditMode="EditMode.Popup"
+           ShowSkeleton="true"
+           IsMultipleSelect="true"
+           Height="700"
+           ShowAddButton="@CurrentUser.HasPermission(PermissionCodes.TapChangerModelCreate)"
+           ShowDeleteButton="@CurrentUser.HasPermission(PermissionCodes.TapChangerModelDelete)">
+        <TableColumns>
+            <TableColumn @bind-Field="@context.Id" Width="80" Align="Alignment.Center" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.Name" Width="380" Sortable="true" Readonly="true" />
+            <TableColumn @bind-Field="@context.ManufacturerId" Title="厂家" Width="160" Readonly="true">
+                <Template Context="value">
+                    @LookupManufacturerName((int)value.Value)
+                </Template>
+            </TableColumn>
+            <TableColumn @bind-Field="@context.UmKv" Width="100" Align="Alignment.Center" />
+            <TableColumn @bind-Field="@context.IsActive" Width="100" Align="Alignment.Center" ComponentType="typeof(Switch)" />
+            <TableColumn @bind-Field="@context.CreatedTime" Width="180" Align="Alignment.Center" Sortable="true" Readonly="true">
+                <Template Context="value">
+                    @value.Value.ToString("yyyy-MM-dd HH:mm:ss")
+                </Template>
+            </TableColumn>
+        </TableColumns>
+        <EditTemplate>
+            <div class="row g-3">
+                <div class="col-12">
+                    <Select TValue="int"
+                            @bind-Value="@context.ManufacturerId"
+                            Items="@_manufacturerItems"
+                            ShowLabel="true"
+                            DisplayName="所属厂家 *"
+                            ShowSearch="true"
+                            PlaceHolder="请选择厂家" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInputNumber @bind-Value="@context.NumberOfColumns" ShowLabel="true" DisplayName="列数" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInput @bind-Value="@context.TypeCode" ShowLabel="true" DisplayName="类型码 (Type)" MaxLength="20" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInput @bind-Value="@context.NumberOfPhases" ShowLabel="true" DisplayName="相数 (I/II/III)" MaxLength="10" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInput @bind-Value="@context.RatedCurrentCode" ShowLabel="true" DisplayName="额定电流码" MaxLength="20" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInput @bind-Value="@context.YjdCode" ShowLabel="true" DisplayName="Y/JD(可空)" MaxLength="10" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInputNumber @bind-Value="@context.UmKv" ShowLabel="true" DisplayName="Um (kV)" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInput @bind-Value="@context.TapSelectorSize" ShowLabel="true" DisplayName="分接选择器尺寸" MaxLength="20" />
+                </div>
+                <div class="col-3">
+                    <Switch @bind-Value="@context.IsActive" ShowLabel="true" DisplayName="启用" />
+                </div>
+                <div class="col-12">
+                    <div class="form-label">接线图 (Basic connection diagram,4 段)</div>
+                </div>
+                <div class="col-3">
+                    <BootstrapInput @bind-Value="@context.BD1" ShowLabel="true" DisplayName="段 1" MaxLength="10" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInput @bind-Value="@context.BD2" ShowLabel="true" DisplayName="段 2" MaxLength="10" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInput @bind-Value="@context.BD3" ShowLabel="true" DisplayName="段 3" MaxLength="10" />
+                </div>
+                <div class="col-3">
+                    <BootstrapInput @bind-Value="@context.BD4" ShowLabel="true" DisplayName="段 4" MaxLength="10" />
+                </div>
+            </div>
+        </EditTemplate>
+    </Table>
+</div>
+
+@code {
+    private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
+
+    private List<SelectedItem> _manufacturerItems = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 编辑表单的厂家下拉数据(SelectedItem 列表)
+        var manufacturers = await TapChangerManufacturerService.GetAllIncludingInactiveAsync();
+        _manufacturerItems = manufacturers
+            .OrderBy(m => !m.IsActive) // 启用项在前
+            .ThenBy(m => m.Name)
+            .Select(m => new SelectedItem(m.Id.ToString(), m.Name))
+            .ToList();
+        // BootstrapBlazor 8.11 Select value=0 时回退到 Items 第 0 项,
+        // 不显示 PlaceHolder。头部插 "请选择" (Value="0") 让占位文本真实生效。
+        _manufacturerItems.Insert(0, new SelectedItem("0", "请选择厂家"));
+
+        var activeMfr = manufacturers.FirstOrDefault(m => m.IsActive);
+        _defaultManufacturerId = activeMfr?.Id ?? 0;
+    }
+
+    private int _defaultManufacturerId;
+    private Dictionary<int, string> _manufacturerLookup = new();
+
+    private string LookupManufacturerName(int id)
+        => _manufacturerLookup.TryGetValue(id, out var n) ? n : $"#{id}";
+
+    private async Task<QueryData<TapChangerModel>> OnQueryAsync(QueryPageOptions options)
+    {
+        var list = await TapChangerModelService.GetAllIncludingInactiveAsync();
+
+        // 同步构建厂家名称查询字典(每次 OnQuery 重新拉,保证停用/启用状态最新)
+        var manufacturers = await TapChangerManufacturerService.GetAllIncludingInactiveAsync();
+        _manufacturerLookup = manufacturers.ToDictionary(m => m.Id, m => m.Name);
+
+        return new QueryData<TapChangerModel>
+        {
+            TotalCount = list.Count,
+            Items = list,
+            IsSorted = false,
+            IsFiltered = false,
+            IsSearch = false,
+        };
+    }
+
+    private Task<TapChangerModel> OnAddAsync()
+        => Task.FromResult(new TapChangerModel
+        {
+            ManufacturerId = _defaultManufacturerId,
+            IsActive = true,
+            CreatedTime = DateTime.Now,
+        });
+
+    private async Task<bool> OnSaveAsync(TapChangerModel item, ItemChangedType changedType)
+    {
+        if (item.ManufacturerId <= 0)
+        {
+            await ShowToast("请选择关联的分接开关厂家", ToastCategory.Error);
+            return false;
+        }
+
+        if (changedType == ItemChangedType.Add)
+        {
+            var (ok, error, _) = await TapChangerModelService.CreateAsync(item);
+            if (!ok)
+            {
+                await ShowToast(error ?? "新增失败", ToastCategory.Error);
+                return false;
+            }
+            await ShowToast("新增成功", ToastCategory.Success);
+            return true;
+        }
+
+        var (uOk, uErr) = await TapChangerModelService.UpdateAsync(item);
+        if (!uOk)
+        {
+            await ShowToast(uErr ?? "保存失败", ToastCategory.Error);
+            return false;
+        }
+        await ShowToast("保存成功", ToastCategory.Success);
+        return true;
+    }
+
+    private async Task<bool> OnDeleteAsync(IEnumerable<TapChangerModel> items)
+    {
+        foreach (var item in items)
+        {
+            var (ok, err) = await TapChangerModelService.DeleteAsync(item.Id);
+            if (!ok)
+            {
+                await ShowToast(err ?? $"删除「{item.Name}」失败", ToastCategory.Error);
+                return false;
+            }
+        }
+        await ShowToast("已删除", ToastCategory.Success);
+        return true;
+    }
+
+    private async Task ShowToast(string content, ToastCategory category)
+    {
+        await ToastService.Show(new ToastOption
+        {
+            Category = category,
+            Content = content,
+            Delay = 2000
+        });
+    }
+}

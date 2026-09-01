@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BootstrapBlazor.OnlyServer1
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BootstrapBlazor.OrderManagementSetup", "BootstrapBlazor.OrderManagementSetup\BootstrapBlazor.OrderManagementSetup.csproj", "{CA8CF22D-2428-462C-8F0D-FECFE9430D19}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BootstrapBlazor.TapChangerSetup", "BootstrapBlazor.TapChangerSetup\BootstrapBlazor.TapChangerSetup.csproj", "{291D6ED4-9641-4455-99FF-5117F30F480C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,18 @@ Global
 		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Release|x64.Build.0 = Release|Any CPU
 		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Release|x86.ActiveCfg = Release|Any CPU
 		{CA8CF22D-2428-462C-8F0D-FECFE9430D19}.Release|x86.Build.0 = Release|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Debug|x64.Build.0 = Debug|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Debug|x86.Build.0 = Debug|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Release|x64.ActiveCfg = Release|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Release|x64.Build.0 = Release|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Release|x86.ActiveCfg = Release|Any CPU
+		{291D6ED4-9641-4455-99FF-5117F30F480C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -55,6 +55,7 @@ public static class Program
     ///   - Edit 已足够"清空内容"语义,故没有 Delete。
     ///   - OrderIssue.* 3 个保留(早期版本引入)。
     /// 与 BootstrapBlazor.OnlyServer1/Models/Identity/PermissionCodes.cs 一一对应。
+    /// (2026-09-01) 分接开关(TapChanger)厂家权限码已迁到 BootstrapBlazor.TapChangerSetup 项目负责。
     /// </summary>
     private static readonly Permissions[] _permissionSeeds =
     {
@@ -72,6 +73,7 @@ public static class Program
     /// <summary>
     /// 角色 → 权限码。Operator 与 Admin 一样可完整操作本页(用户 2026-08-10 明确要求),
     /// Viewer 只读。
+    /// (2026-09-01) 分接开关厂家(TapChangerManufacturer.*)已迁到 BootstrapBlazor.TapChangerSetup 项目负责。
     /// </summary>
     private static readonly Dictionary<string, string[]> _roleMapping = new()
     {
