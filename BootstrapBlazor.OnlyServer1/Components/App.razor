@@ -33,6 +33,12 @@
 
     <script src="_framework/blazor.web.js"></script>
     <Script Src="_content/BootstrapBlazor/js/bootstrap.blazor.bundle.min.js"></Script>
+    @* (2026-09-04 修复)登录页"记住我"功能:此 JS 必须在 blazor.web.js 之后加载,
+         否则 OnAfterRenderAsync 调 rememberMeInit 时函数未定义,被 Login.razor 静默 catch 吞掉。
+         之前未引入 → 30 天表单自动填充完全失效,用户体感"勾了没用"。 *@
+    <script src="js/rememberMe.js"></script>
+    @* (2026-09-04) 订单管理页左右两栏拖动分隔条 — 全局加载(仅 OrderManagement.razor attach,其它页面不调用,无副作用)。 *@
+    <script src="js/orderMgmtResizer.js"></script>
 </body>
 
 </html>

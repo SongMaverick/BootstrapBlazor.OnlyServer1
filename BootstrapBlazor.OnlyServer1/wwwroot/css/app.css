@@ -178,3 +178,33 @@
 .login-card .card-header {
     border-radius: 0.5rem 0.5rem 0 0 !important;
 }
+
+/* ============================================================
+ * (2026-09-04) 订单管理页左右两栏拖动分隔条 — 仅负责视觉:hover/拖动时中央 2px 竖线变蓝
+ *   布局完全由 JS(wwwroot/js/orderMgmtResizer.js attach 时)用 inline style 控制:
+ *     - 大屏 ≥992px:左侧 1/3 + splitter 6px + 右侧 2/3
+ *     - 小屏 <992px:清空 inline,退回 Bootstrap col-12 全宽堆叠
+ *   JS 也设 cursor / display,所以即使 CSS 缓存没刷新,核心布局和拖动仍正常,
+ *     只是看不到 hover/拖动时的蓝色高亮线
+ * ============================================================ */
+#orderMgmtResizer {
+    cursor: col-resize;
+    position: relative;
+}
+
+    #orderMgmtResizer::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        margin-left: -1px;
+        background: var(--bs-border-color);
+        transition: background-color 0.15s;
+    }
+
+    #orderMgmtResizer:hover::before,
+    #orderMgmtResizer.dragging::before {
+        background: var(--bs-primary);
+    }

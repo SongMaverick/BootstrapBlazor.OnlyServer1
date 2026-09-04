@@ -70,7 +70,23 @@
       "Bash(taskkill /F /PID 37884)",
       "Bash(cmd //c \"taskkill /F /PID 36960 & taskkill /F /PID 37884\")",
       "Bash(cmd //c \"taskkill /F /PID 48628 & taskkill /F /PID 34292\")",
-      "Bash(1\\\\.)"
+      "Bash(1\\\\.)",
+      "WebFetch(domain:aspire.dev)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8373/)",
+      "Bash(curl -s http://localhost:8373/)",
+      "WebFetch(domain:github.com)",
+      "Bash(find ~/.nuget/packages/bootstrapblazor -name \"TableColumn*\" 2>/dev/null | head -20)",
+      "Read(//c/Users/z0048byz/.nuget/packages/bootstrapblazor/**)",
+      "Bash(find / -path /proc -prune -o -name \"TableColumn.cs\" -print 2>/dev/null | grep -i bootstrap | head -5)",
+      "Read(//d//**)",
+      "Bash(find /c/Users/z0048byz/.nuget -name \"bootstrapblazor*\" -type d 2>/dev/null | head -10)",
+      "Read(//c/Users/z0048byz/.nuget/**)",
+      "Bash(ls /c/Users/z0048byz/.nuget/packages/bootstrapblazor/)",
+      "Read(//c/Users/z0048byz/.nuget/packages/bootstrapblazor//**)",
+      "Bash(ls /c/Users/z0048byz/.nuget/packages/bootstrapblazor/8.11.0/lib/net8.0/)",
+      "Read(//c/Users/z0048byz/.nuget/packages/bootstrapblazor/8.11.0/lib/net8.0//**)",
+      "Bash(wc -l \"/c/Users/z0048byz/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1/wwwroot/css/app.css\")",
+      "Read(//c/Users/z0048byz/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1/wwwroot/css/**)"
     ]
   }
 }

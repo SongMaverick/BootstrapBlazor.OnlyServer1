@@ -109,6 +109,132 @@ namespace BootstrapBlazor.OnlyServer1.Services.OrderManagement
             }
         }
 
+        /// <summary>
+        /// (2026-09-03) /order-management 左侧主从表的列表查询。
+        /// 与默认 QueryAsync(CreatedTime desc) 不同:这里 LEFT JOIN OrderDesignPhases,
+        /// 按 Phase1SubmitDate desc 排 —— 让"已进入一次提交环节"的订单靠前,
+        /// 还没提交的(NULL)自然沉到列表底部(SQL Server 默认 NULLS LAST)。
+        ///
+        /// 保持与 QueryAsync 同样的入参/返回 (PagedResult<Orders>),以便直接替换调用点。
+        /// 作用域:仅 OrderManagement 左侧表用,不动 BaseQueryService / AllowedSortCols / DefaultSortField。
+        ///
+        /// (2026-09-04) 兼容本地/旧测试库:OrderDesignPhases 表可能还没建(没跑过
+        /// BootstrapBlazor.OrderManagementSetup --install)。表缺失时 SQL 抛
+        /// "Invalid object name 'OrderDesignPhases'",此时回退到 QueryAsync(CreatedTime desc),
+        /// 列表能正常显示,排序退化为默认。已建表的库(已跑过 Setup)走新逻辑按 Phase1SubmitDate 排。
+        ///
+        /// (2026-09-04) 加 year + month 筛选:订单管理页「按年/月筛选」下拉用,4 种组合:
+        ///   - 都不传(全 null):不筛选
+        ///   - 只传 year:Phase1SubmitDate 落在该年(用 [Jan 1, next Jan 1) 闭开区间,索引友好)
+        ///   - 只传 month:Phase1SubmitDate 的月份等于 month(任意年;用 MONTH() 函数,牺牲索引换简洁)
+        ///   - year + month:Phase1SubmitDate 落在该年该月([月初, 下月初) 闭开区间,索引友好)
+        /// month-only 走 MONTH() 是因为"任意年 8 月"没法用单个日期范围表达;订单管理数据量不大,性能可接受。
+        /// 不传也兼容(向后兼容老调用点)。
+        /// </summary>
+        public async Task<PagedResult<Orders>> GetMasterListAsync(PagedQuery options, int? year = null, int? month = null)
+        {
+            try
+            {
+                // LeftJoin 是一对一扩展,OrderDesignPhases 表有 IX_OrderDesignPhases_OrderId (WHERE IsDeleted=0)
+                // 过滤唯一索引,所以每个 Orders 最多匹配一行;不会出现重复行打乱分页。
+                var query = Db.Queryable<Orders>()
+                    .LeftJoin<OrderDesignPhases>((o, p) => o.Id == p.OrderId && !p.IsDeleted)
+                    .Where(o => !o.IsDeleted);
+
+                // (2026-09-04) 按年/月筛选:3 种组合的 WHERE 分支。
+                // year+month 同时给:用 [月初, 下月初) 闭开区间(索引友好,走 Phase1SubmitDate 范围扫描)
+                // 只给 year:[Jan 1, next Jan 1) 闭开区间(同样索引友好)
+                // 只给 month:用 MONTH() 函数,牺牲索引换"任意年该月"语义
+                if (year.HasValue && month.HasValue)
+                {
+                    var start = new DateTime(year.Value, month.Value, 1);
+                    var end = start.AddMonths(1);
+                    query = query.Where((o, p) => p.Phase1SubmitDate != null && p.Phase1SubmitDate >= start && p.Phase1SubmitDate < end);
+                }
+                else if (year.HasValue)
+                {
+                    var start = new DateTime(year.Value, 1, 1);
+                    var end = start.AddYears(1);
+                    query = query.Where((o, p) => p.Phase1SubmitDate != null && p.Phase1SubmitDate >= start && p.Phase1SubmitDate < end);
+                }
+                else if (month.HasValue)
+                {
+                    // MONTH() 不会走索引,但订单管理数据量不大可接受;非空判断避免 NULL 月份误命中
+                    var m = month.Value;
+                    query = query.Where((o, p) => p.Phase1SubmitDate != null && p.Phase1SubmitDate.Value.Month == m);
+                }
+
+                // 关键字搜索(沿用 BaseQueryService 的搜索语义:订单号 / 创建者)
+                var kw = options.SearchText;
+                if (!string.IsNullOrEmpty(kw))
+                {
+                    query = query.Where((o, p) => o.OrderNumber.ToString().Contains(kw) || o.CreatedBy.Contains(kw));
+                }
+
+                // 计数在 OrderBy/Select 前取,SqlSugar 会自动改写为 COUNT(*)
+                var total = query.Count();
+                var items = query
+                    // 强类型重载,不走字符串拼接,无 SQL 注入风险
+                    .OrderBy((o, p) => p.Phase1SubmitDate, OrderByType.Desc)
+                    // (2026-09-04) 投影到 Orders,把 Phase1SubmitDate 填到 [SugarColumn(IsIgnore=true)] 虚拟列,
+                    // UI 层 TableColumn 直接 @bind-Field="@context.Phase1SubmitDate" 即可显示,不用换 Table TItem。
+                    // 这里不能 Select((o, p) => o) — 那样 Phase1SubmitDate 永远 null。
+                    .Select((o, p) => new Orders
+                    {
+                        Id = o.Id,
+                        OrderNumber = o.OrderNumber,
+                        Power = o.Power,
+                        RatedVoltage = o.RatedVoltage,
+                        IsReactor = o.IsReactor,
+                        CreatedBy = o.CreatedBy,
+                        UpdatedTime = o.UpdatedTime,
+                        UpdatedBy = o.UpdatedBy,
+                        CreatedTime = o.CreatedTime,
+                        IsDeleted = o.IsDeleted,
+                        Phase1SubmitDate = p.Phase1SubmitDate,
+                    })
+                    .Skip((options.PageIndex - 1) * options.PageItems)
+                    .Take(options.PageItems)
+                    .ToList();
+
+                return new PagedResult<Orders>
+                {
+                    Items = items,
+                    TotalCount = total,
+                    IsFiltered = options.FilterCount > 0 || year.HasValue || month.HasValue, // (2026-09-04) 年/月筛选也算 filtered
+                    IsSorted = true, // 固定排序,不响应前端 SortName
+                    IsSearch = !string.IsNullOrEmpty(options.SearchText) || options.HasSearchModel,
+                };
+            }
+            catch (Exception ex) when (IsMissingPhasesTable(ex))
+            {
+                // (2026-09-04) OrderDesignPhases 表缺失 — 回退到默认排序,不抛、不返回空,
+                // 列表至少能正常展示,只是排序回到 CreatedTime desc。等库跑过 Setup 就走新逻辑。
+                _logger.LogWarning(
+                    "GetMasterListAsync: OrderDesignPhases 表不存在,回退到 QueryAsync 默认排序。库未跑 OrderManagementSetup --install,建议补跑一次以启用新排序。");
+                return await QueryAsync(options);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in GetMasterListAsync (OrderManagement master list)");
+                return new PagedResult<Orders>();
+            }
+        }
+
+        /// <summary>
+        /// (2026-09-04) 判定异常是否由 OrderDesignPhases 表缺失引起。
+        /// 消息文本匹配 Microsoft.Data.SqlClient.SqlException 的 "Invalid object name 'xxx'" 格式。
+        /// 用 message 匹配而不是查 sys.objects,避免每次分页查询都多一次往返;
+        /// happy path 0 成本,坏 path 第一次失败后回退,后续直接走 QueryAsync。
+        /// </summary>
+        private static bool IsMissingPhasesTable(Exception ex)
+        {
+            const string marker = "Invalid object name 'OrderDesignPhases'";
+            if (ex.Message?.Contains(marker) == true) return true;
+            if (ex.InnerException?.Message?.Contains(marker) == true) return true;
+            return false;
+        }
+
         // ===== 保存(默认隔离级 + UNIQUE INDEX 去重) =====
 
         /// <summary>

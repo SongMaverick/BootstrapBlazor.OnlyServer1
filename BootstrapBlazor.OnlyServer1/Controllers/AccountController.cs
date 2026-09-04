@@ -5,6 +5,7 @@ using BootstrapBlazor.OnlyServer1.Models.Common;
 using BootstrapBlazor.OnlyServer1.Models.Drawing;
 using BootstrapBlazor.OnlyServer1.Models.Identity;
 using BootstrapBlazor.OnlyServer1.Models.OrderManagement;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -48,18 +49,41 @@ namespace BootstrapBlazor.OnlyServer1.Controllers
             // 用于审计关联。注意:错误 WorkerNumber 时返回 null,不影响密码校验失败原因。
             var (userId, userName) = await GetUserInfoByWorkerNumberAsync(WorkerNumber);
 
-            // (2026-08-14) RememberMe 控制 ASP.NET Identity cookie 的生命周期:
-            //   true  → auth cookie 持久化(浏览器关闭也不丢)
-            //   false → session cookie(关闭浏览器即失效)
-            // 客户端「员工号+密码」cookie 由 wwwroot/js/rememberMe.js 接管,与本参数独立。
-            var result = await _signInManager.PasswordSignInAsync(
-                WorkerNumber, Password, isPersistent: RememberMe, lockoutOnFailure: true);
+            // (2026-09-04) 拆 PasswordSignInAsync 为 Find + CheckPasswordSignInAsync + 手动 SignInAsync,
+            // 这样可以传自定义 ExpiresUtc —— 之前 PasswordSignInAsync(isPersistent: RememberMe)
+            // 只设 IsPersistent,过期时间还是 ExpireTimeSpan=8h,导致"勾了记住我"也最多 8h。
+            //
+            // 拆分原因:SignInManager.PasswordSignInAsync 内部直接 SignInAsync 一次,
+            // 没有 overload 接受 AuthenticationProperties。要自定义 ExpiresUtc 必须拆。
+            //
+            // 现在行为:
+            //   - 勾选 RememberMe → IsPersistent=true,ExpiresUtc=+30d(浏览器关闭也不丢,30 天有效)
+            //   - 不勾            → IsPersistent=false(session cookie,关浏览器即失效),ExpiresUtc=+8h(兜底,Sliding 续期)
+            //
+            // 客户端「员工号+密码」自动填充 cookie 仍由 wwwroot/js/rememberMe.js 接管(也是 30 天),与本参数独立。
+            var user = await _signInManager.UserManager.FindByNameAsync(WorkerNumber);
+            if (user == null)
+            {
+                _logger.LogWarning("登录失败(员工号不存在): workerNumber={WorkerNumber} ip={Ip}", WorkerNumber, ip);
+                return RedirectToLoginWithError("员工号或密码错误", ReturnUrl);
+            }
+
+            var result = await _signInManager.CheckPasswordSignInAsync(user, Password, lockoutOnFailure: true);
 
             if (result.Succeeded)
             {
+                var authProperties = new AuthenticationProperties
+                {
+                    IsPersistent = RememberMe,
+                    ExpiresUtc = RememberMe
+                        ? DateTimeOffset.UtcNow.AddDays(30)
+                        : DateTimeOffset.UtcNow.AddHours(8),
+                };
+                await _signInManager.SignInAsync(user, authProperties);
+
                 _logger.LogInformation(
-                    "登录成功: userId={UserId} workerNumber={WorkerNumber} name={Name} ip={Ip} rememberMe={RememberMe}",
-                    userId, WorkerNumber, userName ?? "(未知)", ip, RememberMe);
+                    "登录成功: userId={UserId} workerNumber={WorkerNumber} name={Name} ip={Ip} rememberMe={RememberMe} expiresUtc={ExpiresUtc:yyyy-MM-ddTHH:mm:ssZ}",
+                    userId, WorkerNumber, userName ?? "(未知)", ip, RememberMe, authProperties.ExpiresUtc);
                 return LocalRedirect(ReturnUrl);
             }
 
