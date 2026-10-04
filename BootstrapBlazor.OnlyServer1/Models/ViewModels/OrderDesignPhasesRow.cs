@@ -36,6 +36,8 @@ public class OrderDesignPhasesRow
 
     public DateTime? Phase2ConfirmDate { get; set; }
 
+    public int? ProjectManagerId { get; set; }
+
     // ===== 来自 Orders(只读) =====
 
     public int OrderNumber { get; set; }
@@ -53,4 +55,7 @@ public class OrderDesignPhasesRow
 
     [SugarColumn(IsIgnore = true)]
     public string? Phase2EngineerName { get; set; }
+
+    [SugarColumn(IsIgnore = true)]
+    public string? ProjectManagerName { get; set; }
 }

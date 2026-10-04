@@ -7,6 +7,7 @@
 @using OrderEntity = BootstrapBlazor.OnlyServer1.Models.OrderManagement.Orders
 @inject OrdersService OrdersService
 @inject OrderInfoService OrderInfoService
+@inject OrderTypeService OrderTypeService
 @inject OrderDesignPhasesService OrderDesignPhasesService
 @inject OrderImportantComponentsService OrderImportantComponentsService
 @inject OrderIssueService OrderIssueService
@@ -27,8 +28,7 @@
     </p>
 
     <div class="row g-3 page-order-management-row">
-        @* ===== 左侧:订单主表(2026-09-04)完全交给 JS 设置 inline 宽度,
-              不依赖任何 CSS class(包括 col-lg-4),即使 CSS 缓存命中也不会退化 ===== *@
+        @* 左侧至少保留 520px，确保五个订单字段完整显示；右侧允许更紧凑，以优先保持左右布局。 *@
         <div class="col-12" id="orderMgmtMasterCol">
             <Card IsShadow="true">
                 <HeaderTemplate>
@@ -184,6 +184,33 @@
                                 <div>创建时间:@_selectedOrder.CreatedTime.ToString("yyyy-MM-dd HH:mm")</div>
                             </div>
                         </div>
+                    </BodyTemplate>
+                </Card>
+
+                <Card IsShadow="true" class="mb-3">
+                    <HeaderTemplate>
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span><i class="fa-solid fa-tags me-1"></i>订单类型</span>
+                            @if (CanEditOrderType)
+                            {
+                                <Button Color="Color.Primary" Size="Size.Small" Icon="fa-solid fa-pen-to-square"
+                                        OnClick="ShowOrderTypeDialog">编辑</Button>
+                            }
+                        </div>
+                    </HeaderTemplate>
+                    <BodyTemplate>
+                        @if (_orderTypeRow == null)
+                        {
+                            <Spinner Color="Color.Primary" />
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">@_orderTypeRow.OrderType</span>
+                            @if (!string.IsNullOrWhiteSpace(_orderTypeRow.ReferenceOrderNumber))
+                            {
+                                <span class="ms-3 text-secondary">参考订单：@_orderTypeRow.ReferenceOrderNumber</span>
+                            }
+                        }
                     </BodyTemplate>
                 </Card>
 
@@ -742,6 +769,35 @@
                     </ModalDialog>
                 </Modal>
 
+                <Modal @ref="_orderTypeModal" IsBackdrop="true" ShowCloseButton="true">
+                    <ModalDialog Title="@($"编辑订单类型 - 订单 #{_selectedOrder?.OrderNumber}")" Size="Size.Medium">
+                        <BodyTemplate>
+                            @if (_orderTypeEditModel != null)
+                            {
+                                <Select Items="_orderTypeItems" TValue="string"
+                                        @bind-Value="_orderTypeEditModel.OrderType"
+                                        ShowLabel="true" DisplayText="订单类型"
+                                        OnSelectedItemChanged="OnOrderTypeChanged" />
+                                @if (_orderTypeEditModel.OrderType is "相同" or "相似")
+                                {
+                                    <BootstrapInput TValue="string"
+                                                    @bind-Value="_orderTypeEditModel.ReferenceOrderNumber"
+                                                    ShowLabel="true" DisplayText="@("\u53C2\u8003\u8BA2\u5355")"
+                                                    PlaceHolder="@("\u8BF7\u586B\u5199\u53C2\u8003\u8BA2\u5355")" />
+                                    <small class="text-muted">@("\u8BF7\u586B\u5199\u53C2\u8003\u8BA2\u5355\u53F7")</small>
+                                }
+                            }
+                        </BodyTemplate>
+                        <FooterTemplate>
+                            <Button Color="Color.Primary" Icon="fa-solid fa-save" OnClick="SaveOrderTypeAsync"
+                                    IsDisabled="@_savingOrderType">
+                                @(_savingOrderType ? "保存中..." : "保存")
+                            </Button>
+                            <Button Color="Color.Secondary" Icon="fa-solid fa-xmark" OnClick="CloseOrderTypeDialog">取消</Button>
+                        </FooterTemplate>
+                    </ModalDialog>
+                </Modal>
+
                 @* ===== (2026-09-04) Card 2:一次二次人员时间编辑弹窗 ===== *@
                 <Modal @ref="_phasesModal" IsBackdrop="true" ShowCloseButton="true">
                     <ModalDialog Title="@($"编辑一次二次人员时间 — 订单 #{_selectedOrder?.OrderNumber}")" Size="Size.Large">
@@ -861,6 +917,13 @@
         new SelectedItem("出口", "出口"),
     };
 
+    private static readonly List<SelectedItem> _orderTypeItems = new()
+    {
+        new SelectedItem("相同", "相同"),
+        new SelectedItem("相似", "相似"),
+        new SelectedItem("全新", "全新"),
+    };
+
     // (2026-08-25) 主从布局状态。_masterSelected 只用于 SelectedRowsChanged 回传,
     // 业务态走 _selectedOrder;同一行重复点击不重载。
     private List<OrderEntity> _masterSelected = new();
@@ -870,6 +933,7 @@
     private int _masterReloadCounter;
 
     private OrderInfoRow? _infoRow;
+    private OrderTypeRow? _orderTypeRow;
     private OrderDesignPhasesRow? _phasesRow;
     private OrderImportantComponentsRow? _componentsRow;
 
@@ -877,11 +941,13 @@
     // 展示 row 不动。Save 成功后用 GetByOrderIdAsync 重新加载展示 row —— 否则 InfoId 仍是 0,
     // Badge 会永远停在 "未填写"。
     private OrderInfoRow? _infoEditModel;
+    private OrderTypeRow? _orderTypeEditModel;
     private OrderDesignPhasesRow? _phasesEditModel;
     private OrderImportantComponentsRow? _componentsEditModel;
 
     private bool _loadingDetail;
     private bool _savingInfo;
+    private bool _savingOrderType;
     private bool _savingPhases;
     private bool _savingComponents;
 
@@ -913,6 +979,7 @@
 
     // (2026-09-04) Card 1/2/3 详情编辑弹窗。沿用 _addIssueModal 模式 (@ref + .Show() / .Close())。
     private BootstrapBlazor.Components.Modal _infoModal = default!;
+    private BootstrapBlazor.Components.Modal _orderTypeModal = default!;
     private BootstrapBlazor.Components.Modal _phasesModal = default!;
     private BootstrapBlazor.Components.Modal _componentsModal = default!;
     private BootstrapBlazor.Components.Table<OrderIssues>? _issuesTable;
@@ -974,6 +1041,7 @@
     private static IEnumerable<int> IssuesPageItemsSource => new int[] { 5, 10, 20 };
 
     private bool CanEditInfo => CurrentUser.HasPermission(PermissionCodes.OrderInfoEdit);
+    private bool CanEditOrderType => CurrentUser.HasPermission(PermissionCodes.OrderInfoEdit);
     private bool CanEditPhases => CurrentUser.HasPermission(PermissionCodes.OrderDesignPhasesEdit);
     private bool CanEditComponents => CurrentUser.HasPermission(PermissionCodes.OrderImportantComponentsEdit);
     private bool CanAddIssue => CurrentUser.HasPermission(PermissionCodes.OrderIssueAdd);
@@ -1018,8 +1086,8 @@
         }
     }
 
-    // (2026-09-04) 左右两栏拖动分隔条 JS 初始化:首次渲染后挂事件监听
-    //   - 最小宽度:左侧 320px(容纳 5 列紧凑布局的日期列),右侧 480px(容纳详情卡片)
+    // 左右栏由 JS 按实际内容区宽度自适应，并保留拖动调整能力。
+    // 左侧最小 520px，覆盖五列及 Card 内边距；右侧可缩至 320px。
     //   - JS 内自带幂等(bound 标记),后续 OnAfterRenderAsync 不重复 attach
     //   - 不做 dispose 清理:handle 元素被 Blazor 移除时 mousedown 监听自然失效,
     //     document 上的 mousemove/mouseup 仅在 dragging=true 时才工作,不拖等于空挂
@@ -1031,7 +1099,7 @@
             {
                 await JS.InvokeVoidAsync("orderMgmtResizer.attach",
                     "orderMgmtMasterCol", "orderMgmtDetailCol", "orderMgmtResizer",
-                    320, 480);
+                    520, 320);
             }
             catch (Exception ex)
             {
@@ -1141,6 +1209,7 @@
         // Modal 内部 BodyTemplate 用 @if (_xxxEditModel != null) 守,置 null 后表单自动消失;
         // 用户点 Modal 的 X 即可关闭。
         _infoEditModel = null;
+        _orderTypeEditModel = null;
         _phasesEditModel = null;
         _componentsEditModel = null;
         _issues = null;
@@ -1151,17 +1220,20 @@
         try
         {
             var infoTask = OrderInfoService.GetByOrderIdAsync(orderId);
+            var orderTypeTask = OrderTypeService.GetByOrderIdAsync(orderId);
             var phasesTask = OrderDesignPhasesService.GetByOrderIdAsync(orderId);
             var compTask = OrderImportantComponentsService.GetByOrderIdAsync(orderId);
             // 问题汇总一次性取全量(不分页 — 单订单问题数通常不多;若订单下问题数百条再考虑分页)。
             var issuesTask = OrderIssueService.QueryByOrderIdAsync(orderId, new PagedQuery { PageIndex = 1, PageItems = 1000 });
-            await Task.WhenAll(infoTask, phasesTask, compTask, issuesTask);
+            await Task.WhenAll(infoTask, orderTypeTask, phasesTask, compTask, issuesTask);
 
             _infoRow = infoTask.Result ?? EmptyInfoRow(orderId);
+            _orderTypeRow = orderTypeTask.Result;
             _phasesRow = phasesTask.Result ?? EmptyPhasesRow(orderId);
             _componentsRow = compTask.Result ?? EmptyComponentsRow(orderId);
             _issues = issuesTask.Result.Items ?? new();
         }
+
         catch (Exception ex)
         {
             Logger.LogError(ex, "LoadDetailAsync failed for orderId={OrderId}", orderId);
@@ -1202,6 +1274,14 @@
         RatedVoltage = src.RatedVoltage, IsReactor = src.IsReactor,
     };
 
+    private static OrderTypeRow CloneOrderType(OrderTypeRow src) => new()
+    {
+        TypeId = src.TypeId,
+        OrderId = src.OrderId,
+        OrderType = src.OrderType,
+        ReferenceOrderNumber = src.ReferenceOrderNumber,
+    };
+
     private static OrderDesignPhasesRow ClonePhases(OrderDesignPhasesRow src) => new()
     {
         PhasesId = src.PhasesId, OrderId = src.OrderId,
@@ -1238,6 +1318,7 @@
     {
         if (IsAnySaveInFlight) return;
         if (_infoEditModel == null || _selectedOrder == null) return;
+
         _savingInfo = true;
         try
         {
@@ -1248,7 +1329,7 @@
                 await ShowToast(err ?? "保存失败", ToastCategory.Error);
                 return;
             }
-            // 关键:reload 展示 row(拿到新 InfoId + CreatedBy + CreatedTime)
+
             _infoRow = await OrderInfoService.GetByOrderIdAsync(_selectedOrder.Id)
                        ?? EmptyInfoRow(_selectedOrder.Id);
             await ShowToast("项目信息保存成功", ToastCategory.Success);
@@ -1257,6 +1338,30 @@
         finally
         {
             _savingInfo = false;
+        }
+    }
+
+    private async Task SaveOrderTypeAsync()
+    {
+        if (_savingOrderType || _orderTypeEditModel == null || _selectedOrder == null) return;
+        _savingOrderType = true;
+        try
+        {
+            _orderTypeEditModel.OrderId = _selectedOrder.Id;
+            var (ok, err) = await OrderTypeService.SaveAsync(_orderTypeEditModel);
+            if (!ok)
+            {
+        await ShowToast(err ?? "保存订单类型失败", ToastCategory.Error);
+        return;
+            }
+
+            _orderTypeRow = await OrderTypeService.GetByOrderIdAsync(_selectedOrder.Id);
+            await ShowToast("订单类型保存成功", ToastCategory.Success);
+            await _orderTypeModal.Close();
+        }
+        finally
+        {
+            _savingOrderType = false;
         }
     }
 
@@ -1324,6 +1429,24 @@
         await _infoModal.Show();
     }
 
+    private async Task ShowOrderTypeDialog()
+    {
+        if (IsAnySaveInFlight || !CanEditOrderType || _orderTypeRow == null || _selectedOrder == null) return;
+        _orderTypeEditModel = CloneOrderType(_orderTypeRow);
+        await _orderTypeModal.Show();
+    }
+
+    private Task OnOrderTypeChanged(SelectedItem item)
+    {
+        if (_orderTypeEditModel?.OrderType == "全新")
+        {
+            _orderTypeEditModel.ReferenceOrderNumber = null;
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task CloseOrderTypeDialog() => await _orderTypeModal.Close();
+
     private async Task CloseInfoDialog() => await _infoModal.Close();
 
     private async Task ShowPhasesDialog()
@@ -1346,7 +1469,7 @@
 
     private async Task CloseComponentsDialog() => await _componentsModal.Close();
 
-    // ===== 问题汇总 =====
+
 
     private async Task<QueryData<OrderIssues>> OnIssuesQueryAsync(QueryPageOptions options)
     {

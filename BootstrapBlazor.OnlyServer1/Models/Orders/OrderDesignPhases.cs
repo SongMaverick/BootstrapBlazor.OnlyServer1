@@ -52,6 +52,10 @@ public class OrderDesignPhases
     [SugarColumn(IsNullable = true)]
     public DateTime? Phase2ConfirmDate { get; set; }
 
+    /// <summary>项目经理 → Users.Id。</summary>
+    [SugarColumn(IsNullable = true)]
+    public int? ProjectManagerId { get; set; }
+
     // ===== 审计字段 =====
 
     [SugarColumn(IsNullable = false, Length = 100)]

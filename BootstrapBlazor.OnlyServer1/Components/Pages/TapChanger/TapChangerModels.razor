@@ -10,6 +10,17 @@
 <div class="page-tap-changer-models">
     <h1>分接开关型号管理</h1>
 
+    @* (2026-09-05 新增)型号录入时下拉里缺厂家时,不必跳到 TapChangerManufacturers 管理页;
+         在本页面直接弹 Modal 加厂家,保存后立刻刷新本页厂家下拉与列名查找表 *@
+    <div class="d-flex align-items-center mb-2" style="gap: 0.5rem;">
+        <Button Color="Color.Success" Icon="fa-solid fa-plus"
+                IsDisabled="@(!CurrentUser.HasPermission(PermissionCodes.TapChangerManufacturerCreate))"
+                OnClick="ShowAddManufacturerDialog">
+            新增加开关厂家
+        </Button>
+        <span class="text-muted small">录入型号时下拉里没找到厂家?在这里先添加。</span>
+    </div>
+
     <Table TItem="TapChangerModel"
            IsPagination="true"
            PageItemsSource="@PageItemsSource"
@@ -100,6 +111,32 @@
         </EditTemplate>
     </Table>
 </div>
+
+@* (2026-09-05 新增)新增加开关厂家 Modal — 沿用 OrderManagement.razor 的 @ref + Show/Close 三件套模式 *@
+<Modal @ref="_addManufacturerModal" IsBackdrop="true" ShowCloseButton="true">
+    <ModalDialog Title="新增分接开关厂家" Size="Size.Medium">
+        <BodyTemplate>
+            <BootstrapInput TValue="string" @bind-Value="_newManufacturerName"
+                            ShowLabel="true" DisplayName="厂家名称"
+                            PlaceHolder="例如:MR(莱茵豪森)、ABB、华明"
+                            MaxLength="100"
+                            IsDisabled="@_savingNewManufacturer" />
+            <div class="form-text">
+                名称大小写无关去重(IsDeleted=0 唯一);100 字符以内。保存后立刻出现在下方「所属厂家」下拉里。
+            </div>
+        </BodyTemplate>
+        <FooterTemplate>
+            <Button Color="Color.Primary" Icon="fa-solid fa-save" OnClick="SaveNewManufacturerAsync"
+                    IsDisabled="@_savingNewManufacturer">
+                @(_savingNewManufacturer ? "保存中..." : "保存")
+            </Button>
+            <Button Color="Color.Secondary" Icon="fa-solid fa-xmark" OnClick="CloseAddManufacturerDialog"
+                    IsDisabled="@_savingNewManufacturer">
+                取消
+            </Button>
+        </FooterTemplate>
+    </ModalDialog>
+</Modal>
 
 @code {
     private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
@@ -208,5 +245,84 @@
             Content = content,
             Delay = 2000
         });
+    }
+
+    // ===== (2026-09-05 新增)本页内"新增加开关厂家"弹窗 — 沿用 OrderManagement.razor 同款模式 =====
+
+    // (2026-09-05) Modal 引用 + 草稿状态。Modal 默认值 default! 与现有 _addIssueModal 等保持一致风格。
+    private BootstrapBlazor.Components.Modal _addManufacturerModal = default!;
+    private string _newManufacturerName = "";
+    private bool _savingNewManufacturer;
+
+    /// <summary>
+    /// 打开弹窗前再做一次权限检查(页面顶层已 require Admin,但 Operator+Viewer 也能进本页;
+    /// 当前台 @Disabled 不严时(比如 Service 改了权限),这里再挡一次)。
+    /// </summary>
+    private async Task ShowAddManufacturerDialog()
+    {
+        if (!CurrentUser.HasPermission(PermissionCodes.TapChangerManufacturerCreate))
+        {
+            await ShowToast("无 TapChanger.Manufacturer.Create 权限", ToastCategory.Warning);
+            return;
+        }
+        _newManufacturerName = "";
+        await _addManufacturerModal.Show();
+    }
+
+    private async Task CloseAddManufacturerDialog()
+    {
+        if (_savingNewManufacturer) return; // 防并发:保存中点 X 无效
+        await _addManufacturerModal.Close();
+    }
+
+    private async Task SaveNewManufacturerAsync()
+    {
+        if (_savingNewManufacturer) return;
+        if (string.IsNullOrWhiteSpace(_newManufacturerName))
+        {
+            await ShowToast("厂家名称不能为空", ToastCategory.Error);
+            return;
+        }
+        _savingNewManufacturer = true;
+        try
+        {
+            // Service 内部已有 Admin 角色校验 + 大小写无关去重 + 100 字符上限(纵深防御)
+            var (ok, error, _) = await TapChangerManufacturerService.CreateAsync(_newManufacturerName);
+            if (!ok)
+            {
+                await ShowToast(error ?? "新增失败", ToastCategory.Error);
+                return;
+            }
+            await ShowToast("厂家已新增", ToastCategory.Success);
+            await _addManufacturerModal.Close();
+            // 关键:刷新本页厂家下拉 + 列名查找表,让新厂家立刻出现在「所属厂家」下拉里
+            await RefreshManufacturersAsync();
+            _newManufacturerName = "";
+        }
+        finally
+        {
+            _savingNewManufacturer = false;
+        }
+    }
+
+    /// <summary>
+    /// (2026-09-05) 刷新厂家下拉 + 表格列名查找表。
+    /// 沿用 OnInitializedAsync 同样的"启用项在前 + 按 Name 排序 + 头部插「请选择厂家」"逻辑;
+    /// 新增厂家 IsActive=true,排序自动排前面。
+    /// OnInitializedAsync 当前未抽出来复用(代码微重复),后续若再加「编辑/删除」可统一收口。
+    /// </summary>
+    private async Task RefreshManufacturersAsync()
+    {
+        var manufacturers = await TapChangerManufacturerService.GetAllIncludingInactiveAsync();
+        _manufacturerLookup = manufacturers.ToDictionary(m => m.Id, m => m.Name);
+
+        _manufacturerItems = manufacturers
+            .OrderBy(m => !m.IsActive) // 启用项在前
+            .ThenBy(m => m.Name)
+            .Select(m => new SelectedItem(m.Id.ToString(), m.Name))
+            .ToList();
+        // BootstrapBlazor 8.11 Select value=0 时回退到 Items 第 0 项,
+        // 不显示 PlaceHolder。头部插 "请选择" (Value="0") 让占位文本真实生效。
+        _manufacturerItems.Insert(0, new SelectedItem("0", "请选择厂家"));
     }
 }

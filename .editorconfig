@@ -1,0 +1,111 @@
+root = true
+
+###############################################################################
+# 全局基础设置（适用于所有文件）
+###############################################################################
+[*]
+indent_style = space                  # 缩进使用空格（不用 Tab）
+indent_size = 4                       # 缩进宽度为 4 个空格
+end_of_line = lf                      # 换行符使用 LF（Linux/Mac 风格；Windows 用户可改为 crlf）
+charset = utf-8                       # 文件编码为 UTF-8
+trim_trailing_whitespace = true       # 自动删除行尾的多余空格
+insert_final_newline = true           # 文件末尾必须有一个空行
+
+###############################################################################
+# C# 源代码文件
+###############################################################################
+[*.{cs,csx}]
+indent_size = 4                       # C# 文件使用 4 空格缩进
+
+###############################################################################
+# 项目文件 / 解决方案 / JSON / YAML（VS 习惯用 2 空格缩进）
+###############################################################################
+[*.{csproj,sln,props,targets}]
+indent_size = 2                       # 项目相关文件用 2 空格缩进（XML 风格）
+
+[*.{json,yml,yaml}]
+indent_size = 2                       # JSON/YAML 用 2 空格缩进
+
+[*.md]
+trim_trailing_whitespace = false      # Markdown 行尾的两个空格代表换行，不要自动删除
+
+###############################################################################
+# C# 代码风格
+###############################################################################
+[*.cs]
+
+# ===========================
+# 缩进与换行规则
+# ===========================
+csharp_indent_case_contents = true                  # switch 的 case 内容要缩进
+csharp_indent_switch_labels = true                  # switch 的 case 标签要缩进
+csharp_indent_block_contents = true                 # 块内代码（{} 内部）要缩进
+csharp_indent_braces = false                        # 大括号本身不缩进
+csharp_indent_case_contents_when_block = true       # case 块内代码要缩进
+
+# 大括号不换行（核心设置）
+csharp_new_line_before_open_brace = false           # 左大括号 { 不换行，留在行尾
+
+csharp_new_line_before_else = false                 # else 留在 } 后面，不换行
+csharp_new_line_before_catch = false                # catch 留在 } 后面，不换行
+csharp_new_line_before_finally = false              # finally 留在 } 后面，不换行
+csharp_new_line_before_members_in_object_initializers = true    # 对象初始化器中每个属性换行
+csharp_new_line_before_members_in_anonymous_types = true        # 匿名类型中每个属性换行
+csharp_new_line_before_query_clause = false         # LINQ 查询子句不换行
+
+# ===========================
+# using 指令
+# ===========================
+csharp_using_directive_placement = outside_namespace:warning   # using 指令放在命名空间外面（警告）
+dotnet_sort_system_directives_first = true                    # System.* 的 using 排在最前
+dotnet_separate_import_directive_groups = false               # 不在 using 组之间加空行
+
+# ===========================
+# var 关键字使用建议
+# ===========================
+csharp_style_var_for_built_in_types = true:suggestion         # 内置类型（int、string 等）建议用 var
+csharp_style_var_when_type_is_apparent = true:suggestion       # 类型显而易见时建议用 var
+csharp_style_var_elsewhere = true:suggestion                  # 其他情况也建议用 var
+
+# ===========================
+# 新语法 / 现代写法偏好
+# ===========================
+csharp_prefer_simple_using_statement = true:suggestion                    # 优先用 using var（C# 8）
+csharp_style_namespace_declarations = file_scoped:suggestion               # 优先用 file-scoped 命名空间（C# 10）
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion   # 优先用模式匹配而不是 is + 类型转换
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion   # 优先用模式匹配而不是 as + null 检查
+csharp_style_throw_expression = true:suggestion                          # 优先用 throw 表达式而不是 throw 语句（C# 7）
+csharp_style_conditional_delegate_call = true:suggestion                  # 优先用条件委托调用（?.Invoke，C# 6）
+csharp_style_prefer_switch_expression = true:suggestion                   # 优先用 switch 表达式（C# 8）
+csharp_style_prefer_pattern_matching = true:suggestion                    # 优先用模式匹配
+csharp_style_prefer_not_pattern = true:suggestion                         # 优先用 not 模式（C# 9）
+csharp_style_prefer_index_operator = true:suggestion                     # 优先用 ^ 索引运算符（C# 8）
+csharp_style_prefer_range_operator = true:suggestion                      # 优先用 .. 范围运算符（C# 8）
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion  # 优先用隐式 new（C# 9）
+csharp_style_prefer_null_check_over_type_check = true:suggestion          # 优先用 null 检查而不是类型检查
+csharp_style_prefer_top_level_statements = true:suggestion                # 优先用顶级语句（C# 9）
+csharp_style_prefer_primary_constructors = true:suggestion                # 优先用主构造函数（C# 12）
+
+# ===========================
+# this. 前缀使用建议
+# ===========================
+dotnet_style_qualification_for_field = false:suggestion     # 字段不强制加 this.
+dotnet_style_qualification_for_property = false:suggestion  # 属性不强制加 this.
+dotnet_style_qualification_for_method = false:suggestion    # 方法不强制加 this.
+dotnet_style_qualification_for_event = false:suggestion     # 事件不强制加 this.
+
+# ===========================
+# 命名风格（建议：私有字段用 _camelCase）
+# ===========================
+# 规则定义：私有字段 → 下划线 + 驼峰
+dotnet_naming_rule.private_fields_underscore.severity = suggestion
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel_case
+
+# 符号定义：哪些是「私有字段」
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+# 风格定义：必须以下划线开头，主体用驼峰
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case

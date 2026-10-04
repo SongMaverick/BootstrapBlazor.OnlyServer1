@@ -18,18 +18,38 @@
       }
     },
     {
-      "label": "publish",
+      "label": "publish (FolderProfile)",
       "command": "dotnet",
       "type": "process",
       "args": [
         "publish",
         "${workspaceFolder}/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1.csproj",
-        "-c",
-        "Release",
-        "-o",
-        "${workspaceFolder}/publish"
+        "/p:PublishProfile=FolderProfile"
       ],
-      "problemMatcher": "$msCompile"
+      "problemMatcher": "$msCompile",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "publish (clean + IIS output)",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "publish",
+        "${workspaceFolder}/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1.csproj",
+        "-c", "Release",
+        "-f", "net8.0",
+        "-p:Platform=x64",
+        "-p:PublishReadyToRun=true",
+        "-o", "${workspaceFolder}/publish"
+      ],
+      "problemMatcher": "$msCompile",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     }
   ]
 }

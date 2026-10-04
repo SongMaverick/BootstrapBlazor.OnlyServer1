@@ -86,7 +86,9 @@
       "Bash(ls /c/Users/z0048byz/.nuget/packages/bootstrapblazor/8.11.0/lib/net8.0/)",
       "Read(//c/Users/z0048byz/.nuget/packages/bootstrapblazor/8.11.0/lib/net8.0//**)",
       "Bash(wc -l \"/c/Users/z0048byz/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1/wwwroot/css/app.css\")",
-      "Read(//c/Users/z0048byz/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1/wwwroot/css/**)"
+      "Read(//c/Users/z0048byz/D7_codeBase/BootstrapBlazor.OnlyServer1/BootstrapBlazor.OnlyServer1/wwwroot/css/**)",
+      "Bash([ -d \"$PUB_DIR\" ])",
+      "Bash(grep -E \"\\(dll$|json$|config$|wwwroot$\\)\")"
     ]
   }
 }

@@ -62,15 +62,17 @@ public class OrderDesignPhasesService
                 .LeftJoin<OrderDesignPhases>((o, p) => o.Id == p.OrderId && !p.IsDeleted)
                 .LeftJoin<Users>((o, p, u1) => p.Phase1EngineerId == u1.Id)
                 .LeftJoin<Users>((o, p, u1, u2) => p.Phase2EngineerId == u2.Id)
+                .LeftJoin<Users>((o, p, u1, u2, pm) => p.ProjectManagerId == pm.Id)
                 .Where(o => !o.IsDeleted);
 
             var kw = options.SearchText;
             if (!string.IsNullOrEmpty(kw))
             {
-                query = query.Where((o, p, u1, u2) =>
+                query = query.Where((o, p, u1, u2, pm) =>
                     o.OrderNumber.ToString().Contains(kw)
                     || (u1.Name != null && u1.Name.Contains(kw))
-                    || (u2.Name != null && u2.Name.Contains(kw)));
+                    || (u2.Name != null && u2.Name.Contains(kw))
+                    || (pm.Name != null && pm.Name.Contains(kw)));
             }
 
             if (!string.IsNullOrEmpty(options.SortName) && _allowedSortCols.Contains(options.SortName))
@@ -86,7 +88,7 @@ public class OrderDesignPhasesService
 
             var total = query.Count();
             var items = query
-                .Select((o, p, u1, u2) => new OrderDesignPhasesRow
+                .Select((o, p, u1, u2, pm) => new OrderDesignPhasesRow
                 {
                     PhasesId = p.Id,
                     OrderId = o.Id,
@@ -96,12 +98,14 @@ public class OrderDesignPhasesService
                     Phase2EngineerId = p.Phase2EngineerId,
                     Phase2SubmitDate = p.Phase2SubmitDate,
                     Phase2ConfirmDate = p.Phase2ConfirmDate,
+                    ProjectManagerId = p.ProjectManagerId,
                     OrderNumber = o.OrderNumber,
                     Power = o.Power,
                     RatedVoltage = o.RatedVoltage,
                     IsReactor = o.IsReactor,
                     Phase1EngineerName = u1.Name,
                     Phase2EngineerName = u2.Name,
+                    ProjectManagerName = pm.Name,
                 })
                 .Skip((options.PageIndex - 1) * options.PageItems)
                 .Take(options.PageItems)
@@ -139,8 +143,9 @@ public class OrderDesignPhasesService
                 .LeftJoin<OrderDesignPhases>((o, p) => o.Id == p.OrderId && !p.IsDeleted)
                 .LeftJoin<Users>((o, p, u1) => p.Phase1EngineerId == u1.Id)
                 .LeftJoin<Users>((o, p, u1, u2) => p.Phase2EngineerId == u2.Id)
+                .LeftJoin<Users>((o, p, u1, u2, pm) => p.ProjectManagerId == pm.Id)
                 .Where(o => o.Id == orderId && !o.IsDeleted)
-                .Select((o, p, u1, u2) => new OrderDesignPhasesRow
+                .Select((o, p, u1, u2, pm) => new OrderDesignPhasesRow
                 {
                     PhasesId = p.Id,
                     OrderId = o.Id,
@@ -150,12 +155,14 @@ public class OrderDesignPhasesService
                     Phase2EngineerId = p.Phase2EngineerId,
                     Phase2SubmitDate = p.Phase2SubmitDate,
                     Phase2ConfirmDate = p.Phase2ConfirmDate,
+                    ProjectManagerId = p.ProjectManagerId,
                     OrderNumber = o.OrderNumber,
                     Power = o.Power,
                     RatedVoltage = o.RatedVoltage,
                     IsReactor = o.IsReactor,
                     Phase1EngineerName = u1.Name,
                     Phase2EngineerName = u2.Name,
+                    ProjectManagerName = pm.Name,
                 })
                 .First();
 
@@ -222,6 +229,7 @@ public class OrderDesignPhasesService
                     Phase2EngineerId = row.Phase2EngineerId,
                     Phase2SubmitDate = row.Phase2SubmitDate,
                     Phase2ConfirmDate = row.Phase2ConfirmDate,
+                    ProjectManagerId = row.ProjectManagerId,
                     CreatedBy = operatorName,
                     CreatedTime = now,
                     UpdatedBy = operatorName,
@@ -245,7 +253,7 @@ public class OrderDesignPhasesService
             else
             {
                 var entity = await _db.Queryable<OrderDesignPhases>()
-                    .Where(p => p.Id == row.PhasesId && !p.IsDeleted)
+                    .Where(p => p.Id == row.PhasesId && p.OrderId == row.OrderId && !p.IsDeleted)
                     .FirstAsync();
                 if (entity == null)
                 {
@@ -258,6 +266,7 @@ public class OrderDesignPhasesService
                 entity.Phase2EngineerId = row.Phase2EngineerId;
                 entity.Phase2SubmitDate = row.Phase2SubmitDate;
                 entity.Phase2ConfirmDate = row.Phase2ConfirmDate;
+                entity.ProjectManagerId = row.ProjectManagerId;
                 entity.UpdatedBy = operatorName;
                 entity.UpdatedTime = now;
 

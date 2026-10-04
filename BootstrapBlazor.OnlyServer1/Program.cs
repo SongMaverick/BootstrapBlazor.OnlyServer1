@@ -167,6 +167,7 @@ builder.Services.AddScoped<DrawingNameService>();
 builder.Services.AddScoped<IDrawingNumberAllocator, DrawingNumberAllocator>();
 builder.Services.AddScoped<OrdersService>();
 builder.Services.AddScoped<OrderInfoService>();
+builder.Services.AddScoped<OrderTypeService>();
 builder.Services.AddScoped<OrderDesignPhasesService>();
 builder.Services.AddScoped<OrderImportantComponentsService>();
 builder.Services.AddScoped<OrderIssueService>();
