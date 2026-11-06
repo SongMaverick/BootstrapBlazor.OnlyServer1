@@ -73,6 +73,8 @@ namespace BootstrapBlazor.OnlyServer1.Components.Shared
                 RoleNames.All),
             (new() { Text = "图名列表", Icon = "fa-solid fa-fw fa-list", Url = "/drawing-names" },
                 new[] { RoleNames.Admin, RoleNames.Operator }),
+            (new() { Text = "复制 OCC 重量", Icon = "fa-solid fa-fw fa-copy", Url = "/copy-occ-mass" },
+                new[] { RoleNames.Admin, RoleNames.Accounting }),
             (new() { Text = "开关型号", Icon = "fa-solid fa-fw fa-toggle-on", Url = "/tap-changer-models" },
                 new[] { RoleNames.Admin }),
             (new() { Text = "人员列表", Icon = "fa-solid fa-fw fa-users", Url = "/user-management" },

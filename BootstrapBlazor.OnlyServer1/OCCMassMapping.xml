@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Mappings>
+  <Version version="Default">
+    <Item weightCode="WIN-1C" occCode="WIN-1C" targetRow="17" />
+    <Item weightCode="WIN-1I" occCode="WIN-1I" targetRow="18" />
+    <Item weightCode="WIN-2C" occCode="WIN-2C" targetRow="23" />
+    <Item weightCode="WIN-2I" occCode="WIN-2I" targetRow="24" />
+    <Item weightCode="WIN-3C" occCode="WIN-3C" targetRow="29" />
+    <Item weightCode="WIN-3I" occCode="WIN-3I" targetRow="30" />
+    <Item weightCode="WIN-4C" occCode="WIN-4C" targetRow="35" />
+    <Item weightCode="WIN-4I" occCode="WIN-4I" targetRow="36" />
+    <Item weightCode="WIN-5C" occCode="WIN-5C" targetRow="41" />
+    <Item weightCode="WIN-5I" occCode="WIN-5I" targetRow="42" />
+    <Item weightCode="WIN-6C" occCode="WIN-6C" targetRow="47" />
+    <Item weightCode="WIN-6I" occCode="WIN-6I" targetRow="48" />
+    <Item weightCode="WIN-APB" occCode="WIN-APB" targetRow="60" />
+    <Item weightCode="COR-SS" occCode="COR-SS" targetRow="66" />
+    <Item weightCode="COR-RUB" occCode="COR-RUB" targetRow="69" />
+    <Item weightCode="COR-CFS" occCode="COR-CFS" targetRow="70" />
+    <Item weightCode="COR-ASP" occCode="COR-ASP" targetRow="71" />
+    <Item weightCode="COR-TPL" occCode="COR-TPL" targetRow="72" />
+    <Item weightCode="CCA-WBS" occCode="CCA-WBS" targetRow="78" />
+    <Item weightCode="CCA-PSE" occCode="CCA-PSE" targetRow="79" />
+    <Item weightCode="CCA-CLR1" occCode="CCA-CLR1" targetRow="88" />
+    <Item weightCode="CCA-CLR2" occCode="CCA-CLR2" targetRow="89" />
+    <Item weightCode="CCA-LRC" occCode="CCA-LRC" targetRow="92" />
+    <Item weightCode="CCA-LCC" occCode="CCA-LCC" targetRow="94" />
+    <Item weightCode="CCA-LPB" occCode="CCA-LPB" targetRow="97" />
+    <Item weightCode="TRT-TAN" occCode="TRT-TAN" targetRow="104" />
+    <Item weightCode="TRT-TAS" occCode="TRT-TAS" targetRow="105" />
+    <Item weightCode="TRT-CON1" occCode="TRT-CON1" targetRow="106" />
+    <Item weightCode="TRT-CON2" occCode="TRT-CON2" targetRow="107" />
+    <Item weightCode="TRT-CON3" occCode="TRT-CON3" targetRow="108" />
+    <Item weightCode="TRT-OIL" occCode="TRT-OIL" targetRow="116" />
+  </Version>
+  <Version version="V1.71" />
+  <Version version="V1.74" />
+  <Version version="V1.75" />
+  <Version version="V1.76" />
+  <Version version="V1.77" />
+  <Version version="V1.78" />
+  <Version version="V1.79">
+    <Item weightCode="WIN-1C" occCode="WIN-1C" targetRow="17" />
+    <Item weightCode="WIN-1I" occCode="WIN-1I" targetRow="18" />
+    <Item weightCode="WIN-2C" occCode="WIN-2C" targetRow="22" />
+    <Item weightCode="WIN-2I" occCode="WIN-2I" targetRow="23" />
+    <Item weightCode="WIN-3C" occCode="WIN-3C" targetRow="27" />
+    <Item weightCode="WIN-3I" occCode="WIN-3I" targetRow="28" />
+    <Item weightCode="WIN-4C" occCode="WIN-4C" targetRow="32" />
+    <Item weightCode="WIN-4I" occCode="WIN-4I" targetRow="33" />
+    <Item weightCode="WIN-5C" occCode="WIN-5C" targetRow="37" />
+    <Item weightCode="WIN-5I" occCode="WIN-5I" targetRow="38" />
+    <Item weightCode="WIN-6C" occCode="WIN-6C" targetRow="42" />
+    <Item weightCode="WIN-6I" occCode="WIN-6I" targetRow="43" />
+    <Item weightCode="WIN-APB" occCode="WIN-APB" targetRow="53" />
+    <Item weightCode="COR-SS" occCode="COR-SS" targetRow="59" />
+    <Item weightCode="COR-RUB" occCode="COR-RUB" targetRow="61" />
+    <Item weightCode="COR-CFS" occCode="COR-CFS" targetRow="62" />
+    <Item weightCode="COR-ASP" occCode="COR-ASP" targetRow="63" />
+    <Item weightCode="COR-TPL" occCode="COR-TPL" targetRow="64" />
+    <Item weightCode="CCA-WBS" occCode="CCA-WBS" targetRow="70" />
+    <Item weightCode="CCA-PSE" occCode="CCA-PSE" targetRow="71" />
+    <Item weightCode="CCA-CLR1" occCode="CCA-CLR1" targetRow="80" />
+    <Item weightCode="CCA-CLR2" occCode="CCA-CLR2" targetRow="81" />
+    <Item weightCode="CCA-LRC" occCode="CCA-LRC" targetRow="84" />
+    <Item weightCode="CCA-LCC" occCode="CCA-LCC" targetRow="86" />
+    <Item weightCode="CCA-LPB" occCode="CCA-LPB" targetRow="89" />
+    <Item weightCode="TRT-TAN" occCode="TRT-TAN" targetRow="96" />
+    <Item weightCode="TRT-TAS" occCode="TRT-TAS" targetRow="97" />
+    <Item weightCode="TRT-CON1" occCode="TRT-CON1" targetRow="98" />
+    <Item weightCode="TRT-CON2" occCode="TRT-CON2" targetRow="99" />
+    <Item weightCode="TRT-CON3" occCode="TRT-CON3" targetRow="100" />
+    <Item weightCode="TRT-OIL" occCode="TRT-OIL" targetRow="108" />
+  </Version>
+  <Version version="V1.81">
+    <Item weightCode="WIN-1C" occCode="WIN-1C" targetRow="17" />
+    <Item weightCode="WIN-1I" occCode="WIN-1I" targetRow="18" />
+    <Item weightCode="WIN-2C" occCode="WIN-2C" targetRow="22" />
+    <Item weightCode="WIN-2I" occCode="WIN-2I" targetRow="23" />
+    <Item weightCode="WIN-3C" occCode="WIN-3C" targetRow="27" />
+    <Item weightCode="WIN-3I" occCode="WIN-3I" targetRow="28" />
+    <Item weightCode="WIN-4C" occCode="WIN-4C" targetRow="32" />
+    <Item weightCode="WIN-4I" occCode="WIN-4I" targetRow="33" />
+    <Item weightCode="WIN-5C" occCode="WIN-5C" targetRow="37" />
+    <Item weightCode="WIN-5I" occCode="WIN-5I" targetRow="38" />
+    <Item weightCode="WIN-6C" occCode="WIN-6C" targetRow="42" />
+    <Item weightCode="WIN-6I" occCode="WIN-6I" targetRow="43" />
+    <Item weightCode="WIN-APB" occCode="WIN-APB" targetRow="53" />
+    <Item weightCode="COR-SS" occCode="COR-SS" targetRow="59" />
+    <Item weightCode="COR-RUB" occCode="COR-RUB" targetRow="61" />
+    <Item weightCode="COR-CFS" occCode="COR-CFS" targetRow="62" />
+    <Item weightCode="COR-ASP" occCode="COR-ASP" targetRow="63" />
+    <Item weightCode="COR-TPL" occCode="COR-TPL" targetRow="64" />
+    <Item weightCode="CCA-WBS" occCode="CCA-WBS" targetRow="70" />
+    <Item weightCode="CCA-PSE" occCode="CCA-PSE" targetRow="71" />
+    <Item weightCode="CCA-CLR1" occCode="CCA-CLR1" targetRow="80" />
+    <Item weightCode="CCA-CLR2" occCode="CCA-CLR2" targetRow="81" />
+    <Item weightCode="CCA-LRC" occCode="CCA-LRC" targetRow="84" />
+    <Item weightCode="CCA-LCC" occCode="CCA-LCC" targetRow="86" />
+    <Item weightCode="CCA-LPB" occCode="CCA-LPB" targetRow="89" />
+    <Item weightCode="TRT-TAN" occCode="TRT-TAN" targetRow="96" />
+    <Item weightCode="TRT-TAS" occCode="TRT-TAS" targetRow="97" />
+    <Item weightCode="TRT-CON1" occCode="TRT-CON1" targetRow="98" />
+    <Item weightCode="TRT-CON2" occCode="TRT-CON2" targetRow="99" />
+    <Item weightCode="TRT-CON3" occCode="TRT-CON3" targetRow="100" />
+    <Item weightCode="TRT-OIL" occCode="TRT-OIL" targetRow="108" />
+  </Version>
+</Mappings>

@@ -48,6 +48,9 @@ public static class PermissionCodes
     public const string DrawingNameCreate = "DrawingName.Create";
     public const string DrawingNameDelete = "DrawingName.Delete";
 
+    // OCC 重量复制
+    public const string OCCMassUse = "OCCMass.Use";
+
     // 有载分接开关厂家(/tap-changer-manufacturers 管理页 + 业务下拉项)
     public const string TapChangerManufacturerCreate = "TapChangerManufacturer.Create";
     public const string TapChangerManufacturerRead   = "TapChangerManufacturer.Read";

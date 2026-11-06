@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BootstrapBlazor.OrderManage
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BootstrapBlazor.TapChangerSetup", "BootstrapBlazor.TapChangerSetup\BootstrapBlazor.TapChangerSetup.csproj", "{291D6ED4-9641-4455-99FF-5117F30F480C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BootstrapBlazor.OCCMassSetup", "BootstrapBlazor.OCCMassSetup\BootstrapBlazor.OCCMassSetup.csproj", "{69F602E1-236E-4DAF-9341-9823A58718EE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{291D6ED4-9641-4455-99FF-5117F30F480C}.Release|x64.Build.0 = Release|Any CPU
 		{291D6ED4-9641-4455-99FF-5117F30F480C}.Release|x86.ActiveCfg = Release|Any CPU
 		{291D6ED4-9641-4455-99FF-5117F30F480C}.Release|x86.Build.0 = Release|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Debug|x64.Build.0 = Debug|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Debug|x86.Build.0 = Debug|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Release|x64.ActiveCfg = Release|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Release|x64.Build.0 = Release|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Release|x86.ActiveCfg = Release|Any CPU
+		{69F602E1-236E-4DAF-9341-9823A58718EE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

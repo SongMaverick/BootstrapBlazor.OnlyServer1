@@ -9,6 +9,7 @@ using BootstrapBlazor.OnlyServer1.Services.Drawing;
 using BootstrapBlazor.OnlyServer1.Services.Identity;
 using BootstrapBlazor.OnlyServer1.Services.OrderManagement;
 using BootstrapBlazor.OnlyServer1.Services.TapChanger;
+using BootstrapBlazor.OnlyServer1.Services.Tools;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
@@ -178,6 +179,7 @@ builder.Services.AddScoped<PermissionsService>();
 builder.Services.AddScoped<RolesService>();
 builder.Services.AddScoped<TapChangerManufacturerService>();
 builder.Services.AddScoped<TapChangerModelService>();
+builder.Services.AddScoped<OCCMassService>();
 
 builder.Services.AddSingleton<IDrawingTypeRegistry, DrawingTypeRegistry>();
 builder.Services.AddSingleton<OrderLockProvider>();
@@ -186,7 +188,8 @@ builder.Services.AddSingleton<OrderLockProvider>();
 builder.Services.Configure<BootstrapBlazor.OnlyServer1.Models.BusinessRules.DrawingTypeOptions>(
     builder.Configuration.GetSection("BusinessRules:DrawingType"));
 
-builder.Services.Configure<HubOptions>(option => option.MaximumReceiveMessageSize = 64 * 1024);
+// Excel 文件上传/下载需要允许较大的 SignalR 消息。
+builder.Services.Configure<HubOptions>(option => option.MaximumReceiveMessageSize = 100 * 1024 * 1024);
 
 // ============================================================
 // (2026-08-27) QuestPDF License

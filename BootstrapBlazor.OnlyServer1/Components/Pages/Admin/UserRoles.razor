@@ -50,7 +50,8 @@
         </div>
     }
 
-    <Table TItem="UserWithRolesViewModel"
+    <Table @ref="_tableRef"
+           TItem="UserWithRolesViewModel"
            IsPagination="true"
            PageItemsSource="@PageItemsSource"
            RenderMode="TableRenderMode.Table"
@@ -96,6 +97,10 @@
                                 Value="value.Value"
                                 ValueChanged="@(async (int? newVal) => await OnSingleRoleChangeAsync(value.Row.User.Id, newVal))"
                                 ShowSearch="true" PlaceHolder="选择角色" Style="width: 280px;" />
+                        <Button Color="Color.Danger" Size="Size.ExtraSmall" Class="ms-1"
+                                OnClick="@(async () => await ClearUserRolesAsync(value.Row.User.Id))">
+                            清除全部角色
+                        </Button>
                     </Template>
                 </TableColumn>
             }
@@ -106,6 +111,7 @@
 @code {
     private static IEnumerable<int> PageItemsSource => new int[] { 10, 20, 40 };
 
+    private Table<UserWithRolesViewModel>? _tableRef;
     private string _mode = "single";
 
     private List<SelectedItem> _roleItems = new();
@@ -171,6 +177,26 @@
             return;
         }
         await ShowToast("已设置,该用户需重新登录生效", ToastCategory.Success);
+        if (_tableRef is not null)
+        {
+            await _tableRef.QueryAsync();
+        }
+    }
+
+    private async Task ClearUserRolesAsync(int userId)
+    {
+        var (ok, error) = await RolesService.SetUserRolesAsync(userId, Array.Empty<int>());
+        if (!ok)
+        {
+            await ShowToast(error ?? "清除角色失败", ToastCategory.Error);
+            return;
+        }
+
+        await ShowToast("已清除该用户的全部角色,用户需重新登录生效", ToastCategory.Success);
+        if (_tableRef is not null)
+        {
+            await _tableRef.QueryAsync();
+        }
     }
 
     private async Task ApplyBatchAsync()

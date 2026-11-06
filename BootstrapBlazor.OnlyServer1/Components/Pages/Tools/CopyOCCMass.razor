@@ -1,0 +1,208 @@
+@page "/copy-occ-mass"
+@attribute [TabItemOption(Text = "复制 OCC 重量")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = RoleNames.Admin + "," + RoleNames.Accounting)]
+@inject OCCMassService OCCMassService
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+<PageTitle>复制 OCC 重量</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex align-items-center mb-3">
+        <i class="fa-solid fa-copy fa-lg text-primary me-2"></i>
+        <h4 class="mb-0">复制 OCC 重量</h4>
+    </div>
+
+    <div class="alert alert-info">
+        请先选择重量表。系统会读取重量表 <strong>DI</strong> 页中的重量并显示在下方，
+        你可以逐项编辑；之后选择 OCC 文件，点击“写入 OCC 并下载”。
+        支持 .xls 和 .xlsx 文件。
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="mb-4">
+                <label class="form-label fw-bold" for="weight-file">第一步：选择重量表文件</label>
+                <InputFile id="weight-file" OnChange="SelectWeightFileAsync" accept=".xls,.xlsx" class="form-control" />
+                @if (_weightFile is not null)
+                {
+                    <div class="form-text text-success mt-2">
+                        <i class="fa-solid fa-file-excel me-1"></i>@_weightFile.Name (@FormatSize(_weightFile.Size))
+                    </div>
+                }
+                @if (_loadingWeights)
+                {
+                    <div class="text-primary mt-2">
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>正在读取重量...
+                    </div>
+                }
+            </div>
+
+            @if (_weights.Count > 0)
+            {
+                <div class="border rounded p-3 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">重量数据（可编辑）</h5>
+                        <span class="text-muted small">共 @_weights.Count 项</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 130px;">项目</th>
+                                    <th>英文描述</th>
+                                    <th>重量</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (var index = 0; index < _weights.Count; index++)
+                                {
+                                    var item = _weights[index];
+                                    <tr>
+                                        <td>@item.Code</td>
+                                        <td>@item.Description</td>
+                                        <td>
+                                            <input type="number" step="any" class="form-control form-control-sm"
+                                                   @bind="item.Value" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            <div class="mb-4">
+                <label class="form-label fw-bold" for="occ-file">第二步：选择 OCC 文件</label>
+                <InputFile id="occ-file" OnChange="SelectOccFile" accept=".xls,.xlsx"
+                           class="form-control" disabled="@(_loadingWeights || _weights.Count == 0)" />
+                @if (_occFile is not null)
+                {
+                    <div class="form-text text-success mt-2">
+                        <i class="fa-solid fa-file-excel me-1"></i>@_occFile.Name (@FormatSize(_occFile.Size))
+                    </div>
+                }
+            </div>
+
+            <button class="btn btn-primary" @onclick="ProcessAsync"
+                    disabled="@(_processing || _loadingWeights || _occFile is null || _weights.Count == 0)">
+                @if (_processing)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    <span>处理中...</span>
+                }
+                else
+                {
+                    <i class="fa-solid fa-copy me-1"></i>
+                    <span>写入 OCC 并下载</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    @if (_lastResult is not null)
+    {
+        <div class="alert alert-success mt-3">
+            已处理 OCC 版本 <strong>@_lastResult.Version</strong>，更新 @_lastResult.UpdatedRowCount 个重量单元格。
+        </div>
+    }
+</div>
+
+@code {
+    private const long MaxFileSize = 100 * 1024 * 1024;
+    private IBrowserFile? _weightFile;
+    private IBrowserFile? _occFile;
+    private readonly List<OCCMassWeightItem> _weights = [];
+    private bool _loadingWeights;
+    private bool _processing;
+    private OCCMassProcessResult? _lastResult;
+
+    private async Task SelectWeightFileAsync(InputFileChangeEventArgs args)
+    {
+        _weightFile = args.File;
+        _occFile = null;
+        _weights.Clear();
+        _lastResult = null;
+        _loadingWeights = true;
+
+        try
+        {
+            await using var stream = _weightFile.OpenReadStream(MaxFileSize);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            var weights = await OCCMassService.ReadWeightsAsync(memory.ToArray(), _weightFile.Name);
+            _weights.AddRange(weights);
+            await ShowToast($"已读取 {_weights.Count} 个重量值，请检查或编辑", ToastCategory.Success);
+        }
+        catch (Exception ex)
+        {
+            _weightFile = null;
+            await ShowToast($"读取重量表失败：{ex.Message}", ToastCategory.Error);
+        }
+        finally
+        {
+            _loadingWeights = false;
+        }
+    }
+
+    private void SelectOccFile(InputFileChangeEventArgs args)
+    {
+        _occFile = args.File;
+        _lastResult = null;
+    }
+
+    private async Task ProcessAsync()
+    {
+        if (_occFile is null || _weights.Count == 0 || _processing)
+        {
+            return;
+        }
+
+        _processing = true;
+        try
+        {
+            await using var occStream = _occFile.OpenReadStream(MaxFileSize);
+            using var occMemory = new MemoryStream();
+            await occStream.CopyToAsync(occMemory);
+
+            _lastResult = await OCCMassService.ProcessAsync(
+                occMemory.ToArray(),
+                _occFile.Name,
+                _weights);
+
+            await JS.InvokeVoidAsync(
+                "downloadFile",
+                _lastResult.FileName,
+                _lastResult.ContentType,
+                _lastResult.Content);
+            await ShowToast($"处理完成，已下载 {_lastResult.FileName}", ToastCategory.Success);
+        }
+        catch (Exception ex)
+        {
+            _lastResult = null;
+            await ShowToast($"写入 OCC 失败：{ex.Message}", ToastCategory.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private async Task ShowToast(string message, ToastCategory category)
+    {
+        await ToastService.Show(new ToastOption
+        {
+            Category = category,
+            Content = message,
+            Delay = 5000
+        });
+    }
+
+    private static string FormatSize(long size)
+    {
+        return size < 1024 * 1024
+            ? $"{size / 1024d:0.##} KB"
+            : $"{size / 1024d / 1024d:0.##} MB";
+    }
+}
