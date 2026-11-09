@@ -126,9 +126,9 @@ public static class Program {
     //生产环境
     //var connStr = config.GetConnectionString("sqlServerConnection");
     //生产测试环境
-    //var connStr = config.GetConnectionString("sqlServerConnectionTest");
+    var connStr = config.GetConnectionString("sqlServerConnectionTest");
     //测试环境
-    var connStr = config.GetConnectionString("sqlServerConnectionStringOffice");
+    //var connStr = config.GetConnectionString("sqlServerConnectionStringOffice");
 
     if (string.IsNullOrWhiteSpace(connStr)) {
       Console.Error.WriteLine("错误:appsettings.json 中未配置 ConnectionStrings.sqlServerConnection");

@@ -301,6 +301,7 @@ public sealed class OCCMassService(IHostEnvironment environment, ILogger<OCCMass
         {
             var row = sheet.GetRow(rows[index] - 1) ?? sheet.CreateRow(rows[index] - 1);
             var cell = row.GetCell(2) ?? row.CreateCell(2);
+            cell.SetCellFormula(null);
             cell.SetCellValue(weightsByCode[mappings[index].WeightCode].Value);
         }
     }

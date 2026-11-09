@@ -30,20 +30,27 @@ var config = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json", optional: false)
     .Build();
 
-var connectionString = config.GetConnectionString("sqlServerConnectionStringOffice");
-if (string.IsNullOrWhiteSpace(connectionString) ||
-    connectionString.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase))
+
+// 生产环境
+//var connStr = config.GetConnectionString("sqlServerConnection");
+//生产测试环境
+var connStr = config.GetConnectionString("sqlServerConnectionTest");
+//测试环境
+//var connStr = config.GetConnectionString("sqlServerConnectionStringOffice");
+
+if(string.IsNullOrWhiteSpace(connStr) ||
+   connStr.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase))
 {
     Console.Error.WriteLine("错误:请先在 appsettings.json 配置有效的 ConnectionStrings:sqlServerConnection。");
     return 1;
 }
 
-Console.WriteLine($"连接字符串: {MaskConnectionString(connectionString)}");
+Console.WriteLine($"连接字符串: {MaskConnectionString(connStr)}");
 Console.WriteLine($"模式: check={doCheck}, install={doInstall}, production={doProduction}");
 
 var db = new SqlSugarScope(new ConnectionConfig
 {
-    ConnectionString = connectionString,
+    ConnectionString = connStr,
     DbType = DbType.SqlServer,
     IsAutoCloseConnection = true,
     InitKeyType = InitKeyType.Attribute
